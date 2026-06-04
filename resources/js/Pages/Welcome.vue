@@ -358,7 +358,7 @@ const pasos = [
                                         <span class="text-guinda-600 dark:text-guinda-400 mt-0.5">✉️</span>
                                         <div>
                                             <p class="text-gray-800 dark:text-white font-medium">Correo</p>
-                                            <p>impulsate@yucatan.gob.mx</p>
+                                            <p>impulsate@iyemyucatan.com</p>
                                         </div>
                                     </div>
                                 </div>
@@ -490,7 +490,7 @@ const pasos = [
                                 <span class="text-guinda-600 dark:text-guinda-400 text-base mt-0.5 shrink-0">✉️</span>
                                 <div>
                                     <p class="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-0.5">Correo</p>
-                                    <p class="text-sm text-gray-500 dark:text-gray-400">impulsate@yucatan.gob.mx</p>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">impulsate@iyemyucatan.com</p>
                                 </div>
                             </li>
                         </ul>
