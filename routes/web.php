@@ -17,6 +17,8 @@ use App\Http\Controllers\RestauranteroPanelController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\Auth\RegistroProveedorController;
 use App\Http\Controllers\Auth\SwitchRoleController;
+use App\Http\Controllers\CompletarPerfilController;
+use App\Http\Controllers\ProveedorPerfilController;
 use App\Http\Controllers\RestauranteroCitasController;
 
 // Google OAuth
@@ -56,10 +58,21 @@ Route::middleware([
     // Cambio de rol dual
     Route::post('/switch-role', SwitchRoleController::class)->name('switch.role');
 
+    // Completar perfil (Feature 7)
+    Route::get('/completar-perfil',  [CompletarPerfilController::class, 'create'])->name('perfil.completar');
+    Route::post('/completar-perfil', [CompletarPerfilController::class, 'store'])->name('perfil.completar.store');
+    Route::post('/mi-panel/necesidades', [CompletarPerfilController::class, 'necesidades'])->name('perfil.necesidades');
+
     // Rutas de usuario autenticado
     Route::get('/mi-panel', [CitaPublicaController::class, 'dashboard'])->name('user.dashboard');
     Route::post('/citas', [CitaPublicaController::class, 'store'])->name('citas.store')->middleware('throttle:10,1');
     Route::delete('/citas/{cita}', [CitaPublicaController::class, 'destroy'])->name('citas.destroy');
+
+    // Completar perfil de proveedor (Feature 6)
+    Route::prefix('restaurantero')->name('restaurantero.')->middleware('role:restaurantero')->group(function () {
+        Route::get('/completar-perfil',  [ProveedorPerfilController::class, 'create'])->name('completar-perfil');
+        Route::post('/completar-perfil', [ProveedorPerfilController::class, 'store'])->name('completar-perfil.store');
+    });
 
     // Panel Restaurantero
     Route::prefix('restaurantero')->name('restaurantero.')->middleware('role:restaurantero')->group(function () {
@@ -84,6 +97,8 @@ Route::middleware([
         Route::patch('/restauranteros/{restaurantero}/toggle', [RestauranteroAdminController::class, 'toggleActivo'])->name('restauranteros.toggle');
         Route::patch('/restauranteros/{restaurantero}/categoria', [RestauranteroAdminController::class, 'updateCategoria'])->name('restauranteros.update-categoria');
         Route::delete('/restauranteros/{restaurantero}', [RestauranteroAdminController::class, 'destroy'])->name('restauranteros.destroy');
+        Route::post('/restauranteros/{restaurantero}/aprobar',  [RestauranteroAdminController::class, 'aprobar'])->name('restauranteros.aprobar');
+        Route::post('/restauranteros/{restaurantero}/rechazar', [RestauranteroAdminController::class, 'rechazarAprobacion'])->name('restauranteros.rechazar-aprobacion');
 
         Route::get('/citas', [CitaAdminController::class, 'index'])->name('citas.index');
         Route::post('/citas', [CitaAdminController::class, 'store'])->name('citas.store');

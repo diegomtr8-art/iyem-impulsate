@@ -36,6 +36,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'telefono',
         'curp',
         'active_role',
+        'necesidades',
+        'perfil_completo',
     ];
 
     public function restaurantero()

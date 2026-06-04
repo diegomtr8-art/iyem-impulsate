@@ -3,14 +3,18 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\ProveedorAprobado;
+use App\Mail\ProveedorRechazado;
 use App\Models\Cita;
 use App\Models\Edicion;
 use App\Models\Horario;
+use App\Models\Notificacion;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
 class RestauranteroAdminController extends Controller
@@ -22,9 +26,15 @@ class RestauranteroAdminController extends Controller
             ->orderByDesc('created_at')
             ->paginate(15);
 
+        $pendientesAprobacion = Restaurantero::whereNotNull('solicitado_aprobacion_at')
+            ->where('aprobado', false)
+            ->where('rechazado', false)
+            ->count();
+
         return Inertia::render('Admin/Restauranteros/Index', [
-            'restauranteros' => $restauranteros,
-            'categorias'     => Restaurantero::$categorias,
+            'restauranteros'      => $restauranteros,
+            'categorias'          => Restaurantero::$categorias,
+            'pendientesAprobacion'=> $pendientesAprobacion,
         ]);
     }
 
@@ -182,5 +192,67 @@ class RestauranteroAdminController extends Controller
 
         return redirect()->route('admin.restauranteros.index')
             ->with('success', 'Restaurantero eliminado correctamente.');
+    }
+
+    public function aprobar(Restaurantero $restaurantero)
+    {
+        $restaurantero->update([
+            'aprobado'        => true,
+            'rechazado'       => false,
+            'motivo_rechazo'  => null,
+            'activo'          => true,
+        ]);
+
+        $restaurantero->load('user');
+
+        try {
+            if ($restaurantero->user?->email) {
+                Mail::to($restaurantero->user->email)->send(new ProveedorAprobado($restaurantero));
+            }
+        } catch (\Exception $e) {}
+
+        if ($restaurantero->user) {
+            Notificacion::crear(
+                $restaurantero->user->id,
+                'info',
+                '🎉 ¡Tu perfil fue aprobado!',
+                'Tu perfil de proveedor está activo y visible para los compradores.',
+            );
+        }
+
+        return back()->with('success', 'Proveedor aprobado y notificado.');
+    }
+
+    public function rechazarAprobacion(Request $request, Restaurantero $restaurantero)
+    {
+        $request->validate([
+            'motivo' => ['required', 'string', 'max:500'],
+        ]);
+
+        $restaurantero->update([
+            'aprobado'       => false,
+            'rechazado'      => true,
+            'motivo_rechazo' => $request->motivo,
+            'activo'         => false,
+        ]);
+
+        $restaurantero->load('user');
+
+        try {
+            if ($restaurantero->user?->email) {
+                Mail::to($restaurantero->user->email)->send(new ProveedorRechazado($restaurantero, $request->motivo));
+            }
+        } catch (\Exception $e) {}
+
+        if ($restaurantero->user) {
+            Notificacion::crear(
+                $restaurantero->user->id,
+                'info',
+                'Resultado de revisión de perfil',
+                'Tu perfil fue revisado. Revisa el correo para más detalles.',
+            );
+        }
+
+        return back()->with('success', 'Perfil rechazado y proveedor notificado.');
     }
 }

@@ -34,13 +34,29 @@ class Restaurantero extends Model
         'municipio',
         'categoria',
         'logo_path',
+        'foto_path',
+        'productos_top',
+        'categorias_json',
+        'rfc',
+        'sitio_web',
+        'redes_sociales',
         'activo',
+        'aprobado',
+        'rechazado',
+        'motivo_rechazo',
+        'solicitado_aprobacion_at',
     ];
 
     protected function casts(): array
     {
         return [
-            'activo' => 'boolean',
+            'activo'                   => 'boolean',
+            'aprobado'                 => 'boolean',
+            'rechazado'                => 'boolean',
+            'productos_top'            => 'array',
+            'categorias_json'          => 'array',
+            'redes_sociales'           => 'array',
+            'solicitado_aprobacion_at' => 'datetime',
         ];
     }
 
