@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"C:\\\\xampp\\\\htdocs\\\\citas\" -Recurse -Depth 2)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Bash(Format-Table -AutoSize)",
+      "WebFetch(domain:gumroad.com)",
+      "Bash(Get-ChildItem -Path \"C:\\\\xampp\\\\htdocs\\\\citas\" -Recurse -Force)",
+      "Bash(Select-Object -First 50)",
+      "Bash(Format-Table Name, FullName)",
+      "Bash(php artisan *)",
+      "Bash(npm run *)",
+      "Bash(findstr -v \"PASSWORD\\\\|SECRET\\\\|KEY\\\\|TOKEN\\\\|PASS\")",
+      "Bash(py --version)",
+      "Bash(where python*)",
+      "Bash(py deploy_fixes_calendario_categoria.py)",
+      "Bash(py deploy_ediciones.py)",
+      "Bash(sshpass *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(where sshpass *)",
+      "Bash(where ssh *)",
+      "Bash(dir \"C:\\\\Users\\\\Diego Martinez\\\\.ssh\")",
+      "Bash(dir \"C:\\\\Users\\\\Diego Martinez\\\\.claude\")",
+      "Bash(Get-ChildItem *)",
+      "Bash(php -l app/Http/Controllers/CitaPublicaController.php)",
+      "Bash(php -l app/Http/Controllers/Admin/CitaAdminController.php)",
+      "Bash(php -l app/Models/User.php)",
+      "Bash(php -l app/Actions/Fortify/CreateNewUser.php)",
+      "Bash(php -l app/Providers/FortifyServiceProvider.php)"
+    ]
+  }
+}
