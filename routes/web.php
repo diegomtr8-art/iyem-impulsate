@@ -120,5 +120,10 @@ Route::middleware([
 
         Route::get('/calendario', [CalendarioController::class, 'index'])->name('calendario');
         Route::get('/calendario/eventos', [CalendarioController::class, 'events'])->name('calendario.events');
+
+        // Exportaciones Excel (Feature 9)
+        Route::get('/exportar/compradores', [\App\Http\Controllers\Admin\ExportController::class, 'compradores'])->name('exportar.compradores');
+        Route::get('/exportar/proveedores', [\App\Http\Controllers\Admin\ExportController::class, 'proveedores'])->name('exportar.proveedores');
+        Route::get('/exportar/citas',       [\App\Http\Controllers\Admin\ExportController::class, 'citas'])->name('exportar.citas');
     });
 });
