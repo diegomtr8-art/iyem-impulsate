@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import Banner from '@/Components/Banner.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import NotificacionCampana from '@/Components/NotificacionCampana.vue';
 
 defineProps({ title: String });
 
@@ -85,6 +86,7 @@ const switchRole = () => {
                                 <span>{{ activeRole === 'comprador' ? 'Comprador' : 'Proveedor' }}</span>
                             </button>
                             <ThemeToggle />
+                            <NotificacionCampana v-if="$page.props.auth?.user" />
                             <div class="relative" v-if="$page.props.auth?.user">
                                 <button @click="showingMenu = !showingMenu"
                                     class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 transition-colors">

@@ -6,8 +6,10 @@ use App\Mail\CitaAgendada;
 use App\Mail\CitaCancelada;
 use App\Models\Cita;
 use App\Models\Edicion;
+use App\Models\Notificacion;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -123,13 +125,34 @@ class CitaPublicaController extends Controller
 
         try {
             Mail::to($cita->cliente->email)->send(new CitaAgendada($cita, 'cliente'));
-
             if ($cita->restaurantero->user?->email) {
                 Mail::to($cita->restaurantero->user->email)->send(new CitaAgendada($cita, 'proveedor'));
             }
-        } catch (\Exception $e) {
-            // No bloqueamos la operación si el correo falla
+        } catch (\Exception $e) {}
+
+        // Notificaciones en sistema
+        $fechaFmt = $cita->inicio->format('d/m/Y H:i');
+        Notificacion::crear(
+            $cita->cliente_id,
+            'cita_nueva',
+            'Cita agendada',
+            "Tu cita con {$cita->restaurantero->nombre_restaurante} el {$fechaFmt} fue registrada.",
+            $cita->id
+        );
+        if ($proveedorUserId = $cita->restaurantero->user?->id) {
+            Notificacion::crear(
+                $proveedorUserId,
+                'cita_nueva',
+                'Nueva cita solicitada',
+                "{$cita->cliente->name} agendó una cita contigo para el {$fechaFmt}.",
+                $cita->id
+            );
         }
+        // Notificar a todos los admins
+        User::role('admin')->each(fn($a) =>
+            Notificacion::crear($a->id, 'cita_nueva', 'Nueva cita en el sistema',
+                "{$cita->cliente->name} agendó cita con {$cita->restaurantero->nombre_restaurante} el {$fechaFmt}.", $cita->id)
+        );
 
         return redirect()->route('user.dashboard')
             ->with('success', 'Cita solicitada correctamente.');

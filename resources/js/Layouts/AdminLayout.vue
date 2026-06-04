@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import NotificacionCampana from '@/Components/NotificacionCampana.vue';
 
 defineProps({ title: String });
 
@@ -83,6 +84,7 @@ const navItems = [
                         </svg>
                     </button>
                     <div class="flex items-center gap-3">
+                        <NotificacionCampana />
                         <ThemeToggle />
                         <div class="text-sm text-gray-600 dark:text-gray-400">{{ $page.props.auth.user?.name }}</div>
                         <span class="bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 text-xs font-bold px-2.5 py-1 rounded-full border border-guinda-200 dark:border-guinda-800">
