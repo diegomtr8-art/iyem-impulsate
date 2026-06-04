@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { ref } from 'vue';
+import { Link } from '@inertiajs/vue3';
 import FullCalendar from '@fullcalendar/vue3';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -61,10 +62,16 @@ const formatFecha = (f) => f ? new Date(f).toLocaleString('es-MX', { weekday:'sh
                     <h1 class="text-xl font-bold text-gray-900 dark:text-white">Panel Informativo</h1>
                     <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">{{ restaurantero.nombre_restaurante }} — solo lectura</p>
                 </div>
-                <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 text-xs font-semibold rounded-full border border-guinda-200 dark:border-guinda-800">
-                    <span class="w-2 h-2 rounded-full bg-guinda-600 dark:bg-guinda-500 animate-pulse"></span>
-                    Proveedor
-                </span>
+                <div class="flex items-center gap-3">
+                    <Link :href="route('restaurantero.citas.index')"
+                        class="px-4 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
+                        Gestionar citas
+                    </Link>
+                    <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 text-xs font-semibold rounded-full border border-guinda-200 dark:border-guinda-800">
+                        <span class="w-2 h-2 rounded-full bg-guinda-600 dark:bg-guinda-500 animate-pulse"></span>
+                        Proveedor
+                    </span>
+                </div>
             </div>
         </template>
 

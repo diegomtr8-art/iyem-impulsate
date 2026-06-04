@@ -17,6 +17,7 @@ use App\Http\Controllers\RestauranteroPanelController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\Auth\RegistroProveedorController;
 use App\Http\Controllers\Auth\SwitchRoleController;
+use App\Http\Controllers\RestauranteroCitasController;
 
 // Google OAuth
 Route::get('/auth/google',          [SocialAuthController::class, 'redirectToGoogle'])->name('auth.google');
@@ -25,6 +26,10 @@ Route::get('/auth/google/callback', [SocialAuthController::class, 'handleGoogleC
 // Registro de Proveedor (antes del grupo de auth para no interferir con Fortify)
 Route::get('/register/proveedor',  [RegistroProveedorController::class, 'create'])->name('register.proveedor');
 Route::post('/register/proveedor', [RegistroProveedorController::class, 'store'])->name('register.proveedor.store');
+
+// Confirmación/rechazo de reagendamiento por token (rutas públicas)
+Route::get('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'confirmarToken'])->name('citas.confirmar-token');
+Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'rechazarToken'])->name('citas.rechazar-token');
 
 // Rutas públicas
 Route::get('/', [LandingController::class, 'index'])->name('home');
@@ -60,6 +65,12 @@ Route::middleware([
     Route::prefix('restaurantero')->name('restaurantero.')->middleware('role:restaurantero')->group(function () {
         Route::get('/panel', [RestauranteroPanelController::class, 'index'])->name('panel');
         Route::get('/panel/eventos', [RestauranteroPanelController::class, 'eventos'])->name('panel.eventos');
+
+        // Gestión de citas del proveedor
+        Route::get('/citas', [RestauranteroCitasController::class, 'index'])->name('citas.index');
+        Route::patch('/citas/{cita}/aceptar',   [RestauranteroCitasController::class, 'aceptar'])->name('citas.aceptar');
+        Route::patch('/citas/{cita}/rechazar',  [RestauranteroCitasController::class, 'rechazar'])->name('citas.rechazar');
+        Route::post('/citas/{cita}/reagendar',  [RestauranteroCitasController::class, 'reagendar'])->name('citas.reagendar');
     });
 
     // Admin routes

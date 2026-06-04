@@ -18,13 +18,22 @@ class Cita extends Model
         'fin',
         'estado',
         'notas',
+        'propuesta_inicio',
+        'propuesta_fin',
+        'token_confirmacion',
+        'recordatorio_24h_enviado',
+        'recordatorio_2h_enviado',
     ];
 
     protected function casts(): array
     {
         return [
-            'inicio' => 'datetime',
-            'fin'    => 'datetime',
+            'inicio'                   => 'datetime',
+            'fin'                      => 'datetime',
+            'propuesta_inicio'         => 'datetime',
+            'propuesta_fin'            => 'datetime',
+            'recordatorio_24h_enviado' => 'boolean',
+            'recordatorio_2h_enviado'  => 'boolean',
         ];
     }
 
