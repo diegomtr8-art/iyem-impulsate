@@ -33,6 +33,10 @@ Route::post('/register/proveedor', [RegistroProveedorController::class, 'store']
 Route::get('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'confirmarToken'])->name('citas.confirmar-token');
 Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'rechazarToken'])->name('citas.rechazar-token');
 
+// Pantalla TV (acceso por token, sin login requerido)
+Route::get('/tv/{token}',              [\App\Http\Controllers\Admin\PantallaTvController::class, 'index'])->name('tv.index');
+Route::get('/api/tv/{token}/citas',    [\App\Http\Controllers\Admin\PantallaTvController::class, 'citasActivas'])->name('tv.citas');
+
 // Rutas públicas
 Route::get('/', [LandingController::class, 'index'])->name('home');
 Route::get('/restauranteros', [RestauranteroPublicoController::class, 'index'])->name('restauranteros.index');
