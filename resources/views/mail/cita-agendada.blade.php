@@ -22,9 +22,15 @@
                 <!-- Badge -->
                 <tr>
                     <td style="padding:0;text-align:center;">
-                        <div style="display:inline-block;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:999px;padding:8px 20px;margin:24px auto 0;font-size:13px;font-weight:700;color:#15803d;">
-                            ✓ Cita agendada exitosamente
+                        @if($destinatario === 'proveedor')
+                        <div style="display:inline-block;background:#fef3c7;border:1px solid #fcd34d;border-radius:999px;padding:8px 20px;margin:24px auto 0;font-size:13px;font-weight:700;color:#92400e;">
+                            ⏳ Nueva solicitud pendiente de tu confirmación
                         </div>
+                        @else
+                        <div style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:8px 20px;margin:24px auto 0;font-size:13px;font-weight:700;color:#1e40af;">
+                            📋 Solicitud registrada — pendiente de confirmación
+                        </div>
+                        @endif
                     </td>
                 </tr>
 
@@ -41,12 +47,18 @@
                         </p>
 
                         @if($destinatario === 'proveedor')
-                            <p style="margin:0 0 24px;font-size:15px;color:#6b7280;">
-                                Se ha agendado una nueva cita de networking en tu calendario.
+                            <p style="margin:0 0 16px;font-size:15px;color:#374151;">
+                                Has recibido una nueva solicitud de cita de networking. Debes aceptar o rechazar esta solicitud para confirmarla.
+                            </p>
+                            <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
+                                Ingresa a tu panel de proveedor para gestionar esta solicitud.
                             </p>
                         @else
-                            <p style="margin:0 0 24px;font-size:15px;color:#6b7280;">
-                                Tu cita de networking ha sido agendada correctamente. Aquí tienes los detalles:
+                            <p style="margin:0 0 16px;font-size:15px;color:#374151;">
+                                Tu solicitud de cita ha sido registrada exitosamente.
+                            </p>
+                            <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
+                                La cita quedará confirmada una vez que el proveedor la acepte. Te notificaremos por correo en cuanto haya una respuesta.
                             </p>
                         @endif
 

@@ -163,15 +163,14 @@ const pasos = [
                 </div>
 
                 <h1 class="text-4xl sm:text-5xl lg:text-7xl font-black leading-tight mb-6 text-gray-900 dark:text-white">
-                    El encuentro de<br />
+                    Conecta, negocia y<br />
                     <span class="text-transparent bg-clip-text" style="background-image: linear-gradient(90deg, #c8113b, #f36178, #c8113b)">
-                        negocios empresarial
-                    </span><br />
-                    de Yucatán
+                        haz crecer tu empresa
+                    </span>
                 </h1>
 
                 <p class="text-lg sm:text-xl text-gray-600 dark:text-gray-400 max-w-2xl mx-auto mb-10 leading-relaxed">
-                    Conecta con los mejores proveedores del Estado de forma gratuita. Un programa gubernamental para impulsar el ecosistema empresarial y emprendedor yucateco.
+                    Conecta con los mejores proveedores de Yucatán de manera gratuita y genera nuevas oportunidades de negocio. Impúlsate es una iniciativa que fortalece el ecosistema empresarial y emprendedor del estado.
                 </p>
 
                 <div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-14">
@@ -220,11 +219,11 @@ const pasos = [
                 <div class="text-center mb-16 fade-up">
                     <h2 class="text-3xl sm:text-4xl font-black mb-4">
                         <span class="text-transparent bg-clip-text" style="background-image: linear-gradient(90deg, #c8113b, #f36178)">
-                            ¿Qué es Impulsate?
+                            ¿Qué es Impúlsate-Encuentros de Negocios?
                         </span>
                     </h2>
                     <p class="text-gray-600 dark:text-gray-400 max-w-3xl mx-auto leading-relaxed">
-                        Encuentro de Negocios Impulsate es un programa oficial del Gobierno del Estado de Yucatán que impulsa el ecosistema empresarial a través de citas estratégicas de networking entre emprendedores y los mejores proveedores del estado.
+                        "Impúlsate-Encuentros de Negocios" es la plataforma de citas de 1-1 del IYEM, creada para ayudar a emprendedores y empresas a conectar con clientes potenciales, proveedores y aliados estratégicos. A través de reuniones previamente programadas, los participantes pueden presentar sus productos y servicios directamente a las empresas que buscan, generando oportunidades reales de venta, colaboración y crecimiento.
                     </p>
                 </div>
 

@@ -1,0 +1,315 @@
+<script setup>
+import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+
+const props = defineProps({
+    eventos: Array,
+    categorias: Array,
+});
+
+const mostrarForm = ref(false);
+const form = ref({
+    nombre: '',
+    sector_economico: '',
+    descripcion: '',
+    fecha_hora_inicio: '',
+    fecha_hora_fin: '',
+    fecha_hora_inicio_proveedores: '',
+    fecha_hora_inicio_compradores: '',
+    max_citas_por_comprador: 3,
+    tiempo_entre_citas_minutos: 30,
+});
+
+const eventoActivo = computed(() => props.eventos.find(e => e.activa) || null);
+const eventosArchivados = computed(() => props.eventos.filter(e => !e.activa));
+
+const crearEvento = () => {
+    router.post(route('admin.eventos.store'), form.value, {
+        onSuccess: () => {
+            mostrarForm.value = false;
+            form.value = {
+                nombre: '', sector_economico: '', descripcion: '',
+                fecha_hora_inicio: '', fecha_hora_fin: '',
+                fecha_hora_inicio_proveedores: '', fecha_hora_inicio_compradores: '',
+                max_citas_por_comprador: 3, tiempo_entre_citas_minutos: 30,
+            };
+        },
+    });
+};
+
+const archivar = (evento) => {
+    if (!confirm(`¿Archivar el evento "${evento.nombre}"? Los usuarios no podrán agendar nuevas citas hasta que actives otro evento.`)) return;
+    router.post(route('admin.eventos.archivar', evento.id));
+};
+
+const activar = (evento) => {
+    if (!confirm(`¿Activar el evento "${evento.nombre}"? Esto desactivará cualquier evento activo actual.`)) return;
+    router.post(route('admin.eventos.activar', evento.id));
+};
+
+const eliminar = (evento) => {
+    if (!confirm(`¿Eliminar el evento "${evento.nombre}"? Esta acción no se puede deshacer.`)) return;
+    router.delete(route('admin.eventos.destroy', evento.id));
+};
+
+const formatFecha = (fecha) => {
+    if (!fecha) return '—';
+    return new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+const formatFechaCorta = (fecha) => {
+    if (!fecha) return '—';
+    return new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+// Diagrama de secuencia
+const secuenciaValida = computed(() => {
+    const f = form.value;
+    return f.fecha_hora_inicio_proveedores && f.fecha_hora_inicio_compradores && f.fecha_hora_inicio;
+});
+</script>
+
+<template>
+    <AdminLayout title="Eventos">
+        <template #header>
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <h1 class="text-xl font-bold text-gray-900 dark:text-white">Eventos</h1>
+                    <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">Gestiona los eventos de la plataforma por sector económico</p>
+                </div>
+                <button
+                    @click="mostrarForm = !mostrarForm"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Nuevo evento
+                </button>
+            </div>
+        </template>
+
+        <div class="space-y-6 max-w-5xl">
+
+            <!-- Formulario nuevo evento -->
+            <div v-if="mostrarForm" class="bg-white dark:bg-gray-900 border border-guinda-200 dark:border-guinda-900 rounded-2xl p-6 shadow-sm">
+                <h2 class="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                    <svg class="w-4 h-4 text-guinda-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Crear nuevo evento
+                </h2>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nombre del Evento *</label>
+                        <input v-model="form.nombre" type="text" placeholder="Ej. Impulsate 2026 — Tech"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Sector Económico</label>
+                        <select v-model="form.sector_economico"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors">
+                            <option value="">— Seleccionar sector —</option>
+                            <option v-for="cat in categorias" :key="cat" :value="cat">{{ cat }}</option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descripción</label>
+                        <input v-model="form.descripcion" type="text" placeholder="Descripción breve del evento..."
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                    </div>
+                </div>
+
+                <!-- Ventanas temporales -->
+                <div class="mt-5 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-xl">
+                    <p class="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-3 flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Secuencia temporal del evento
+                    </p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Inicio de registro de proveedores</label>
+                            <input v-model="form.fecha_hora_inicio_proveedores" type="datetime-local"
+                                class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Inicio de agendado para compradores</label>
+                            <input v-model="form.fecha_hora_inicio_compradores" type="datetime-local"
+                                class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha y Hora de Inicio del Evento *</label>
+                            <input v-model="form.fecha_hora_inicio" type="datetime-local"
+                                class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha y Hora de Finalización</label>
+                            <input v-model="form.fecha_hora_fin" type="datetime-local"
+                                class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        </div>
+                    </div>
+
+                    <!-- Diagrama de secuencia -->
+                    <div v-if="secuenciaValida" class="mt-4 flex items-center gap-1 flex-wrap text-xs">
+                        <span class="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded font-medium text-gray-600 dark:text-gray-400">Ahora</span>
+                        <span class="text-gray-400">→</span>
+                        <span class="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded font-medium">Reg. Proveedores</span>
+                        <span class="text-gray-400">→</span>
+                        <span class="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded font-medium">Agendado</span>
+                        <span class="text-gray-400">→</span>
+                        <span class="px-2 py-1 bg-guinda-100 dark:bg-guinda-900/40 text-guinda-700 dark:text-guinda-300 rounded font-medium">Evento</span>
+                        <span class="text-gray-400">→</span>
+                        <span class="px-2 py-1 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded font-medium">Fin</span>
+                    </div>
+                </div>
+
+                <!-- Config adicional -->
+                <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Máximo de citas por comprador</label>
+                        <input v-model.number="form.max_citas_por_comprador" type="number" min="1" max="50"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tiempo entre citas (minutos)</label>
+                        <input v-model.number="form.tiempo_entre_citas_minutos" type="number" min="5" max="120"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-3 mt-5">
+                    <button @click="crearEvento"
+                        class="px-5 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
+                        Crear evento
+                    </button>
+                    <button @click="mostrarForm = false"
+                        class="px-5 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-xl transition-colors">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Evento activo -->
+            <div>
+                <h2 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Evento activo</h2>
+
+                <div v-if="eventoActivo" class="bg-white dark:bg-gray-900 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl p-6 shadow-sm">
+                    <div class="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                                <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">En curso</span>
+                            </div>
+                            <h3 class="text-xl font-black text-gray-900 dark:text-white">{{ eventoActivo.nombre }}</h3>
+                            <p v-if="eventoActivo.sector_economico" class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Sector: {{ eventoActivo.sector_economico }}</p>
+                            <p v-if="eventoActivo.descripcion" class="text-sm text-gray-400 dark:text-gray-600 mt-1">{{ eventoActivo.descripcion }}</p>
+                        </div>
+                        <button @click="archivar(eventoActivo)"
+                            class="shrink-0 inline-flex items-center gap-2 px-4 py-2 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 text-sm font-semibold rounded-xl transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                            </svg>
+                            Archivar evento
+                        </button>
+                    </div>
+
+                    <!-- Secuencia temporal -->
+                    <div class="mt-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
+                        <div v-if="eventoActivo.fecha_hora_inicio_proveedores" class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-blue-400 rounded-full shrink-0"></span>
+                            <span>Reg. Proveedores desde: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_inicio_proveedores) }}</strong></span>
+                        </div>
+                        <div v-if="eventoActivo.fecha_hora_inicio_compradores" class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-emerald-400 rounded-full shrink-0"></span>
+                            <span>Agendado desde: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_inicio_compradores) }}</strong></span>
+                        </div>
+                        <div v-if="eventoActivo.fecha_hora_inicio" class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-guinda-500 rounded-full shrink-0"></span>
+                            <span>Inicio del evento: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_inicio) }}</strong></span>
+                        </div>
+                        <div v-if="eventoActivo.fecha_hora_fin" class="flex items-center gap-2">
+                            <span class="w-2 h-2 bg-red-400 rounded-full shrink-0"></span>
+                            <span>Fin: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_fin) }}</strong></span>
+                        </div>
+                        <div class="flex items-center gap-4 pt-1 border-t border-gray-200 dark:border-gray-700 mt-2">
+                            <span>Máx. citas/comprador: <strong>{{ eventoActivo.max_citas_por_comprador || 3 }}</strong></span>
+                            <span>Tiempo entre citas: <strong>{{ eventoActivo.tiempo_entre_citas_minutos || 30 }} min</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Stats -->
+                    <div class="grid grid-cols-3 gap-4 mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
+                        <div class="text-center">
+                            <div class="text-2xl font-black text-guinda-700 dark:text-guinda-400">{{ eventoActivo.citas_count }}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Citas</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-black text-guinda-700 dark:text-guinda-400">{{ eventoActivo.restauranteros_count }}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Proveedores</div>
+                        </div>
+                        <div class="text-center">
+                            <div class="text-2xl font-black text-guinda-700 dark:text-guinda-400">{{ eventoActivo.usuarios_count }}</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Usuarios activos</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl p-6">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <div>
+                            <p class="font-semibold text-amber-800 dark:text-amber-300 text-sm">Sin evento activo</p>
+                            <p class="text-amber-700 dark:text-amber-400/80 text-xs mt-0.5">Los usuarios no pueden agendar citas. Activa o crea un evento.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Eventos archivados -->
+            <div v-if="eventosArchivados.length > 0">
+                <h2 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Eventos archivados</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div v-for="evento in eventosArchivados" :key="evento.id"
+                        class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+                        <div class="flex items-start justify-between gap-3 mb-3">
+                            <div class="min-w-0">
+                                <h3 class="font-bold text-gray-900 dark:text-gray-200 truncate">{{ evento.nombre }}</h3>
+                                <p v-if="evento.sector_economico" class="text-xs text-gray-500 dark:text-gray-500">{{ evento.sector_economico }}</p>
+                            </div>
+                            <span class="shrink-0 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 px-2 py-0.5 rounded-full font-medium">Archivado</span>
+                        </div>
+
+                        <div class="text-xs text-gray-400 dark:text-gray-600 space-y-0.5 mb-4">
+                            <p v-if="evento.fecha_hora_inicio">Inicio: {{ formatFechaCorta(evento.fecha_hora_inicio) }}</p>
+                            <p v-if="evento.fecha_corte">Archivado: {{ formatFechaCorta(evento.fecha_corte) }}</p>
+                        </div>
+
+                        <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-500 mb-4">
+                            <span>{{ evento.citas_count }} citas</span>
+                            <span>·</span>
+                            <span>{{ evento.restauranteros_count }} proveedores</span>
+                            <span>·</span>
+                            <span>{{ evento.usuarios_count }} usuarios</span>
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button @click="activar(evento)"
+                                class="flex-1 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-xs font-semibold rounded-lg transition-colors text-center">
+                                Reactivar
+                            </button>
+                            <button v-if="evento.citas_count === 0" @click="eliminar(evento)"
+                                class="px-3 py-1.5 text-red-400 dark:text-red-500 hover:text-red-500 dark:hover:text-red-400 text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </AdminLayout>
+</template>

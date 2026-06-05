@@ -70,12 +70,8 @@ const submit = () => {
                     <img src="/images/logo_impulsate.png" alt="Impulsate" class="h-10 w-auto" />
                 </div>
 
-                <h2 class="text-2xl font-black text-gray-900 dark:text-white mb-2">Crea tu cuenta de Comprador</h2>
-                <p class="text-gray-500 dark:text-gray-400 text-sm mb-2">Es gratuito y tarda menos de un minuto.</p>
-                <p class="text-xs text-gray-400 dark:text-gray-500 mb-6">
-                    ¿Eres proveedor?
-                    <Link :href="route('register.proveedor')" class="text-guinda-700 dark:text-guinda-400 font-medium hover:underline">Regístrate aquí</Link>
-                </p>
+                <h2 class="text-2xl font-black text-gray-900 dark:text-white mb-2">Crea tu cuenta</h2>
+                <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Es gratuito y tarda menos de un minuto. Podrás elegir tu rol al iniciar sesión.</p>
 
                 <!-- Google OAuth button -->
                 <a :href="route('auth.google')"
@@ -116,9 +112,10 @@ const submit = () => {
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                             Teléfono <span class="text-gray-400 font-normal">(opcional)</span>
                         </label>
-                        <input v-model="form.telefono" type="tel" autocomplete="tel"
+                        <input v-model="form.telefono" type="tel" autocomplete="tel" maxlength="10"
+                            @input="form.telefono = form.telefono.replace(/\D/g, '').slice(0, 10)"
                             class="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
-                            placeholder="(999) 123-4567" />
+                            placeholder="9991234567" />
                     </div>
 
                     <div>

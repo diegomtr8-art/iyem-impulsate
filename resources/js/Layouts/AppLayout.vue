@@ -49,17 +49,21 @@ const switchRole = () => {
                                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-lg transition-colors">
                                 Proveedores
                             </Link>
-                            <Link v-if="$page.props.auth?.user"
+                            <!-- Modo Comprador: Mis Citas -->
+                            <Link v-if="$page.props.auth?.user && activeRole !== 'proveedor'"
                                 :href="route('user.dashboard')"
                                 :class="route().current('user.dashboard') ? 'bg-guinda-100 dark:bg-guinda-900/30 text-guinda-800 dark:text-guinda-400' : 'text-gray-600 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800'"
-                                class="px-3 py-2 text-sm font-medium rounded-lg transition-colors">
+                                class="px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-guinda-500 dark:bg-guinda-400"></span>
                                 Mis Citas
                             </Link>
-                            <Link v-if="$page.props.auth?.user && $page.props.auth.user.roles?.includes('restaurantero')"
+                            <!-- Modo Proveedor: Mi Negocio -->
+                            <Link v-if="$page.props.auth?.user && activeRole === 'proveedor'"
                                 :href="route('restaurantero.panel')"
                                 :class="route().current('restaurantero.panel') ? 'bg-guinda-100 dark:bg-guinda-900/30 text-guinda-800 dark:text-guinda-400' : 'text-gray-600 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800'"
-                                class="px-3 py-2 text-sm font-medium rounded-lg transition-colors">
-                                Mi Panel
+                                class="px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400"></span>
+                                Mi Negocio
                             </Link>
                             <Link v-if="$page.props.auth?.user && $page.props.auth.user.roles?.includes('admin')"
                                 :href="route('admin.dashboard')"
@@ -143,16 +147,27 @@ const switchRole = () => {
                         class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-xl">
                         Proveedores
                     </Link>
-                    <Link v-if="$page.props.auth?.user" :href="route('user.dashboard')" @click="showingMenu=false"
+                    <Link v-if="$page.props.auth?.user && activeRole !== 'proveedor'" :href="route('user.dashboard')" @click="showingMenu=false"
                         class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-xl">
-                        Mis Citas
+                        Mis Citas (Comprador)
                     </Link>
-                    <Link v-if="$page.props.auth?.user && $page.props.auth.user.roles?.includes('restaurantero')"
+                    <Link v-if="$page.props.auth?.user && activeRole === 'proveedor'"
                         :href="route('restaurantero.panel')" @click="showingMenu=false"
                         class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-xl">
-                        Mi Panel
+                        Mi Negocio (Proveedor)
                     </Link>
                     <div v-if="$page.props.auth?.user" class="border-t border-gray-200 dark:border-gray-700 pt-2 mt-2 space-y-1">
+                        <!-- Switch de rol en mobile -->
+                        <button v-if="tieneDualRol" @click="switchRole(); showingMenu=false" :disabled="switchingRole"
+                            class="flex items-center gap-2 w-full px-3 py-2 text-sm font-semibold rounded-xl border transition-colors"
+                            :class="activeRole === 'proveedor'
+                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                                : 'bg-guinda-50 dark:bg-guinda-900/20 border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-300'">
+                            <svg class="w-4 h-4 shrink-0" :class="switchingRole ? 'animate-spin' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5"/>
+                            </svg>
+                            Cambiar a {{ activeRole === 'comprador' ? 'Proveedor' : 'Comprador' }}
+                        </button>
                         <Link :href="route('profile.show')" @click="showingMenu=false"
                             class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-xl">
                             Mi Perfil

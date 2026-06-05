@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, usePage, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -9,13 +9,15 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 const props = defineProps({
     citas: Array,
     citasCount: Number,
-    edicion: Object,
+    evento: Object,
     edicionesHistorial: Array,
+    proveedores: Array,
+    tieneKeywords: Boolean,
 });
 
+const page = usePage();
 const historialAbierto = ref(false);
-
-const MAX_CITAS = 12;
+const MAX_CITAS = computed(() => props.evento?.max_citas_por_comprador ?? 12);
 const activeTab = ref('lista');
 
 const estadoConfig = {
@@ -23,6 +25,8 @@ const estadoConfig = {
     confirmada: { label: 'Confirmada', class: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20' },
     cancelada:  { label: 'Cancelada',  class: 'bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/20' },
     completada: { label: 'Completada', class: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
+    rechazada:  { label: 'Rechazada',  class: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20' },
+    reagendada: { label: 'Reagendada', class: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20' },
 };
 
 const estadoColors = {
@@ -32,7 +36,7 @@ const estadoColors = {
     completada: '#6366f1',
 };
 
-const porcentaje = Math.min((props.citasCount / MAX_CITAS) * 100, 100);
+const porcentaje = computed(() => Math.min((props.citasCount / MAX_CITAS.value) * 100, 100));
 
 const formatFecha = (fecha) => {
     if (!fecha) return '—';
@@ -46,7 +50,7 @@ const cancelarCita = (id) => {
     router.delete(route('citas.destroy', id));
 };
 
-const puedesCancelar = (estado) => !['completada', 'cancelada'].includes(estado);
+const puedesCancelar = (estado) => !['completada', 'cancelada', 'rechazada'].includes(estado);
 
 const calendarEvents = computed(() =>
     props.citas.map(c => ({
@@ -59,12 +63,16 @@ const calendarEvents = computed(() =>
 
 const proximaCita = computed(() => {
     const now = new Date();
-    const upcoming = props.citas.filter(c => new Date(c.inicio) >= now);
+    const upcoming = props.citas.filter(c => new Date(c.inicio) >= now && !['cancelada','rechazada'].includes(c.estado));
     if (!upcoming.length) return null;
     return upcoming.reduce((min, c) =>
         new Date(c.inicio) < new Date(min.inicio) ? c : min
     );
 });
+
+const citasActivas = computed(() =>
+    props.citas.filter(c => !['cancelada', 'rechazada', 'completada'].includes(c.estado))
+);
 
 const calendarOptions = computed(() => ({
     plugins: [dayGridPlugin, timeGridPlugin],
@@ -88,67 +96,252 @@ const calendarOptions = computed(() => ({
         endTime: '16:00',
     },
 }));
+
+// Perfil del comprador
+const showPerfilModal = ref(false);
+const formPerfil = useForm({
+    name:        page.props.auth.user?.name || '',
+    telefono:    page.props.auth.user?.telefono || '',
+    sitio_web:   page.props.auth.user?.sitio_web || '',
+    necesidades: page.props.auth.user?.necesidades || '',
+});
+const submitPerfil = () => {
+    formPerfil.post(route('perfil.comprador.actualizar'), {
+        onSuccess: () => { showPerfilModal.value = false; },
+    });
+};
+
+const iniciales = (nombre) => {
+    if (!nombre) return '?';
+    return nombre.split(' ').slice(0, 2).map(p => p[0]).join('').toUpperCase();
+};
 </script>
 
 <template>
-    <AppLayout title="Mis Citas">
+    <AppLayout title="Inicio">
         <template #header>
-            <h1 class="text-xl font-bold text-gray-900 dark:text-white">Mis Citas</h1>
-            <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">Gestiona tus citas de networking</p>
+            <h1 class="text-xl font-bold text-gray-900 dark:text-white">Mi Panel</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">Bienvenido, {{ $page.props.auth.user?.name?.split(' ')[0] }}</p>
         </template>
 
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-            <!-- Progress de citas -->
-            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm transition-colors">
-                <div class="flex items-center justify-between mb-3">
-                    <div>
-                        <h3 class="font-semibold text-gray-900 dark:text-white">Citas utilizadas</h3>
-                        <p class="text-sm text-gray-500 mt-0.5">
-                            <span v-if="edicion">{{ edicion.nombre }}</span>
-                            <span v-else class="text-amber-500">Sin edición activa</span>
-                            · Máximo 12 citas
-                        </p>
+        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+            <!-- ── BANNER MODO COMPRADOR ─────────────────────────── -->
+            <div class="flex items-center gap-3 px-4 py-3 bg-guinda-50 dark:bg-guinda-950/30 border border-guinda-200 dark:border-guinda-900 rounded-2xl">
+                <div class="w-8 h-8 rounded-full bg-guinda-700 dark:bg-guinda-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                    {{ $page.props.auth.user?.name?.charAt(0).toUpperCase() }}
+                </div>
+                <div class="flex-1">
+                    <p class="font-bold text-guinda-800 dark:text-guinda-300 text-sm">
+                        Bienvenido, {{ $page.props.auth.user?.name?.split(' ')[0] }}
+                    </p>
+                    <p class="text-xs text-guinda-600 dark:text-guinda-500">Estás en modo <strong>Comprador</strong> — aquí puedes ver y gestionar tus citas de networking</p>
+                </div>
+                <span class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1 bg-guinda-100 dark:bg-guinda-900/40 text-guinda-700 dark:text-guinda-400 text-xs font-bold rounded-full border border-guinda-200 dark:border-guinda-800">
+                    <span class="w-2 h-2 rounded-full bg-guinda-600 dark:bg-guinda-500"></span>
+                    Comprador
+                </span>
+            </div>
+
+            <!-- ── CARD REGISTRO AL EVENTO ───────────────────────── -->
+            <div v-if="$page.props.eventoActivo">
+                <!-- No registrado -->
+                <div v-if="!$page.props.registradoEnEvento?.comprador"
+                    class="bg-gradient-to-r from-emerald-900/60 to-teal-900/40 border border-emerald-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div class="text-3xl">📅</div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-white mb-1">Hay un evento disponible: {{ $page.props.eventoActivo.nombre }}</h3>
+                        <p class="text-gray-300 text-sm">Regístrate para poder agendar citas con los proveedores participantes.</p>
                     </div>
-                    <span class="text-2xl font-black" :class="citasCount >= 12 ? 'text-red-500 dark:text-red-400' : 'text-guinda-700 dark:text-guinda-400'">
-                        {{ citasCount }}<span class="text-sm font-normal text-gray-400">/12</span>
+                    <button
+                        @click="router.post(route('evento.registrar-comprador', $page.props.eventoActivo.id))"
+                        class="shrink-0 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
+                        Registrarme al Evento
+                    </button>
+                </div>
+                <!-- Ya registrado -->
+                <div v-else class="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm">
+                    <svg class="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    <span class="text-emerald-700 dark:text-emerald-400 font-medium">Registrado en {{ $page.props.eventoActivo.nombre }}</span>
+                </div>
+            </div>
+
+            <!-- ── BIENVENIDA + PRÓXIMA CITA ──────────────────────── -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <!-- Progress de citas -->
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm transition-colors">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h3 class="font-semibold text-gray-900 dark:text-white">Citas agendadas</h3>
+                            <p class="text-sm text-gray-500 mt-0.5">
+                                <span v-if="evento">{{ evento.nombre }}</span>
+                                <span v-else class="text-amber-500">Sin evento activo</span>
+                                · Máx. {{ MAX_CITAS }} citas
+                            </p>
+                        </div>
+                        <span class="text-3xl font-black" :class="citasCount >= MAX_CITAS ? 'text-red-500 dark:text-red-400' : 'text-guinda-700 dark:text-guinda-400'">
+                            {{ citasCount }}<span class="text-sm font-normal text-gray-400">/{{ MAX_CITAS }}</span>
+                        </span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden">
+                        <div
+                            class="h-2.5 rounded-full transition-all duration-500"
+                            :class="citasCount >= MAX_CITAS ? 'bg-red-500' : citasCount >= MAX_CITAS * 0.75 ? 'bg-guinda-600' : 'bg-emerald-500'"
+                            :style="{ width: porcentaje + '%' }"
+                        ></div>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between">
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ MAX_CITAS - citasCount }} citas disponibles</span>
+                        <Link v-if="citasCount < MAX_CITAS" :href="route('restauranteros.index')"
+                            class="text-sm text-guinda-700 dark:text-guinda-400 hover:text-guinda-600 font-medium transition-colors flex items-center gap-1">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                            </svg>
+                            Nueva cita
+                        </Link>
+                    </div>
+                </div>
+
+                <!-- Próxima cita o banner info -->
+                <div v-if="proximaCita"
+                    class="bg-gradient-to-br from-guinda-800 to-guinda-900 dark:from-guinda-900 dark:to-gray-900 border border-guinda-700 dark:border-guinda-800 rounded-2xl p-6 shadow-sm text-white relative overflow-hidden">
+                    <div class="absolute inset-0 opacity-10 pointer-events-none">
+                        <svg viewBox="0 0 200 200" class="w-48 h-48 absolute -right-8 -bottom-8 text-white" fill="currentColor">
+                            <circle cx="100" cy="100" r="80" fill="none" stroke="currentColor" stroke-width="8"/>
+                            <path d="M100 30 L100 100 L140 140" stroke="currentColor" stroke-width="8" fill="none" stroke-linecap="round"/>
+                        </svg>
+                    </div>
+                    <p class="text-guinda-200 text-xs font-semibold uppercase tracking-widest mb-2 relative z-10">Próxima cita</p>
+                    <p class="text-white font-bold text-lg leading-tight relative z-10">
+                        {{ proximaCita.restaurantero?.nombre_restaurante || 'Proveedor' }}
+                    </p>
+                    <p class="text-guinda-200 text-sm mt-2 relative z-10 capitalize">{{ formatFecha(proximaCita.inicio) }}</p>
+                    <span class="mt-3 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border relative z-10"
+                        :class="estadoConfig[proximaCita.estado]?.class || 'bg-white/10 text-white border-white/20'">
+                        {{ estadoConfig[proximaCita.estado]?.label || proximaCita.estado }}
                     </span>
                 </div>
-                <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden">
-                    <div
-                        class="h-2.5 rounded-full transition-all duration-500"
-                        :class="citasCount >= 12 ? 'bg-red-500' : citasCount >= 9 ? 'bg-guinda-600' : 'bg-emerald-500'"
-                        :style="{ width: porcentaje + '%' }"
-                    ></div>
+                <div v-else
+                    class="bg-guinda-50 dark:bg-guinda-950/30 border border-guinda-200 dark:border-guinda-900 rounded-2xl p-6 transition-colors">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-lg bg-guinda-100 dark:bg-guinda-900/40 border border-guinda-200 dark:border-guinda-800 flex items-center justify-center shrink-0">
+                            <svg class="w-4 h-4 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-guinda-800 dark:text-guinda-300 text-sm">Ubicación del evento</p>
+                            <p class="text-guinda-700 dark:text-guinda-400/80 text-sm mt-1">Av. Industrias No Contaminantes Tab 13613, Col. Sodzil Norte, Mérida, Yucatán</p>
+                            <p class="text-guinda-600/70 dark:text-guinda-500/60 text-xs mt-1">Lunes a Viernes · 9:00 am — 4:00 pm</p>
+                        </div>
+                    </div>
                 </div>
-                <div v-if="citasCount < 12" class="mt-4">
-                    <Link :href="route('restauranteros.index')"
-                        class="inline-flex items-center gap-2 text-sm text-guinda-700 dark:text-guinda-400 hover:text-guinda-600 dark:hover:text-guinda-300 font-medium transition-colors">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+            </div>
+
+            <!-- ── PERFIL DEL COMPRADOR ──────────────────────────── -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="font-bold text-gray-900 dark:text-white">Mi perfil</h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            Completa tu perfil y cuéntanos qué buscas — te mostraremos proveedores relevantes
+                        </p>
+                    </div>
+                    <button @click="showPerfilModal = true"
+                        class="text-xs font-semibold text-guinda-700 dark:text-guinda-400 hover:underline flex items-center gap-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                         </svg>
-                        Agendar nueva cita
+                        Editar perfil
+                    </button>
+                </div>
+                <!-- Resumen de datos -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-500 font-medium">Nombre</p>
+                        <p class="font-semibold text-gray-800 dark:text-gray-200 truncate">{{ $page.props.auth.user?.name || '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-500 font-medium">Teléfono</p>
+                        <p class="font-semibold text-gray-800 dark:text-gray-200">{{ $page.props.auth.user?.telefono || '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-500 font-medium">Correo</p>
+                        <p class="font-semibold text-gray-800 dark:text-gray-200 truncate">{{ $page.props.auth.user?.email || '—' }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 dark:text-gray-500 font-medium">Página web</p>
+                        <p class="font-semibold text-gray-800 dark:text-gray-200 truncate">{{ $page.props.auth.user?.sitio_web || '—' }}</p>
+                    </div>
+                </div>
+                <!-- Necesidades -->
+                <div class="mt-3 p-3 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-900/30 rounded-xl">
+                    <p class="text-xs font-semibold text-guinda-700 dark:text-guinda-400 mb-1">¿Qué necesidades tienes?</p>
+                    <p v-if="$page.props.auth.user?.necesidades" class="text-sm text-gray-700 dark:text-gray-300">
+                        {{ $page.props.auth.user.necesidades }}
+                    </p>
+                    <button v-else @click="showPerfilModal = true"
+                        class="text-sm text-guinda-600 dark:text-guinda-400 italic">
+                        Escribe qué tipo de proveedores buscas para recibir sugerencias personalizadas →
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── CARRUSEL DE PROVEEDORES ─────────────────────────── -->
+            <div v-if="proveedores && proveedores.length > 0">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-base font-bold text-gray-900 dark:text-white">Proveedores disponibles</h2>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Haz clic para ver el perfil y agendar una cita</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span v-if="tieneKeywords" class="text-xs bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 px-2.5 py-1 rounded-full border border-guinda-200 dark:border-guinda-800 font-semibold">
+                            ✦ Ordenados por tus necesidades
+                        </span>
+                        <Link :href="route('restauranteros.index')"
+                            class="text-sm text-guinda-700 dark:text-guinda-400 hover:underline font-medium">
+                            Ver todos →
+                        </Link>
+                    </div>
+                </div>
+
+                <!-- Scroll horizontal -->
+                <div class="flex gap-4 overflow-x-auto pb-3 -mx-1 px-1 snap-x scroll-smooth"
+                     style="scrollbar-width: thin; scrollbar-color: #e5e7eb transparent;">
+                    <Link
+                        v-for="p in proveedores" :key="p.id"
+                        :href="route('restauranteros.show', p.id)"
+                        class="snap-start shrink-0 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 hover:border-guinda-300 dark:hover:border-guinda-800 hover:shadow-md transition-all duration-200 group"
+                    >
+                        <!-- Logo / Iniciales -->
+                        <div class="w-12 h-12 rounded-xl mb-3 flex items-center justify-center shrink-0 overflow-hidden"
+                             :class="p.logo_path ? '' : 'bg-guinda-100 dark:bg-guinda-900/30 border border-guinda-200 dark:border-guinda-800'">
+                            <img v-if="p.logo_path" :src="`/storage/${p.logo_path}`"
+                                class="w-full h-full object-contain" :alt="p.nombre_restaurante" />
+                            <span v-else class="text-lg font-black text-guinda-700 dark:text-guinda-400">
+                                {{ iniciales(p.nombre_restaurante) }}
+                            </span>
+                        </div>
+
+                        <p class="font-bold text-gray-900 dark:text-white text-sm leading-tight group-hover:text-guinda-700 dark:group-hover:text-guinda-400 transition-colors line-clamp-2">
+                            {{ p.nombre_restaurante }}
+                        </p>
+                        <p v-if="p.categoria" class="text-xs text-gray-500 dark:text-gray-400 mt-1">{{ p.categoria }}</p>
+                        <p v-if="p.municipio" class="text-xs text-gray-400 dark:text-gray-600 mt-0.5">{{ p.municipio }}</p>
+                        <p v-if="p.descripcion" class="text-xs text-gray-500 dark:text-gray-500 mt-2 line-clamp-2">{{ p.descripcion }}</p>
+
+                        <div class="mt-3 flex items-center gap-1 text-xs font-semibold text-guinda-700 dark:text-guinda-400">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Agendar cita
+                        </div>
                     </Link>
                 </div>
             </div>
 
-            <!-- Info oficina -->
-            <div class="bg-guinda-50 dark:bg-guinda-950/30 border border-guinda-200 dark:border-guinda-900 rounded-2xl p-5 transition-colors">
-                <div class="flex items-start gap-3">
-                    <div class="w-8 h-8 rounded-lg bg-guinda-100 dark:bg-guinda-900/40 border border-guinda-200 dark:border-guinda-800 flex items-center justify-center shrink-0 mt-0.5">
-                        <svg class="w-4 h-4 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="font-semibold text-guinda-800 dark:text-guinda-300 text-sm">Tu cita será en nuestra oficina</p>
-                        <p class="text-guinda-700 dark:text-guinda-400/80 text-sm mt-1">Av. Industrias No Contaminantes Tab 13613, Col. Sodzil Norte, C.P. 97110, Mérida, Yucatán</p>
-                        <p class="text-guinda-600/70 dark:text-guinda-500/60 text-xs mt-1">Encuentro de Negocios Impulsate · Lunes a Viernes 9:00 am — 4:00 pm</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Tab toggle Lista / Calendario -->
+            <!-- ── MIS CITAS ──────────────────────────────────────── -->
             <div>
                 <div class="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 rounded-xl p-1 w-fit mb-5">
                     <button
@@ -161,7 +354,11 @@ const calendarOptions = computed(() => ({
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
                         </svg>
-                        Lista
+                        Mis citas
+                        <span v-if="citasActivas.length > 0"
+                            class="inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-bold bg-guinda-100 dark:bg-guinda-900/40 text-guinda-700 dark:text-guinda-400">
+                            {{ citasActivas.length }}
+                        </span>
                     </button>
                     <button
                         @click="activeTab = 'calendario'"
@@ -179,46 +376,51 @@ const calendarOptions = computed(() => ({
 
                 <!-- Vista Lista -->
                 <div v-if="activeTab === 'lista'">
-                    <!-- Empty state -->
-                    <div v-if="citas.length === 0" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-16 text-center shadow-sm transition-colors">
+                    <div v-if="citas.length === 0"
+                        class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-16 text-center shadow-sm transition-colors">
                         <svg class="w-16 h-16 mx-auto text-gray-300 dark:text-gray-700 mb-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
                         </svg>
                         <p class="text-gray-600 dark:text-gray-400 font-medium text-lg mb-2">Todavía no tienes citas</p>
-                        <p class="text-gray-400 dark:text-gray-600 text-sm mb-6">Explora nuestros proveedores y agenda tu primera reunión.</p>
+                        <p class="text-gray-400 dark:text-gray-600 text-sm mb-6">Explora los proveedores disponibles y agenda tu primera reunión.</p>
                         <Link :href="route('restauranteros.index')"
                             class="inline-flex items-center gap-2 px-6 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white font-semibold rounded-xl transition-colors text-sm shadow-sm">
                             Ver proveedores
                         </Link>
                     </div>
 
-                    <!-- Citas list -->
-                    <div v-else class="space-y-4">
+                    <div v-else class="space-y-3">
                         <div
-                            v-for="cita in citas"
-                            :key="cita.id"
+                            v-for="cita in citas" :key="cita.id"
                             class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 hover:border-guinda-300 dark:hover:border-gray-700 transition-colors shadow-sm"
+                            :class="{ 'opacity-60': ['cancelada','rechazada'].includes(cita.estado) }"
                         >
-                            <div class="shrink-0 w-12 h-12 bg-guinda-50 dark:bg-guinda-900/20 border border-guinda-200 dark:border-guinda-800 rounded-xl flex items-center justify-center">
-                                <svg class="w-6 h-6 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+                            <!-- Icono estado -->
+                            <div class="shrink-0 w-11 h-11 rounded-xl flex items-center justify-center border"
+                                 :class="cita.estado === 'confirmada' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
+                                       : cita.estado === 'completada' ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+                                       : 'bg-guinda-50 dark:bg-guinda-900/20 border-guinda-200 dark:border-guinda-800'">
+                                <svg class="w-5 h-5"
+                                    :class="cita.estado === 'confirmada' ? 'text-emerald-600 dark:text-emerald-400'
+                                          : cita.estado === 'completada' ? 'text-indigo-600 dark:text-indigo-400'
+                                          : 'text-guinda-700 dark:text-guinda-400'"
+                                    fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
                                 </svg>
                             </div>
 
                             <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap mb-1">
-                                    <h4 class="font-semibold text-gray-900 dark:text-white truncate">
+                                <div class="flex items-center gap-2 flex-wrap mb-0.5">
+                                    <h4 class="font-bold text-gray-900 dark:text-white truncate">
                                         {{ cita.restaurantero?.nombre_restaurante || 'Proveedor' }}
                                     </h4>
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border"
-                                        :class="estadoConfig[cita.estado]?.class || 'bg-gray-500/15 text-gray-400'"
-                                    >
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border"
+                                        :class="estadoConfig[cita.estado]?.class || 'bg-gray-500/15 text-gray-400'">
                                         {{ estadoConfig[cita.estado]?.label || cita.estado }}
                                     </span>
                                 </div>
 
-                                <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                                <p class="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mt-0.5">
                                     <svg class="w-3.5 h-3.5 shrink-0 text-guinda-500 dark:text-guinda-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                     </svg>
@@ -228,16 +430,18 @@ const calendarOptions = computed(() => ({
                                 <p v-if="cita.notas" class="text-xs text-gray-400 dark:text-gray-600 mt-1 truncate">
                                     {{ cita.notas }}
                                 </p>
+                            </div>
 
-                                <div v-if="puedesCancelar(cita.estado)" class="mt-2">
-                                    <button @click="cancelarCita(cita.id)"
-                                        class="text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 font-medium transition-colors inline-flex items-center gap-1">
-                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                        </svg>
-                                        Cancelar cita
-                                    </button>
-                                </div>
+                            <div class="shrink-0 flex items-center gap-2">
+                                <Link :href="route('restauranteros.show', cita.restaurantero?.id)"
+                                    class="text-xs font-medium px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors">
+                                    Ver proveedor
+                                </Link>
+                                <button v-if="puedesCancelar(cita.estado)"
+                                    @click="cancelarCita(cita.id)"
+                                    class="text-xs font-medium px-3 py-1.5 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-xl transition-colors">
+                                    Cancelar
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -253,38 +457,30 @@ const calendarOptions = computed(() => ({
                     </div>
                     <FullCalendar v-else :options="calendarOptions" />
                 </div>
-
             </div>
 
-            <!-- Historial de ediciones anteriores -->
-            <div v-if="edicionesHistorial && edicionesHistorial.length > 0" class="mt-6">
+            <!-- ── HISTORIAL EDICIONES ANTERIORES ────────────────── -->
+            <div v-if="edicionesHistorial && edicionesHistorial.length > 0" class="mt-2">
                 <button
                     @click="historialAbierto = !historialAbierto"
                     class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 font-medium transition-colors w-full text-left"
                 >
-                    <svg
-                        class="w-4 h-4 transition-transform duration-200"
-                        :class="historialAbierto ? 'rotate-90' : ''"
+                    <svg class="w-4 h-4 transition-transform duration-200" :class="historialAbierto ? 'rotate-90' : ''"
                         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                     Historial de ediciones anteriores ({{ edicionesHistorial.length }})
                 </button>
 
-                <div v-if="historialAbierto" class="mt-4 space-y-5">
+                <div v-if="historialAbierto" class="mt-4 space-y-4">
                     <div v-for="ed in edicionesHistorial" :key="ed.id"
                         class="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 transition-colors">
-                        <div class="flex items-center gap-2 mb-4">
-                            <svg class="w-4 h-4 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                            </svg>
+                        <div class="flex items-center gap-2 mb-3">
                             <h4 class="font-semibold text-gray-700 dark:text-gray-300 text-sm">{{ ed.nombre }}</h4>
                             <span v-if="ed.sector" class="text-xs text-gray-400 dark:text-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{{ ed.sector }}</span>
                         </div>
-
-                        <div class="space-y-3">
-                            <div v-for="cita in ed.mis_citas" :key="cita.id"
-                                class="flex items-center gap-3 text-sm">
+                        <div class="space-y-2">
+                            <div v-for="cita in ed.mis_citas" :key="cita.id" class="flex items-center gap-3 text-sm">
                                 <div class="w-2 h-2 rounded-full shrink-0"
                                     :class="{
                                         'bg-guinda-500': cita.estado === 'pendiente',
@@ -305,113 +501,107 @@ const calendarOptions = computed(() => ({
             </div>
 
         </div>
+        <!-- Modal Perfil Comprador -->
+        <Teleport to="body">
+            <div v-if="showPerfilModal" class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                 style="background:rgba(0,0,0,0.5)" @click.self="showPerfilModal = false">
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+                        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Editar mi perfil</h2>
+                        <button @click="showPerfilModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    <form @submit.prevent="submitPerfil" class="px-6 py-5 space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre completo</label>
+                                <input v-model="formPerfil.name" type="text" required
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                <p v-if="formPerfil.errors.name" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.name }}</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
+                                <input v-model="formPerfil.telefono" type="tel" maxlength="10" placeholder="9991234567"
+                                    @input="formPerfil.telefono = formPerfil.telefono.replace(/\D/g, '').slice(0, 10)"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correo electrónico</label>
+                                <input :value="$page.props.auth.user?.email" type="email" disabled
+                                    class="w-full text-sm bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-400 rounded-xl px-3 py-2.5 cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Página web <span class="text-gray-400 font-normal">(opcional)</span></label>
+                                <input v-model="formPerfil.sitio_web" type="url" placeholder="https://..."
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                <p v-if="formPerfil.errors.sitio_web" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.sitio_web }}</p>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                ¿Qué necesidades tienes?
+                                <span class="text-xs text-guinda-600 dark:text-guinda-400 font-normal ml-1">— Usamos esto para sugerirte proveedores relevantes</span>
+                            </label>
+                            <textarea v-model="formPerfil.necesidades" rows="4"
+                                placeholder="Ej: busco proveedores de vasos plásticos, servicios de catering, tecnología para mi empresa..."
+                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 resize-none" />
+                        </div>
+                        <div class="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+                            <button type="button" @click="showPerfilModal = false"
+                                class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl">
+                                Cancelar
+                            </button>
+                            <button type="submit" :disabled="formPerfil.processing"
+                                class="px-5 py-2 text-sm font-bold text-white bg-guinda-800 hover:bg-guinda-700 disabled:opacity-60 rounded-xl">
+                                {{ formPerfil.processing ? 'Guardando...' : 'Guardar cambios' }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Banner: invitación a ser proveedor -->
+        <div v-if="!$page.props.auth.user?.is_restaurantero"
+            class="mt-6 bg-gradient-to-r from-guinda-900/80 to-guinda-800/60 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div class="text-3xl">🏪</div>
+            <div class="flex-1">
+                <h3 class="font-bold text-white mb-1">¿También vendes productos o servicios?</h3>
+                <p class="text-gray-300 text-sm">Regístrate como proveedor y participa en los eventos como expositor. Recibe compradores interesados en lo que ofreces.</p>
+            </div>
+            <button
+                @click="router.post(route('perfil.agregar-rol'), { rol: 'proveedor' })"
+                class="shrink-0 px-5 py-2.5 bg-white text-guinda-800 font-bold text-sm rounded-xl hover:bg-guinda-50 transition-colors shadow-sm">
+                Quiero ser Proveedor
+            </button>
+        </div>
+
     </AppLayout>
 </template>
 
 <style>
-/* ── LIGHT MODE ─────────────────────────────────────────── */
-.fc {
-    --fc-border-color: #e5e7eb;
-    --fc-today-bg-color: rgba(139,16,40,0.05);
-    --fc-neutral-text-color: #111827;
-    --fc-page-bg-color: #ffffff;
-    --fc-event-text-color: #ffffff;
-}
-/* Bordes */
-.fc-theme-standard td,
-.fc-theme-standard th,
-.fc-scrollgrid { border-color: #e5e7eb !important; }
-
-/* Encabezados de columna (Lun, Mar…) */
-.fc-col-header-cell-cushion {
-    color: #111827 !important;
-    font-weight: 700 !important;
-    text-decoration: none !important;
-}
-/* Números de día */
-.fc-daygrid-day-number {
-    color: #111827 !important;
-    font-weight: 600 !important;
-    text-decoration: none !important;
-}
-/* "Hoy" resaltado */
+.fc { --fc-border-color: #e5e7eb; --fc-today-bg-color: rgba(139,16,40,0.05); --fc-neutral-text-color: #111827; --fc-page-bg-color: #ffffff; --fc-event-text-color: #ffffff; }
+.fc-theme-standard td, .fc-theme-standard th, .fc-scrollgrid { border-color: #e5e7eb !important; }
+.fc-col-header-cell-cushion { color: #111827 !important; font-weight: 700 !important; text-decoration: none !important; }
+.fc-daygrid-day-number { color: #111827 !important; font-weight: 600 !important; text-decoration: none !important; }
 .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number { color: #8b1028 !important; }
-
-/* Título del toolbar (mes actual) */
-.fc-toolbar-title {
-    font-size: 1rem !important;
-    font-weight: 700 !important;
-    color: #111827 !important;
-}
-
-/* Botones prev/next/today/mes/semana */
-.fc-button {
-    background: #f3f4f6 !important;
-    border-color: #d1d5db !important;
-    color: #111827 !important;
-    font-size: 0.75rem !important;
-    font-weight: 600 !important;
-}
-.fc-button:hover,
-.fc-button-active {
-    background: #8b1028 !important;
-    border-color: #710d21 !important;
-    color: #ffffff !important;
-}
+.fc-toolbar-title { font-size: 1rem !important; font-weight: 700 !important; color: #111827 !important; }
+.fc-button { background: #f3f4f6 !important; border-color: #d1d5db !important; color: #111827 !important; font-size: 0.75rem !important; font-weight: 600 !important; }
+.fc-button:hover, .fc-button-active { background: #8b1028 !important; border-color: #710d21 !important; color: #ffffff !important; }
 .fc-button:focus { box-shadow: 0 0 0 2px rgba(139,16,40,0.3) !important; }
-
-/* Texto de eventos */
-.fc-event-title,
-.fc-event-time { color: #ffffff !important; font-weight: 600 !important; }
-
-/* Etiquetas de horas en timeGrid */
-.fc-timegrid-slot-label-cushion,
-.fc-timegrid-axis-cushion { color: #374151 !important; font-weight: 500 !important; }
-
-/* Más eventos (+N more) */
+.fc-event-title, .fc-event-time { color: #ffffff !important; font-weight: 600 !important; }
+.fc-timegrid-slot-label-cushion, .fc-timegrid-axis-cushion { color: #374151 !important; font-weight: 500 !important; }
 .fc-daygrid-more-link { color: #8b1028 !important; font-weight: 700 !important; }
 
-/* ── DARK MODE ──────────────────────────────────────────── */
-.dark .fc {
-    --fc-border-color: #1f2937;
-    --fc-today-bg-color: rgba(139,16,40,0.10);
-    --fc-neutral-text-color: #f9fafb;
-    --fc-page-bg-color: #111827;
-    --fc-event-text-color: #ffffff;
-}
-.dark .fc-theme-standard td,
-.dark .fc-theme-standard th,
-.dark .fc-scrollgrid { border-color: #1f2937 !important; }
-
-.dark .fc-col-header-cell-cushion {
-    color: #f9fafb !important;
-    font-weight: 700 !important;
-    text-decoration: none !important;
-}
-.dark .fc-daygrid-day-number {
-    color: #e5e7eb !important;
-    font-weight: 600 !important;
-    text-decoration: none !important;
-}
+.dark .fc { --fc-border-color: #1f2937; --fc-today-bg-color: rgba(139,16,40,0.10); --fc-neutral-text-color: #f9fafb; --fc-page-bg-color: #111827; --fc-event-text-color: #ffffff; }
+.dark .fc-theme-standard td, .dark .fc-theme-standard th, .dark .fc-scrollgrid { border-color: #1f2937 !important; }
+.dark .fc-col-header-cell-cushion { color: #f9fafb !important; font-weight: 700 !important; text-decoration: none !important; }
+.dark .fc-daygrid-day-number { color: #e5e7eb !important; font-weight: 600 !important; text-decoration: none !important; }
 .dark .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number { color: #f87171 !important; }
-
 .dark .fc-toolbar-title { color: #f9fafb !important; font-weight: 700 !important; }
-
-.dark .fc-button {
-    background: #374151 !important;
-    border-color: #4b5563 !important;
-    color: #e5e7eb !important;
-    font-weight: 600 !important;
-}
-.dark .fc-button:hover,
-.dark .fc-button-active {
-    background: #8b1028 !important;
-    border-color: #710d21 !important;
-    color: #ffffff !important;
-}
-
-.dark .fc-timegrid-slot-label-cushion,
-.dark .fc-timegrid-axis-cushion { color: #9ca3af !important; }
-
+.dark .fc-button { background: #374151 !important; border-color: #4b5563 !important; color: #e5e7eb !important; font-weight: 600 !important; }
+.dark .fc-button:hover, .dark .fc-button-active { background: #8b1028 !important; border-color: #710d21 !important; color: #ffffff !important; }
+.dark .fc-timegrid-slot-label-cushion, .dark .fc-timegrid-axis-cushion { color: #9ca3af !important; }
 .dark .fc-daygrid-more-link { color: #f87171 !important; font-weight: 700 !important; }
 </style>

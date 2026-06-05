@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\CitaAgendada;
 use App\Mail\CitaCancelada;
 use App\Models\Cita;
-use App\Models\Edicion;
+use App\Models\Evento;
 use App\Models\Notificacion;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
@@ -31,26 +31,32 @@ class CitaPublicaController extends Controller
             'notas'            => 'nullable|string|max:1000',
         ]);
 
-        $edicion = Edicion::activa();
-        if (!$edicion) {
-            return back()->withErrors(['edicion' => 'No hay una edición activa. Contacta al administrador.']);
+        $evento = Evento::activo();
+        if (!$evento) {
+            return back()->withErrors(['edicion' => 'No hay un evento activo. Contacta al administrador.']);
         }
 
-        // Validar que la fecha esté dentro del rango de agenda de la edición
+        // Validar ventana temporal de compradores
+        if ($evento->fecha_hora_inicio_compradores && now()->lt($evento->fecha_hora_inicio_compradores)) {
+            return back()->withErrors(['fecha' => 'El período de agendado aún no ha comenzado. Apertura: ' . $evento->fecha_hora_inicio_compradores->format('d/m/Y H:i') . '.']);
+        }
+        if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
+            return back()->withErrors(['fecha' => 'El período de agendado ya cerró (fin: ' . $evento->fecha_hora_fin->format('d/m/Y H:i') . ').']);
+        }
+
+        // Validar que la fecha esté dentro del rango del evento
         $fechaCita = \Carbon\Carbon::parse($request->fecha);
-        if ($edicion->fecha_inicio_agenda && $fechaCita->lt($edicion->fecha_inicio_agenda)) {
-            return back()->withErrors(['fecha' => 'Las citas de esta edición aún no están abiertas. Inicio de agenda: ' . $edicion->fecha_inicio_agenda->format('d/m/Y') . '.']);
-        }
-        if ($edicion->fecha_fin_agenda && $fechaCita->gt($edicion->fecha_fin_agenda)) {
-            return back()->withErrors(['fecha' => 'La fecha excede el período de agenda de esta edición (hasta ' . $edicion->fecha_fin_agenda->format('d/m/Y') . ').']);
+        if ($evento->fecha_hora_fin && $fechaCita->gt($evento->fecha_hora_fin)) {
+            return back()->withErrors(['fecha' => 'La fecha excede el período del evento (hasta ' . $evento->fecha_hora_fin->format('d/m/Y') . ').']);
         }
 
+        $maxCitas = $evento->max_citas_por_comprador ?? 3;
         $totalCitas = $request->user()->citasComoCliente()
-            ->where('edicion_id', $edicion->id)
+            ->where('edicion_id', $evento->id)
             ->whereNotIn('estado', ['cancelada'])
             ->count();
-        if ($totalCitas >= 12) {
-            return back()->withErrors(['limit' => 'Has alcanzado el límite de 12 citas en esta edición.']);
+        if ($totalCitas >= $maxCitas) {
+            return back()->withErrors(['limit' => "Has alcanzado el límite de {$maxCitas} citas en este evento."]);
         }
 
         $servicio = Servicio::where('restaurantero_id', $request->restaurantero_id)
@@ -86,7 +92,7 @@ class CitaPublicaController extends Controller
 
         // Atomic booking: lock provider row to prevent concurrent double-bookings for the same slot
         try {
-            $cita = DB::transaction(function () use ($request, $edicion, $servicio, $inicio, $fin) {
+            $cita = DB::transaction(function () use ($request, $evento, $servicio, $inicio, $fin) {
                 // Acquiring a write lock on the provider row serializes concurrent requests
                 // for this provider. The second request waits here until the first commits.
                 Restaurantero::where('id', $request->restaurantero_id)->lockForUpdate()->first();
@@ -104,7 +110,7 @@ class CitaPublicaController extends Controller
                 }
 
                 return Cita::create([
-                    'edicion_id'       => $edicion->id,
+                    'edicion_id'       => $evento->id,
                     'restaurantero_id' => $request->restaurantero_id,
                     'servicio_id'      => $servicio->id,
                     'cliente_id'       => $request->user()->id,
@@ -182,44 +188,70 @@ class CitaPublicaController extends Controller
 
     public function dashboard(Request $request)
     {
-        $edicion = Edicion::activa();
+        $evento = Evento::activo();
 
         $citas = collect();
         $citasCount = 0;
 
-        if ($edicion) {
+        if ($evento) {
             $citas = $request->user()
                 ->citasComoCliente()
                 ->with(['restaurantero', 'servicio'])
-                ->where('edicion_id', $edicion->id)
+                ->where('edicion_id', $evento->id)
                 ->orderByDesc('inicio')
                 ->get();
 
-            // Solo cuentan las no canceladas para el límite de 12
             $citasCount = $citas->whereNotIn('estado', ['cancelada'])->count();
         }
 
-        // Ediciones pasadas que tienen citas del usuario
-        $edicionesHistorial = Edicion::where('activa', false)
+        // Eventos pasados que tienen citas del usuario
+        $edicionesHistorial = Evento::where('activa', false)
             ->orderByDesc('created_at')
             ->get()
-            ->map(function ($ed) use ($request) {
-                $ed->mis_citas = $request->user()
+            ->map(function ($ev) use ($request) {
+                $ev->mis_citas = $request->user()
                     ->citasComoCliente()
                     ->with(['restaurantero', 'servicio'])
-                    ->where('edicion_id', $ed->id)
+                    ->where('edicion_id', $ev->id)
                     ->orderByDesc('inicio')
                     ->get();
-                return $ed;
+                return $ev;
             })
-            ->filter(fn($ed) => $ed->mis_citas->isNotEmpty())
+            ->filter(fn($ev) => $ev->mis_citas->isNotEmpty())
+            ->values();
+
+        $necesidades = $request->user()->necesidades ?? '';
+        $keywords = collect(preg_split('/[\s,;\.]+/', mb_strtolower($necesidades)))
+            ->filter(fn($p) => mb_strlen($p) >= 3)
+            ->unique()
+            ->take(15)
+            ->values();
+
+        $proveedores = Restaurantero::where('activo', true)
+            ->when($evento, fn($q) => $q->where('edicion_id', $evento->id))
+            ->select(['id', 'nombre_restaurante', 'categoria', 'descripcion', 'logo_path', 'municipio', 'productos_top'])
+            ->get()
+            ->sortByDesc(function ($p) use ($keywords) {
+                if ($keywords->isEmpty()) return 0;
+                $text = mb_strtolower(
+                    ($p->nombre_restaurante ?? '') . ' ' .
+                    ($p->descripcion ?? '') . ' ' .
+                    ($p->categoria ?? '') . ' ' .
+                    implode(' ', array_column($p->productos_top ?? [], 'nombre')) . ' ' .
+                    implode(' ', is_array($p->productos_top) ? array_filter($p->productos_top, 'is_string') : [])
+                );
+                return $keywords->filter(fn($kw) => str_contains($text, $kw))->count();
+            })
+            ->take(20)
             ->values();
 
         return Inertia::render('User/Dashboard', [
             'citas'              => $citas,
             'citasCount'         => $citasCount,
-            'edicion'            => $edicion,
+            'evento'             => $evento,
             'edicionesHistorial' => $edicionesHistorial,
+            'proveedores'        => $proveedores,
+            'tieneKeywords'      => $keywords->isNotEmpty(),
         ]);
     }
 }

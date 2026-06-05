@@ -33,9 +33,10 @@ const submit = () => {
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                             Teléfono <span class="text-red-500">*</span>
                         </label>
-                        <input v-model="form.telefono" type="tel" required
+                        <input v-model="form.telefono" type="tel" required maxlength="10"
+                            @input="form.telefono = form.telefono.replace(/\D/g, '').slice(0, 10)"
                             class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 transition-colors"
-                            placeholder="(999) 123-4567" />
+                            placeholder="9991234567" />
                         <InputError class="mt-1.5" :message="form.errors.telefono" />
                     </div>
 

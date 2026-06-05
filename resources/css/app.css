@@ -5,3 +5,62 @@
 [x-cloak] {
     display: none;
 }
+
+/* ── FullCalendar: fuentes en negrita (light mode) ─────────────── */
+.fc-col-header-cell-cushion {
+    font-weight: 700 !important;
+    color: #111827 !important;
+    text-decoration: none !important;
+}
+.fc-daygrid-day-number {
+    font-weight: 700 !important;
+    color: #111827 !important;
+    text-decoration: none !important;
+}
+.fc-toolbar-title {
+    font-size: 1rem !important;
+    font-weight: 800 !important;
+    color: #111827 !important;
+}
+.fc-button {
+    font-weight: 700 !important;
+}
+.fc-event-title,
+.fc-event-time {
+    font-weight: 700 !important;
+    color: #ffffff !important;
+}
+.fc-timegrid-slot-label-cushion,
+.fc-timegrid-axis-cushion {
+    font-weight: 600 !important;
+    color: #374151 !important;
+}
+.fc-daygrid-more-link {
+    font-weight: 700 !important;
+    color: #8b1028 !important;
+}
+.fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+    color: #8b1028 !important;
+    font-weight: 800 !important;
+}
+
+/* ── Dark mode ─────────────────────────────────────────────────── */
+.dark .fc-col-header-cell-cushion {
+    color: #f9fafb !important;
+}
+.dark .fc-daygrid-day-number {
+    color: #e5e7eb !important;
+}
+.dark .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+    color: #f87171 !important;
+}
+.dark .fc-toolbar-title {
+    color: #f9fafb !important;
+}
+.dark .fc-timegrid-slot-label-cushion,
+.dark .fc-timegrid-axis-cushion {
+    color: #9ca3af !important;
+}
+.dark .fc-daygrid-more-link {
+    color: #f87171 !important;
+}

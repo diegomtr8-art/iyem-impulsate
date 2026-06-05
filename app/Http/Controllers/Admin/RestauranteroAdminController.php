@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\ProveedorAprobado;
 use App\Mail\ProveedorRechazado;
 use App\Models\Cita;
-use App\Models\Edicion;
+use App\Models\Evento;
 use App\Models\Horario;
 use App\Models\Notificacion;
 use App\Models\Restaurantero;
@@ -31,10 +31,18 @@ class RestauranteroAdminController extends Controller
             ->where('rechazado', false)
             ->count();
 
+        $proveedoresPendientes = Restaurantero::with('user')
+            ->where('aprobado', false)
+            ->where('rechazado', false)
+            ->orderByRaw('solicitado_aprobacion_at IS NULL ASC')
+            ->orderBy('created_at')
+            ->get();
+
         return Inertia::render('Admin/Restauranteros/Index', [
-            'restauranteros'      => $restauranteros,
-            'categorias'          => Restaurantero::$categorias,
-            'pendientesAprobacion'=> $pendientesAprobacion,
+            'restauranteros'        => $restauranteros,
+            'categorias'            => Restaurantero::$categorias,
+            'pendientesAprobacion'  => $pendientesAprobacion,
+            'proveedoresPendientes' => $proveedoresPendientes,
         ]);
     }
 
@@ -61,7 +69,7 @@ class RestauranteroAdminController extends Controller
 
         $restaurantero = Restaurantero::create([
             'user_id'            => $user->id,
-            'edicion_id'         => Edicion::activa()?->id,
+            'edicion_id'         => Evento::activo()?->id,
             'nombre_restaurante' => $request->nombre_restaurante,
             'telefono'           => $request->telefono,
             'direccion'          => $request->direccion,

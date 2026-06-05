@@ -148,6 +148,31 @@ const calendarOptions = ref({
                 </div>
             </div>
 
+            <!-- Productos Top -->
+            <div v-if="restaurantero.productos_top && restaurantero.productos_top.length > 0"
+                class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none transition-colors animate-fadeInUp" style="animation-delay:0.25s">
+                <h2 class="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider mb-4">Productos / Servicios destacados</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-for="(prod, i) in restaurantero.productos_top" :key="i"
+                        class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+                        <div v-if="prod.foto_path" class="w-full h-36 overflow-hidden bg-gray-100 dark:bg-gray-800">
+                            <img :src="`/storage/${prod.foto_path}`" class="w-full h-full object-cover" />
+                        </div>
+                        <div v-else class="w-full h-20 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-guinda-300 dark:text-guinda-800" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909"/>
+                            </svg>
+                        </div>
+                        <div class="p-3">
+                            <p class="font-semibold text-sm text-gray-900 dark:text-white">
+                                {{ typeof prod === 'string' ? prod : prod.nombre }}
+                            </p>
+                            <p v-if="prod.descripcion" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{{ prod.descripcion }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Categoría -->
             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none transition-colors animate-fadeInUp" style="animation-delay:0.3s">
                 <h2 class="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider mb-3">Categoría del proveedor</h2>
@@ -214,7 +239,8 @@ const calendarOptions = ref({
                         <!-- Teléfono -->
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
-                            <input v-model="editForm.telefono" type="text" placeholder="999-000-0000"
+                            <input v-model="editForm.telefono" type="tel" maxlength="10" placeholder="9991234567"
+                                @input="editForm.telefono = editForm.telefono.replace(/\D/g, '').slice(0, 10)"
                                 class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors" />
                         </div>
 

@@ -60,9 +60,9 @@ class Restaurantero extends Model
         ];
     }
 
-    public function edicion()
+    public function evento()
     {
-        return $this->belongsTo(Edicion::class);
+        return $this->belongsTo(Evento::class, 'edicion_id');
     }
 
     public function user()

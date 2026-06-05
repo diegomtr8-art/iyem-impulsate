@@ -23,6 +23,11 @@ class Cita extends Model
         'token_confirmacion',
         'recordatorio_24h_enviado',
         'recordatorio_2h_enviado',
+        'mesa',
+        'estado_tv',
+        'hora_real_inicio',
+        'hora_real_fin',
+        'llamada_at',
     ];
 
     protected function casts(): array
@@ -32,14 +37,17 @@ class Cita extends Model
             'fin'                      => 'datetime',
             'propuesta_inicio'         => 'datetime',
             'propuesta_fin'            => 'datetime',
+            'hora_real_inicio'         => 'datetime',
+            'hora_real_fin'            => 'datetime',
+            'llamada_at'               => 'datetime',
             'recordatorio_24h_enviado' => 'boolean',
             'recordatorio_2h_enviado'  => 'boolean',
         ];
     }
 
-    public function edicion()
+    public function evento()
     {
-        return $this->belongsTo(Edicion::class);
+        return $this->belongsTo(Evento::class, 'edicion_id');
     }
 
     public function restaurantero()

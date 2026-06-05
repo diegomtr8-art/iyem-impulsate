@@ -7,7 +7,7 @@ use App\Mail\CitaAgendada;
 use App\Mail\CitaCancelada;
 use App\Mail\CitaConfirmada;
 use App\Models\Cita;
-use App\Models\Edicion;
+use App\Models\Evento;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
 use App\Models\User;
@@ -57,9 +57,9 @@ class CitaAdminController extends Controller
             'notas'            => 'nullable|string|max:1000',
         ]);
 
-        $edicion = Edicion::activa();
-        if (!$edicion) {
-            return back()->withErrors(['edicion' => 'No hay una edición activa.']);
+        $evento = Evento::activo();
+        if (!$evento) {
+            return back()->withErrors(['edicion' => 'No hay un evento activo.']);
         }
 
         $cliente = User::findOrFail($request->cliente_id);
@@ -69,11 +69,12 @@ class CitaAdminController extends Controller
             return back()->withErrors(['cliente' => 'No se puede agendar una cita para un administrador.']);
         }
 
+        $maxCitas = $evento->max_citas_por_comprador ?? 3;
         $totalCitas = $cliente->citasComoCliente()
-            ->where('edicion_id', $edicion->id)
+            ->where('edicion_id', $evento->id)
             ->count();
-        if ($totalCitas >= 12) {
-            return back()->withErrors(['limit' => 'Este cliente ya alcanzó el límite de 12 citas en esta edición.']);
+        if ($totalCitas >= $maxCitas) {
+            return back()->withErrors(['limit' => "Este cliente ya alcanzó el límite de {$maxCitas} citas en este evento."]);
         }
 
         $servicio = Servicio::where('restaurantero_id', $request->restaurantero_id)
@@ -105,7 +106,7 @@ class CitaAdminController extends Controller
 
         // Atomic booking: lock provider row to prevent concurrent double-bookings for the same slot
         try {
-            $cita = DB::transaction(function () use ($request, $edicion, $servicio, $inicio, $fin) {
+            $cita = DB::transaction(function () use ($request, $evento, $servicio, $inicio, $fin) {
                 // Acquiring a write lock on the provider row serializes concurrent requests
                 // for this provider. The second request waits here until the first commits.
                 Restaurantero::where('id', $request->restaurantero_id)->lockForUpdate()->first();
@@ -122,7 +123,7 @@ class CitaAdminController extends Controller
                 }
 
                 return Cita::create([
-                    'edicion_id'       => $edicion->id,
+                    'edicion_id'       => $evento->id,
                     'restaurantero_id' => $request->restaurantero_id,
                     'servicio_id'      => $servicio->id,
                     'cliente_id'       => $request->cliente_id,

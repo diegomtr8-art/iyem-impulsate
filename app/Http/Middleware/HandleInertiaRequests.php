@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Evento;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -54,6 +55,22 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error'   => fn () => $request->session()->get('error'),
             ],
+            'pendientesAprobacion' => fn () => $request->user()?->hasRole('admin')
+                ? \App\Models\Restaurantero::where('aprobado', false)
+                    ->where('rechazado', false)
+                    ->count()
+                : 0,
+            'eventoActivo' => fn () => Evento::activo()?->only([
+                'id', 'nombre', 'sector_economico', 'max_citas_por_comprador',
+                'fecha_hora_inicio', 'fecha_hora_fin',
+                'fecha_hora_inicio_proveedores', 'fecha_hora_inicio_compradores',
+            ]),
+            'registradoEnEvento' => fn () => $request->user() && Evento::activo()
+                ? [
+                    'comprador' => Evento::activo()?->compradores()->where('user_id', $request->user()->id)->exists(),
+                    'proveedor' => Evento::activo()?->proveedores()->where('user_id', $request->user()->id)->exists(),
+                ]
+                : ['comprador' => false, 'proveedor' => false],
         ];
     }
 }

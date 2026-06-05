@@ -184,8 +184,8 @@ const cerrarModalNuevaCita = () => {
         </div>
 
         <!-- Table -->
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none transition-colors">
-            <table class="w-full text-sm">
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none transition-colors overflow-x-auto">
+            <table class="w-full text-sm min-w-[640px]">
                 <thead>
                     <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                         <th class="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Cliente</th>

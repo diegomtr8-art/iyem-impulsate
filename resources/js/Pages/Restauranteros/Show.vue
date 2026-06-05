@@ -8,7 +8,7 @@ const props = defineProps({
     restaurantero: Object,
     citasCount: Number,
     citasOcupadas: Array,
-    edicion: Object,
+    evento: Object,
 });
 
 const loginUrl = computed(() => route('login') + '?redirect=' + encodeURIComponent(window.location.pathname));
@@ -19,9 +19,9 @@ const auth = computed(() => page.props.auth);
 const isAdmin = computed(() => auth.value.user?.is_admin ?? false);
 const limiteAlcanzado = computed(() => auth.value.user && props.citasCount >= 12);
 
-// ── RANGO DE FECHAS DE LA EDICIÓN ──────────────────────────────────────────
-const edicionInicioAgenda = computed(() => props.edicion?.fecha_inicio_agenda ? new Date(props.edicion.fecha_inicio_agenda + 'T00:00:00') : null);
-const edicionFinAgenda    = computed(() => props.edicion?.fecha_fin_agenda    ? new Date(props.edicion.fecha_fin_agenda    + 'T23:59:59') : null);
+// ── RANGO DE FECHAS DEL EVENTO ──────────────────────────────────────────────
+const edicionInicioAgenda = computed(() => props.evento?.fecha_inicio_agenda ? new Date(props.evento.fecha_inicio_agenda + 'T00:00:00') : null);
+const edicionFinAgenda    = computed(() => props.evento?.fecha_fin_agenda    ? new Date(props.evento.fecha_fin_agenda    + 'T23:59:59') : null);
 
 function esFueraDeRangoEdicion(date) {
     const d = new Date(date); d.setHours(0, 0, 0, 0);
@@ -138,8 +138,9 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                             </textarea>
                             <p v-if="form.errors.notas" class="text-red-500 text-xs mt-1">{{ form.errors.notas }}</p>
                         </div>
-                        <div v-if="form.errors.limit || form.errors.servicio" class="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 text-xs rounded-lg px-3 py-2">
-                            {{ form.errors.limit || form.errors.servicio }}
+                        <div v-if="form.errors.limit || form.errors.servicio || form.errors.fecha || form.errors.edicion || form.errors.error"
+                            class="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 text-xs rounded-lg px-3 py-2">
+                            {{ form.errors.limit || form.errors.servicio || form.errors.fecha || form.errors.edicion || form.errors.error }}
                         </div>
                         <div class="flex gap-3">
                             <button type="button" @click="cerrarModal"
@@ -235,6 +236,31 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                             {{ restaurantero.descripcion }}
                         </p>
 
+                        <!-- Productos / Servicios Top -->
+                        <div v-if="restaurantero.productos_top && restaurantero.productos_top.length > 0" class="mb-5">
+                            <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Productos / Servicios</h3>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                <div v-for="(prod, i) in restaurantero.productos_top" :key="i"
+                                    class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm">
+                                    <div v-if="prod.foto_path" class="w-full h-28 overflow-hidden bg-gray-100 dark:bg-gray-800">
+                                        <img :src="'/storage/' + prod.foto_path" class="w-full h-full object-cover"
+                                             :alt="typeof prod === 'string' ? prod : prod.nombre" />
+                                    </div>
+                                    <div v-else class="w-full h-16 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+                                        <svg class="w-6 h-6 text-guinda-300 dark:text-guinda-800" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909"/>
+                                        </svg>
+                                    </div>
+                                    <div class="p-2.5">
+                                        <p class="font-bold text-xs text-gray-900 dark:text-white">
+                                            {{ typeof prod === 'string' ? prod : (prod.nombre || '—') }}
+                                        </p>
+                                        <p v-if="prod.descripcion" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{{ prod.descripcion }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="space-y-2.5 text-sm border-t border-gray-100 dark:border-gray-800 pt-4">
                             <div v-if="restaurantero.telefono" class="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
                                 <svg class="w-4 h-4 text-guinda-500 dark:text-guinda-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
@@ -324,13 +350,13 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                     </div>
                 </div>
 
-                <!-- Rango de agenda de la edición -->
-                <div v-if="edicion && (edicion.fecha_inicio_agenda || edicion.fecha_fin_agenda)" class="mb-5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-xl p-3 flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400">
+                <!-- Rango de agenda del evento -->
+                <div v-if="evento && (evento.fecha_inicio_agenda || evento.fecha_fin_agenda)" class="mb-5 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-xl p-3 flex items-center gap-2 text-xs text-blue-700 dark:text-blue-400">
                     <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                     <span>Período de agenda:
-                        <strong>{{ edicion.fecha_inicio_agenda ? new Date(edicion.fecha_inicio_agenda + 'T00:00:00').toLocaleDateString('es-MX', {day:'numeric',month:'long',year:'numeric'}) : '—' }}</strong>
+                        <strong>{{ evento.fecha_inicio_agenda ? new Date(evento.fecha_inicio_agenda + 'T00:00:00').toLocaleDateString('es-MX', {day:'numeric',month:'long',year:'numeric'}) : '—' }}</strong>
                         al
-                        <strong>{{ edicion.fecha_fin_agenda ? new Date(edicion.fecha_fin_agenda + 'T00:00:00').toLocaleDateString('es-MX', {day:'numeric',month:'long',year:'numeric'}) : '—' }}</strong>
+                        <strong>{{ evento.fecha_fin_agenda ? new Date(evento.fecha_fin_agenda + 'T00:00:00').toLocaleDateString('es-MX', {day:'numeric',month:'long',year:'numeric'}) : '—' }}</strong>
                     </span>
                 </div>
 

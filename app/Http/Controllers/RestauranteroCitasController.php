@@ -6,6 +6,7 @@ use App\Mail\CitaAceptada;
 use App\Mail\CitaRechazada;
 use App\Mail\CitaReagendada;
 use App\Models\Cita;
+use App\Models\Notificacion;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -62,6 +63,15 @@ class RestauranteroCitasController extends Controller
             Mail::to($cita->cliente->email)->send(new CitaAceptada($cita));
         } catch (\Exception $e) {}
 
+        $fechaFmt = $cita->inicio->format('d/m/Y H:i');
+        Notificacion::crear(
+            $cita->cliente_id,
+            'cita_aceptada',
+            'Cita confirmada',
+            "Tu cita con {$cita->restaurantero->nombre_restaurante} el {$fechaFmt} fue confirmada.",
+            $cita->id
+        );
+
         return back()->with('success', 'Cita aceptada. El comprador fue notificado.');
     }
 
@@ -76,6 +86,15 @@ class RestauranteroCitasController extends Controller
         try {
             Mail::to($cita->cliente->email)->send(new CitaRechazada($cita, 'cliente'));
         } catch (\Exception $e) {}
+
+        $fechaFmt = $cita->inicio->format('d/m/Y H:i');
+        Notificacion::crear(
+            $cita->cliente_id,
+            'cita_rechazada',
+            'Cita rechazada',
+            "Tu cita con {$cita->restaurantero->nombre_restaurante} el {$fechaFmt} fue rechazada.",
+            $cita->id
+        );
 
         return back()->with('success', 'Cita rechazada. El comprador fue notificado.');
     }
@@ -106,6 +125,15 @@ class RestauranteroCitasController extends Controller
         try {
             Mail::to($cita->cliente->email)->send(new CitaReagendada($cita, 'cliente'));
         } catch (\Exception $e) {}
+
+        $fechaNueva = $propuestaInicio->format('d/m/Y H:i');
+        Notificacion::crear(
+            $cita->cliente_id,
+            'cita_reagendada',
+            'Propuesta de cambio de horario',
+            "{$cita->restaurantero->nombre_restaurante} propone mover tu cita al {$fechaNueva}. Revisa tu correo para confirmar.",
+            $cita->id
+        );
 
         return back()->with('success', 'Propuesta de reagendamiento enviada al comprador.');
     }

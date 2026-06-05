@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Edicion;
+use App\Models\Evento;
 use App\Models\Restaurantero;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,14 +11,14 @@ class RestauranteroPublicoController extends Controller
 {
     public function index(Request $request)
     {
-        $edicion = Edicion::activa();
+        $evento = Evento::activo();
 
         $query = Restaurantero::where('activo', true)
             ->withCount('citas')
             ->orderByDesc('created_at');
 
-        if ($edicion) {
-            $query->where('edicion_id', $edicion->id);
+        if ($evento) {
+            $query->where('edicion_id', $evento->id);
         }
 
         if ($request->filled('search')) {
@@ -106,19 +106,22 @@ class RestauranteroPublicoController extends Controller
                 'fin'    => $c->fin->format('Y-m-d H:i'),
             ])
             // Combinar con los slots bloqueados del cliente
-            ->merge($slotsBloquedosCliente)
+            ->toBase()->merge($slotsBloquedosCliente)
             ->values();
 
-        $edicion = Edicion::activa();
+        $evento = Evento::activo();
 
         return Inertia::render('Restauranteros/Show', [
             'restaurantero' => $restaurantero,
             'citasCount'    => $citasCount,
             'citasOcupadas' => $citasOcupadas,
-            'edicion'       => $edicion ? [
-                'nombre'              => $edicion->nombre,
-                'fecha_inicio_agenda' => $edicion->fecha_inicio_agenda?->format('Y-m-d'),
-                'fecha_fin_agenda'    => $edicion->fecha_fin_agenda?->format('Y-m-d'),
+            'evento'        => $evento ? [
+                'nombre'                      => $evento->nombre,
+                'fecha_hora_inicio_compradores' => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
+                'fecha_hora_fin'               => $evento->fecha_hora_fin?->format('Y-m-d'),
+                // Legacy campos para compatibilidad con la vista
+                'fecha_inicio_agenda' => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
+                'fecha_fin_agenda'    => $evento->fecha_hora_fin?->format('Y-m-d'),
             ] : null,
         ]);
     }

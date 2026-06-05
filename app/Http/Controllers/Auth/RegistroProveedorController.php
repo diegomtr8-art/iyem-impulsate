@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Edicion;
+use App\Models\Horario;
+use App\Models\Restaurantero;
+use App\Models\Servicio;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -24,11 +28,28 @@ class RegistroProveedorController extends Controller
         if ($existing) {
             if (!$existing->hasRole('restaurantero')) {
                 $existing->assignRole('restaurantero');
-                // No sobrescribimos active_role — el usuario puede decidir desde el switch
+            }
+            // Cambiar a modo proveedor
+            $existing->update(['active_role' => 'proveedor']);
+
+            // Crear perfil stub si no existe
+            $existing->refresh();
+            if (!$existing->restaurantero) {
+                $r = Restaurantero::create([
+                    'user_id'                  => $existing->id,
+                    'edicion_id'               => Edicion::activa()?->id,
+                    'nombre_restaurante'       => $existing->name . ' — Negocio',
+                    'activo'                   => false,
+                    'aprobado'                 => false,
+                    'solicitado_aprobacion_at' => now(),
+                ]);
+                $this->crearServicioYHorarios($r);
+            } else {
+                $this->crearServicioYHorarios($existing->restaurantero);
             }
             Auth::login($existing);
-            return redirect()->route('dashboard')
-                ->with('success', 'El rol de Proveedor fue agregado a tu cuenta. Puedes cambiar de modo en el menú.');
+            return redirect()->route('restaurantero.panel')
+                ->with('success', 'Cuenta actualizada como Proveedor. Completa tu perfil para aparecer en el directorio.');
         }
 
         $request->validate([
@@ -48,8 +69,44 @@ class RegistroProveedorController extends Controller
 
         $user->assignRole('restaurantero');
 
+        // Crear perfil stub para que el admin lo vea inmediatamente
+        $restaurantero = Restaurantero::create([
+            'user_id'                  => $user->id,
+            'edicion_id'               => Edicion::activa()?->id,
+            'nombre_restaurante'       => $user->name . ' — Negocio',
+            'activo'                   => false,
+            'aprobado'                 => false,
+            'solicitado_aprobacion_at' => now(),
+        ]);
+
+        $this->crearServicioYHorarios($restaurantero);
+
         Auth::login($user);
 
         return redirect()->route('dashboard');
+    }
+
+    private function crearServicioYHorarios(Restaurantero $r): void
+    {
+        if (!$r->servicios()->exists()) {
+            Servicio::create([
+                'restaurantero_id' => $r->id,
+                'nombre'           => 'Mesa de Networking',
+                'duracion_minutos' => 30,
+                'precio'           => 0,
+                'activo'           => true,
+            ]);
+        }
+        if (!$r->horarios()->exists()) {
+            for ($dia = 1; $dia <= 5; $dia++) {
+                Horario::create([
+                    'restaurantero_id' => $r->id,
+                    'dia_semana'       => $dia,
+                    'hora_inicio'      => '09:00:00',
+                    'hora_fin'         => '16:00:00',
+                    'activo'           => true,
+                ]);
+            }
+        }
     }
 }

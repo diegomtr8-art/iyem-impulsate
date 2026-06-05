@@ -17,9 +17,11 @@ class CitaAgendada extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(
-            subject: 'Nueva cita agendada — Encuentro de Negocios Impulsate',
-        );
+        $subject = $this->destinatario === 'proveedor'
+            ? 'Tienes una nueva solicitud de cita pendiente de confirmación'
+            : 'Solicitud de cita registrada — pendiente de confirmación';
+
+        return new Envelope(subject: $subject);
     }
 
     public function content(): Content

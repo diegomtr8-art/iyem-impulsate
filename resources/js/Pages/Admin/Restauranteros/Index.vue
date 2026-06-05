@@ -6,6 +6,8 @@ import { ref } from 'vue';
 const props = defineProps({
     restauranteros: Object,
     categorias: Array,
+    pendientesAprobacion: Number,
+    proveedoresPendientes: Array,
 });
 
 const municipios = [
@@ -25,6 +27,9 @@ const municipios = [
 ];
 
 const showModal = ref(false);
+const showRechazarModal = ref(false);
+const proveedorARechazar = ref(null);
+const motivoRechazo = ref('');
 
 const form = useForm({
     name: '',
@@ -64,6 +69,29 @@ const destroy = (restaurantero) => {
         router.delete(route('admin.restauranteros.destroy', restaurantero.id));
     }
 };
+
+const aprobar = (restaurantero) => {
+    if (confirm(`¿Aprobar a "${restaurantero.nombre_restaurante}"? Se notificará al proveedor por correo.`)) {
+        router.post(route('admin.restauranteros.aprobar', restaurantero.id));
+    }
+};
+
+const abrirRechazar = (restaurantero) => {
+    proveedorARechazar.value = restaurantero;
+    motivoRechazo.value = '';
+    showRechazarModal.value = true;
+};
+
+const submitRechazo = () => {
+    if (!motivoRechazo.value.trim()) return;
+    router.post(route('admin.restauranteros.rechazar-aprobacion', proveedorARechazar.value.id), {
+        motivo: motivoRechazo.value,
+    }, {
+        onSuccess: () => { showRechazarModal.value = false; proveedorARechazar.value = null; },
+    });
+};
+
+const formatFecha = (f) => f ? new Date(f).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 </script>
 
 <template>
@@ -84,8 +112,58 @@ const destroy = (restaurantero) => {
             </div>
         </template>
 
-        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none transition-colors">
-            <table class="w-full text-sm">
+        <!-- ── SECCIÓN: PENDIENTES DE APROBACIÓN ─────────────────────── -->
+        <div v-if="proveedoresPendientes.length > 0" class="mb-6">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+                <h2 class="text-sm font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                    Pendientes de Aprobación
+                </h2>
+                <span class="bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 text-xs font-bold px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-500/20">
+                    {{ proveedoresPendientes.length }}
+                </span>
+            </div>
+
+            <div class="space-y-3">
+                <div v-for="r in proveedoresPendientes" :key="'pend-' + r.id"
+                    class="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 transition-colors">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap mb-1">
+                            <span class="font-bold text-gray-900 dark:text-white text-base">{{ r.nombre_restaurante }}</span>
+                            <span v-if="r.categoria" class="text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-2 py-0.5 rounded-full">{{ r.categoria }}</span>
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            <span class="font-medium">{{ r.user?.name }}</span>
+                            <span class="mx-1.5 text-gray-300 dark:text-gray-700">·</span>
+                            {{ r.user?.email }}
+                        </p>
+                        <p v-if="r.municipio" class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">{{ r.municipio }}</p>
+                        <p v-if="r.descripcion" class="text-xs text-gray-500 dark:text-gray-500 mt-1 line-clamp-2">{{ r.descripcion }}</p>
+                        <p class="text-xs text-amber-600 dark:text-amber-500 mt-1.5">
+                            Solicitó el {{ formatFecha(r.solicitado_aprobacion_at) }}
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <Link :href="route('admin.restauranteros.show', r.id)"
+                            class="text-xs font-medium px-3 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors">
+                            Ver perfil
+                        </Link>
+                        <button @click="abrirRechazar(r)"
+                            class="text-xs font-semibold px-3 py-2 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-xl transition-colors">
+                            Rechazar
+                        </button>
+                        <button @click="aprobar(r)"
+                            class="text-xs font-semibold px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors shadow-sm">
+                            ✓ Aprobar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── TABLA DE TODOS LOS PROVEEDORES ─────────────────────────── -->
+        <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none transition-colors overflow-x-auto">
+            <table class="w-full text-sm min-w-[700px]">
                 <thead>
                     <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                         <th class="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Proveedor</th>
@@ -105,6 +183,14 @@ const destroy = (restaurantero) => {
                                 class="font-semibold text-gray-900 dark:text-white hover:text-guinda-700 dark:hover:text-guinda-400 transition-colors">
                                 {{ r.nombre_restaurante }}
                             </Link>
+                            <span v-if="r.solicitado_aprobacion_at && !r.aprobado && !r.rechazado"
+                                class="ml-2 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                                Pend. aprobación
+                            </span>
+                            <span v-else-if="r.aprobado"
+                                class="ml-2 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">
+                                Aprobado
+                            </span>
                         </td>
                         <td class="px-6 py-4">
                             <div class="text-gray-700 dark:text-gray-300">{{ r.user?.name }}</div>
@@ -136,6 +222,11 @@ const destroy = (restaurantero) => {
                                     class="text-xs font-medium px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">
                                     Ver
                                 </Link>
+                                <button v-if="r.solicitado_aprobacion_at && !r.aprobado && !r.rechazado"
+                                    @click="aprobar(r)"
+                                    class="text-xs font-medium px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors">
+                                    Aprobar
+                                </button>
                                 <button @click="toggle(r)"
                                     :class="r.activo
                                         ? 'bg-amber-50 dark:bg-amber-500/10 hover:bg-amber-100 dark:hover:bg-amber-500/20 text-amber-700 dark:text-amber-400'
@@ -174,7 +265,6 @@ const destroy = (restaurantero) => {
                 class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
                 @click.self="showModal = false">
                 <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-200 dark:border-gray-700 max-h-[90vh] overflow-y-auto">
-                    <!-- Header -->
                     <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
                         <div>
                             <h2 class="text-lg font-bold text-gray-900 dark:text-white">Agregar Proveedor</h2>
@@ -188,9 +278,7 @@ const destroy = (restaurantero) => {
                         </button>
                     </div>
 
-                    <!-- Form -->
                     <form @submit.prevent="submit" class="px-6 py-5 space-y-5">
-                        <!-- Sección: Acceso -->
                         <div>
                             <p class="text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Datos de acceso</p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -218,7 +306,6 @@ const destroy = (restaurantero) => {
                             </div>
                         </div>
 
-                        <!-- Sección: Negocio -->
                         <div>
                             <p class="text-xs font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Datos del negocio</p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -231,7 +318,8 @@ const destroy = (restaurantero) => {
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
-                                    <input v-model="form.telefono" type="text" placeholder="999-000-0000"
+                                    <input v-model="form.telefono" type="tel" maxlength="10" placeholder="9991234567"
+                                        @input="form.telefono = form.telefono.replace(/\D/g, '').slice(0, 10)"
                                         class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors" />
                                 </div>
                                 <div>
@@ -263,7 +351,6 @@ const destroy = (restaurantero) => {
                             </div>
                         </div>
 
-                        <!-- Actions -->
                         <div class="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                             <button type="button" @click="showModal = false"
                                 class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">
@@ -275,6 +362,45 @@ const destroy = (restaurantero) => {
                             </button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Modal Rechazar -->
+        <Teleport to="body">
+            <div v-if="showRechazarModal"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                @click.self="showRechazarModal = false">
+                <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-gray-700">
+                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
+                        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Rechazar solicitud</h2>
+                        <button @click="showRechazarModal = false"
+                            class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="px-6 py-5 space-y-4">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            Se notificará a <strong class="text-gray-900 dark:text-white">{{ proveedorARechazar?.nombre_restaurante }}</strong> con el motivo del rechazo.
+                        </p>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Motivo del rechazo *</label>
+                            <textarea v-model="motivoRechazo" rows="4" placeholder="Indica el motivo para que el proveedor pueda corregir su información..."
+                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-red-500 dark:focus:border-red-500 transition-colors resize-none" />
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3 px-6 pb-5">
+                        <button @click="showRechazarModal = false"
+                            class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">
+                            Cancelar
+                        </button>
+                        <button @click="submitRechazo" :disabled="!motivoRechazo.trim()"
+                            class="px-5 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-500 disabled:opacity-60 rounded-xl transition-colors">
+                            Rechazar y notificar
+                        </button>
+                    </div>
                 </div>
             </div>
         </Teleport>
