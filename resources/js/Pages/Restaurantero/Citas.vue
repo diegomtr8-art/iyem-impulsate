@@ -66,7 +66,7 @@ const estadoConfig = {
     cancelada:              { label: 'Cancelada',             class: 'bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/20' },
     completada:             { label: 'Completada',            class: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
     rechazada:              { label: 'Rechazada',             class: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20' },
-    reagendada:             { label: 'Reagendada',            class: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+    reagendada:             { label: 'Reagendada',            class: 'bg-guinda-500/15 text-guinda-600 dark:text-guinda-400 border-guinda-500/20' },
     pendiente_reconfirmacion: { label: 'Esp. confirmación',  class: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/20' },
 };
 
@@ -123,12 +123,49 @@ const fmt = (dt) => dt ? new Date(dt).toLocaleString('es-MX', { weekday:'short',
                     <p class="font-medium">No hay citas en esta categoría</p>
                 </div>
 
-                <div v-else class="overflow-x-auto">
+                <!-- Cards móvil -->
+                <div v-else class="md:hidden divide-y divide-gray-100 dark:divide-gray-800/40">
+                    <div v-for="cita in citas.data" :key="'m-' + cita.id"
+                        class="p-4 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="font-bold text-gray-900 dark:text-white truncate">{{ cita.cliente?.name || '—' }}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ cita.cliente?.email }}</p>
+                                <p v-if="cita.cliente?.telefono" class="text-xs text-gray-400 dark:text-gray-500">{{ cita.cliente.telefono }}</p>
+                            </div>
+                            <span class="shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border"
+                                :class="estadoConfig[cita.estado]?.class || 'bg-gray-500/15 text-gray-400'">
+                                {{ estadoConfig[cita.estado]?.label || cita.estado }}
+                            </span>
+                        </div>
+                        <p class="text-sm text-gray-600 dark:text-gray-300 font-medium">{{ fmt(cita.inicio) }}</p>
+                        <p v-if="cita.propuesta_inicio" class="text-xs text-purple-600 dark:text-purple-400">
+                            → Propuesta: {{ fmt(cita.propuesta_inicio) }}
+                        </p>
+                        <div v-if="cita.estado === 'pendiente'" class="flex gap-2 pt-1">
+                            <button @click="accion('aceptar', cita)" :disabled="procesando"
+                                class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors min-h-[44px]">
+                                ✓ Aceptar
+                            </button>
+                            <button @click="abrirReagendar(cita)" :disabled="procesando"
+                                class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors min-h-[44px]">
+                                ↻ Reagendar
+                            </button>
+                            <button @click="accion('rechazar', cita)" :disabled="procesando"
+                                class="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors min-h-[44px]">
+                                ✕ Rechazar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabla escritorio -->
+                <div v-if="citas.data.length > 0" class="hidden md:block overflow-x-auto">
                     <table class="w-full text-sm">
                         <thead>
                             <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
                                 <th class="text-left py-3 px-5 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Comprador</th>
-                                <th class="text-left py-3 px-5 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider hidden md:table-cell">Fecha/Hora</th>
+                                <th class="text-left py-3 px-5 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Fecha/Hora</th>
                                 <th class="text-left py-3 px-5 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Estado</th>
                                 <th class="text-right py-3 px-5 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Acciones</th>
                             </tr>
@@ -141,7 +178,7 @@ const fmt = (dt) => dt ? new Date(dt).toLocaleString('es-MX', { weekday:'short',
                                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ cita.cliente?.email }}</p>
                                     <p v-if="cita.cliente?.telefono" class="text-xs text-gray-400 dark:text-gray-500">{{ cita.cliente.telefono }}</p>
                                 </td>
-                                <td class="py-3.5 px-5 hidden md:table-cell">
+                                <td class="py-3.5 px-5">
                                     <p class="text-gray-700 dark:text-gray-300 font-medium">{{ fmt(cita.inicio) }}</p>
                                     <p v-if="cita.propuesta_inicio" class="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
                                         → Propuesta: {{ fmt(cita.propuesta_inicio) }}

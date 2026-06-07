@@ -37,20 +37,20 @@ const submit = () => {
                     <img src="/images/logo_impulsate.png" alt="Impulsate" class="h-16 w-auto drop-shadow-2xl" />
                 </div>
 
-                <div class="mb-2 text-white/60 text-xs font-bold tracking-[0.25em] uppercase">Unete al programa</div>
+                <div class="mb-2 text-white/60 text-xs font-bold tracking-[0.25em] uppercase">Únete al programa</div>
                 <h1 class="text-3xl font-black text-white mb-3 leading-tight">
                     Encuentro de<br />
                     <span class="text-guinda-200">Negocios</span><br />
                     Impulsate
                 </h1>
                 <p class="text-white/70 text-sm leading-relaxed mb-8">
-                    Registrate y accede a citas de networking con los mejores proveedores de Yucatan. Completamente gratuito.
+                    Regístrate y accede a citas de networking con los mejores proveedores de Yucatán. Completamente gratuito.
                 </p>
 
                 <div class="space-y-3 text-left">
                     <div v-for="(b, i) in [
                         { icon: '✅', texto: 'Hasta 12 citas de networking' },
-                        { icon: '📍', texto: 'Oficina en Merida, Yucatan' },
+                        { icon: '📍', texto: 'Oficina en Mérida, Yucatán' },
                         { icon: '🤝', texto: 'Proveedores verificados' },
                         { icon: '🆓', texto: '100% gratuito, programa gubernamental' },
                     ]" :key="i"
@@ -101,7 +101,7 @@ const submit = () => {
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Correo electronico</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Correo electrónico</label>
                         <input v-model="form.email" type="email" required autocomplete="username"
                             class="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
                             placeholder="tu@email.com" />
@@ -129,15 +129,15 @@ const submit = () => {
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Contrasena</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Contraseña</label>
                         <input v-model="form.password" type="password" required autocomplete="new-password"
                             class="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
-                            placeholder="Minimo 8 caracteres" />
+                            placeholder="Mínimo 8 caracteres" />
                         <InputError class="mt-1.5" :message="form.errors.password" />
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Confirmar contrasena</label>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Confirmar contraseña</label>
                         <input v-model="form.password_confirmation" type="password" required autocomplete="new-password"
                             class="w-full bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors placeholder-gray-400 dark:placeholder-gray-600"
                             placeholder="••••••••" />
@@ -149,9 +149,9 @@ const submit = () => {
                             <Checkbox id="terms" v-model:checked="form.terms" name="terms" required class="mt-0.5" />
                             <span class="text-sm text-gray-500 dark:text-gray-400">
                                 Acepto los
-                                <a target="_blank" :href="route('terms.show')" class="text-guinda-700 dark:text-guinda-400 underline">Terminos de Servicio</a>
+                                <a target="_blank" :href="route('terms.show')" class="text-guinda-700 dark:text-guinda-400 underline">Términos de Servicio</a>
                                 y la
-                                <a target="_blank" :href="route('policy.show')" class="text-guinda-700 dark:text-guinda-400 underline">Politica de Privacidad</a>
+                                <a target="_blank" :href="route('policy.show')" class="text-guinda-700 dark:text-guinda-400 underline">Política de Privacidad</a>
                             </span>
                         </label>
                         <InputError class="mt-1.5" :message="form.errors.terms" />
@@ -163,16 +163,16 @@ const submit = () => {
                     </button>
 
                     <p class="text-center text-sm text-gray-500 dark:text-gray-400">
-                        Ya tienes cuenta?
+                        ¿Ya tienes cuenta?
                         <Link :href="route('login')" class="text-guinda-700 dark:text-guinda-400 hover:text-guinda-600 font-medium transition-colors">
-                            Inicia sesion
+                            Inicia sesión
                         </Link>
                     </p>
                 </form>
 
                 <div class="mt-10 text-center">
                     <p class="text-xs text-gray-400 dark:text-gray-600">
-                        Programa Gubernamental • Gobierno del Estado de Yucatan
+                        Programa Gubernamental • Gobierno del Estado de Yucatán
                     </p>
                 </div>
             </div>

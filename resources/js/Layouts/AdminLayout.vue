@@ -1,14 +1,29 @@
 <script setup>
-// v2
-import { ref } from 'vue';
+// v3
+import { ref, onMounted, onUnmounted } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import NotificacionCampana from '@/Components/NotificacionCampana.vue';
 
 defineProps({ title: String });
 
-const sidebarOpen = ref(true);
+const sidebarOpen = ref(false);
+const isMobile = ref(false);
 const logout = () => router.post(route('logout'));
+
+const checkMobile = () => {
+    isMobile.value = window.innerWidth < 640;
+    if (!isMobile.value) sidebarOpen.value = true;
+    else sidebarOpen.value = false;
+};
+
+onMounted(() => {
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+});
+onUnmounted(() => window.removeEventListener('resize', checkMobile));
+
+const closeSidebar = () => { if (isMobile.value) sidebarOpen.value = false; };
 
 const navItems = [
     { label: 'Dashboard',    routeName: 'admin.dashboard',            icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' },
@@ -28,8 +43,17 @@ const navItems = [
     <div class="flex h-screen bg-gray-100 dark:bg-gray-950 overflow-hidden transition-colors duration-300">
         <Head :title="title ? `${title} — Admin` : 'Admin'" />
 
+        <!-- Mobile overlay -->
+        <div v-if="isMobile && sidebarOpen"
+            class="fixed inset-0 z-40 bg-black/50"
+            @click="sidebarOpen = false">
+        </div>
+
         <!-- Sidebar -->
-        <aside :class="sidebarOpen ? 'w-60' : 'w-16'"
+        <aside :class="[
+                sidebarOpen ? 'w-60 translate-x-0' : (isMobile ? '-translate-x-full w-60' : 'w-16 translate-x-0'),
+                isMobile ? 'fixed inset-y-0 left-0 z-50' : 'relative'
+            ]"
             class="bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex flex-col transition-all duration-300 shrink-0 shadow-sm">
 
             <!-- Logo -->
@@ -42,6 +66,7 @@ const navItems = [
             <nav class="flex-1 py-4 space-y-0.5 overflow-y-auto px-2">
                 <Link v-for="item in navItems" :key="item.routeName"
                     :href="route(item.routeName)"
+                    @click="closeSidebar"
                     :class="[
                         'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-xl transition-all duration-200',
                         route().current(item.routeName)

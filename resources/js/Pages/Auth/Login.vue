@@ -37,7 +37,7 @@ const googleAuthUrl = computed(() => {
 </script>
 
 <template>
-    <Head title="Iniciar sesion — Encuentro de Negocios Impulsate" />
+    <Head title="Iniciar sesión — Encuentro de Negocios Impulsate" />
 
     <div class="min-h-screen bg-gray-50 dark:bg-gray-950 flex transition-colors duration-300">
         <!-- Panel izquierdo — solo desktop -->
@@ -69,12 +69,12 @@ const googleAuthUrl = computed(() => {
 
                 <div class="bg-white/10 border border-white/20 rounded-xl px-5 py-4 backdrop-blur-sm">
                     <p class="text-white/80 text-sm italic leading-relaxed">
-                        "Conectando empresas y proveedores de Yucatan con oportunidades reales"
+                        "Conectando empresas y proveedores de Yucatán con oportunidades reales"
                     </p>
                 </div>
 
                 <div class="mt-8 flex flex-wrap justify-center gap-2">
-                    <span v-for="m in ['Merida', 'Valladolid', 'Progreso', 'Izamal', 'Ticul']" :key="m"
+                    <span v-for="m in ['Mérida', 'Valladolid', 'Progreso', 'Izamal', 'Ticul']" :key="m"
                           class="text-xs text-white/50 bg-white/10 px-2.5 py-1 rounded-full border border-white/10">
                         {{ m }}
                     </span>

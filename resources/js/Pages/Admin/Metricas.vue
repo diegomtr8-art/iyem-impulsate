@@ -1,7 +1,7 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import VueApexCharts from 'vue3-apexcharts';
-import { computed } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 
 const props = defineProps({
     sinDatos:         Boolean,
@@ -14,37 +14,48 @@ const props = defineProps({
     proveedoresTop:   Array,
 });
 
-const darkBase = { background: 'transparent', foreColor: '#9ca3af', toolbar: { show: false } };
+const isDark = ref(document.documentElement.classList.contains('dark'));
+
+onMounted(() => {
+    const observer = new MutationObserver(() => {
+        isDark.value = document.documentElement.classList.contains('dark');
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+});
+
+const chartTheme  = computed(() => isDark.value ? 'dark' : 'light');
+const axisColor   = computed(() => isDark.value ? '#6b7280' : '#9ca3af');
+const gridColor   = computed(() => isDark.value ? '#1f2937' : '#f3f4f6');
 
 const lineOptions = computed(() => ({
-    chart: { ...darkBase, type: 'area' },
+    chart: { type: 'area', background: 'transparent', toolbar: { show: false } },
     stroke: { curve: 'smooth', width: 2 },
     fill: { type: 'gradient', gradient: { opacityFrom: 0.25, opacityTo: 0.01 } },
     colors: ['#8b1028'],
     xaxis: {
         categories: (props.visitasPorDia || []).map(d => d.fecha),
-        labels: { style: { colors: '#6b7280' } },
-        axisBorder: { color: '#374151' },
+        labels: { style: { colors: axisColor.value } },
+        axisBorder: { color: gridColor.value },
     },
-    yaxis: { labels: { style: { colors: '#6b7280' } } },
-    grid: { borderColor: '#1f2937' },
-    theme: { mode: 'dark' },
-    tooltip: { theme: 'dark' },
+    yaxis: { labels: { style: { colors: axisColor.value } } },
+    grid: { borderColor: gridColor.value },
+    theme: { mode: chartTheme.value },
+    tooltip: { theme: chartTheme.value },
 }));
 
 const barOptions = computed(() => ({
-    chart: { ...darkBase, type: 'bar' },
+    chart: { type: 'bar', background: 'transparent', toolbar: { show: false } },
     colors: ['#8b1028'],
     xaxis: {
         categories: (props.proveedoresTop || []).map(d => d.nombre),
-        labels: { style: { colors: '#6b7280' }, trim: true, maxHeight: 80 },
-        axisBorder: { color: '#374151' },
+        labels: { style: { colors: axisColor.value }, trim: true, maxHeight: 80 },
+        axisBorder: { color: gridColor.value },
     },
-    yaxis: { labels: { style: { colors: '#6b7280' } } },
-    grid: { borderColor: '#1f2937' },
+    yaxis: { labels: { style: { colors: axisColor.value } } },
+    grid: { borderColor: gridColor.value },
     plotOptions: { bar: { borderRadius: 6, horizontal: true } },
-    theme: { mode: 'dark' },
-    tooltip: { theme: 'dark' },
+    theme: { mode: chartTheme.value },
+    tooltip: { theme: chartTheme.value },
     dataLabels: { enabled: false },
 }));
 
@@ -115,7 +126,7 @@ const maxVisitas = computed(() => {
                     <h3 class="font-bold text-gray-900 dark:text-white mb-1">Visitas por día</h3>
                     <p class="text-xs text-gray-500 dark:text-gray-500 mb-4">Últimos 30 días — visitas a perfiles de proveedores</p>
                     <VueApexCharts v-if="visitasPorDia?.length" type="area" height="220" :options="lineOptions"
-                        :series="[{ name: 'Visitas', data: visitasPorDia.map(d => d.total) }]" />
+                        :series="[{ name: 'Visitas', data: visitasPorDia.map(d => d.total) }]" :key="chartTheme" />
                     <div v-else class="h-[220px] flex items-center justify-center text-gray-400 dark:text-gray-600 text-sm">Sin datos aún</div>
                 </div>
 

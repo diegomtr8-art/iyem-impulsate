@@ -49,7 +49,7 @@ const colorEstado = {
     en_curso:     'bg-guinda-500/20 text-guinda-300 border-guinda-500/30',
     finalizada:   'bg-emerald-500/15 text-emerald-400 border-emerald-500/20',
     ausente:      'bg-red-500/15 text-red-400 border-red-500/20',
-    reprogramada: 'bg-blue-500/15 text-blue-400 border-blue-500/20',
+    reprogramada: 'bg-guinda-500/15 text-guinda-400 border-guinda-500/20',
 };
 const labelEstado = {
     pendiente:    'Pendiente',

@@ -12,11 +12,11 @@ const roles = [
         icono: '🛒',
         titulo: 'Comprador',
         descripcion: 'Agenda citas con proveedores del evento y descubre productos y servicios.',
-        color: 'from-blue-500 to-blue-700',
-        hoverBorder: 'hover:border-blue-500',
-        activeBorder: 'border-blue-500',
-        activeBg: 'bg-blue-50 dark:bg-blue-900/20',
-        checkColor: 'text-blue-500',
+        color: 'from-guinda-500 to-guinda-700',
+        hoverBorder: 'hover:border-guinda-500',
+        activeBorder: 'border-guinda-500',
+        activeBg: 'bg-guinda-50 dark:bg-guinda-900/20',
+        checkColor: 'text-guinda-500',
     },
     {
         valor: 'proveedor',
@@ -60,7 +60,7 @@ const confirmar = () => {
         <div class="absolute inset-0 overflow-hidden pointer-events-none">
             <div class="absolute -top-40 -right-40 w-80 h-80 bg-guinda-700/20 rounded-full blur-3xl"></div>
             <div class="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-700/20 rounded-full blur-3xl"></div>
-            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-700/10 rounded-full blur-3xl"></div>
+            <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-guinda-700/10 rounded-full blur-3xl"></div>
         </div>
 
         <div class="relative z-10 w-full max-w-3xl">

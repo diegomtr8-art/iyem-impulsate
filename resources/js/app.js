@@ -6,10 +6,6 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 
-// Initialize theme from localStorage (default: light)
-const savedTheme = localStorage.getItem('theme') || 'light';
-document.documentElement.classList.toggle('dark', savedTheme === 'dark');
-
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
 createInertiaApp({

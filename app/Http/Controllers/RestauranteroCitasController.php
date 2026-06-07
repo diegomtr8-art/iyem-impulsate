@@ -141,7 +141,7 @@ class RestauranteroCitasController extends Controller
     /** Respuesta del comprador al reagendamiento (ruta pública con token) */
     public function confirmarToken(Cita $cita, string $token)
     {
-        if ($cita->token_confirmacion !== $token || $cita->estado !== 'pendiente_reconfirmacion') {
+        if (!$cita->token_confirmacion || !hash_equals($cita->token_confirmacion, $token) || $cita->estado !== 'pendiente_reconfirmacion') {
             abort(404, 'El enlace no es válido o ya fue utilizado.');
         }
 
@@ -164,7 +164,7 @@ class RestauranteroCitasController extends Controller
     /** Rechazo del comprador al reagendamiento (ruta pública con token) */
     public function rechazarToken(Cita $cita, string $token)
     {
-        if ($cita->token_confirmacion !== $token || $cita->estado !== 'pendiente_reconfirmacion') {
+        if (!$cita->token_confirmacion || !hash_equals($cita->token_confirmacion, $token) || $cita->estado !== 'pendiente_reconfirmacion') {
             abort(404, 'El enlace no es válido o ya fue utilizado.');
         }
 

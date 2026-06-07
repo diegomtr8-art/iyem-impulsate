@@ -23,7 +23,7 @@ const estadoConfig = {
     cancelada:               { label: 'Cancelada',            class: 'bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/20' },
     completada:              { label: 'Completada',           class: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
     rechazada:               { label: 'Rechazada',            class: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20' },
-    reagendada:              { label: 'Reagendada',           class: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+    reagendada:              { label: 'Reagendada',           class: 'bg-guinda-500/15 text-guinda-600 dark:text-guinda-400 border-guinda-500/20' },
     pendiente_reconfirmacion:{ label: 'Esp. reconfirmación', class: 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/20' },
 };
 
@@ -208,7 +208,7 @@ const municipios = [
             <!-- ── CARD REGISTRO AL EVENTO (PROVEEDOR) ─────────────── -->
             <div v-if="$page.props.eventoActivo">
                 <div v-if="!$page.props.registradoEnEvento?.proveedor"
-                    class="bg-gradient-to-r from-blue-900/60 to-indigo-900/40 border border-blue-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    class="bg-gradient-to-r from-guinda-900/60 to-guinda-800/40 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
                     <div class="text-3xl">📅</div>
                     <div class="flex-1">
                         <h3 class="font-bold text-white mb-1">Hay un evento disponible: {{ $page.props.eventoActivo.nombre }}</h3>
@@ -216,13 +216,13 @@ const municipios = [
                     </div>
                     <button
                         @click="router.post(route('evento.registrar-proveedor', $page.props.eventoActivo.id))"
-                        class="shrink-0 px-5 py-2.5 bg-blue-500 hover:bg-blue-400 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
+                        class="shrink-0 px-5 py-2.5 bg-guinda-500 hover:bg-guinda-400 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
                         Registrarme como Proveedor
                     </button>
                 </div>
-                <div v-else class="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl text-sm">
-                    <svg class="w-4 h-4 text-blue-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    <span class="text-blue-700 dark:text-blue-400 font-medium">Registrado en {{ $page.props.eventoActivo.nombre }}</span>
+                <div v-else class="flex items-center gap-3 px-4 py-3 bg-guinda-50 dark:bg-guinda-900/20 border border-guinda-200 dark:border-guinda-800 rounded-xl text-sm">
+                    <svg class="w-4 h-4 text-guinda-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                    <span class="text-guinda-700 dark:text-guinda-400 font-medium">Registrado en {{ $page.props.eventoActivo.nombre }}</span>
                 </div>
             </div>
 
@@ -590,7 +590,7 @@ const municipios = [
 
         <!-- Banner: invitación a ser comprador -->
         <div v-if="!$page.props.auth.user?.is_cliente"
-            class="mt-6 bg-gradient-to-r from-blue-900/80 to-blue-800/60 border border-blue-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            class="mt-6 bg-gradient-to-r from-guinda-900/80 to-guinda-800/60 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div class="text-3xl">🛒</div>
             <div class="flex-1">
                 <h3 class="font-bold text-white mb-1">¿También buscas proveedores?</h3>
@@ -598,7 +598,7 @@ const municipios = [
             </div>
             <button
                 @click="router.post(route('perfil.agregar-rol'), { rol: 'comprador' })"
-                class="shrink-0 px-5 py-2.5 bg-white text-blue-800 font-bold text-sm rounded-xl hover:bg-blue-50 transition-colors shadow-sm">
+                class="shrink-0 px-5 py-2.5 bg-white text-guinda-800 font-bold text-sm rounded-xl hover:bg-guinda-50 transition-colors shadow-sm">
                 Quiero ser Comprador
             </button>
         </div>

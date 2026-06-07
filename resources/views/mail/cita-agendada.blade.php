@@ -27,7 +27,7 @@
                             ⏳ Nueva solicitud pendiente de tu confirmación
                         </div>
                         @else
-                        <div style="display:inline-block;background:#eff6ff;border:1px solid #bfdbfe;border-radius:999px;padding:8px 20px;margin:24px auto 0;font-size:13px;font-weight:700;color:#1e40af;">
+                        <div style="display:inline-block;background:#fef2f4;border:1px solid #f5a8b5;border-radius:999px;padding:8px 20px;margin:24px auto 0;font-size:13px;font-weight:700;color:#8b1028;">
                             📋 Solicitud registrada — pendiente de confirmación
                         </div>
                         @endif

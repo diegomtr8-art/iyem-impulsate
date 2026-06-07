@@ -62,7 +62,7 @@ const switchRole = () => {
                                 :href="route('restaurantero.panel')"
                                 :class="route().current('restaurantero.panel') ? 'bg-guinda-100 dark:bg-guinda-900/30 text-guinda-800 dark:text-guinda-400' : 'text-gray-600 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800'"
                                 class="px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1.5">
-                                <span class="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400"></span>
+                                <span class="w-2 h-2 rounded-full bg-guinda-500 dark:bg-guinda-400"></span>
                                 Mi Negocio
                             </Link>
                             <Link v-if="$page.props.auth?.user && $page.props.auth.user.roles?.includes('admin')"
@@ -78,7 +78,7 @@ const switchRole = () => {
                             <button v-if="tieneDualRol" @click="switchRole" :disabled="switchingRole"
                                 class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all"
                                 :class="activeRole === 'proveedor'
-                                    ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/40'
+                                    ? 'bg-guinda-50 dark:bg-guinda-900/20 border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-300 hover:bg-guinda-100 dark:hover:bg-guinda-900/40'
                                     : 'bg-guinda-50 dark:bg-guinda-900/20 border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-300 hover:bg-guinda-100 dark:hover:bg-guinda-900/40'"
                                 :title="activeRole === 'comprador' ? 'Cambiar a modo Proveedor' : 'Cambiar a modo Comprador'">
                                 <svg v-if="!switchingRole" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -161,7 +161,7 @@ const switchRole = () => {
                         <button v-if="tieneDualRol" @click="switchRole(); showingMenu=false" :disabled="switchingRole"
                             class="flex items-center gap-2 w-full px-3 py-2 text-sm font-semibold rounded-xl border transition-colors"
                             :class="activeRole === 'proveedor'
-                                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300'
+                                ? 'bg-guinda-50 dark:bg-guinda-900/20 border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-300'
                                 : 'bg-guinda-50 dark:bg-guinda-900/20 border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-300'">
                             <svg class="w-4 h-4 shrink-0" :class="switchingRole ? 'animate-spin' : ''" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 3M21 7.5H7.5"/>

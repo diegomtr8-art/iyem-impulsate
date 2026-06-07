@@ -123,8 +123,8 @@ const secuenciaValida = computed(() => {
                 </div>
 
                 <!-- Ventanas temporales -->
-                <div class="mt-5 p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-xl">
-                    <p class="text-xs font-semibold text-blue-700 dark:text-blue-400 mb-3 flex items-center gap-1.5">
+                <div class="mt-5 p-4 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-800/30 rounded-xl">
+                    <p class="text-xs font-semibold text-guinda-700 dark:text-guinda-400 mb-3 flex items-center gap-1.5">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                         Secuencia temporal del evento
                     </p>
@@ -155,7 +155,7 @@ const secuenciaValida = computed(() => {
                     <div v-if="secuenciaValida" class="mt-4 flex items-center gap-1 flex-wrap text-xs">
                         <span class="px-2 py-1 bg-gray-200 dark:bg-gray-700 rounded font-medium text-gray-600 dark:text-gray-400">Ahora</span>
                         <span class="text-gray-400">→</span>
-                        <span class="px-2 py-1 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded font-medium">Reg. Proveedores</span>
+                        <span class="px-2 py-1 bg-guinda-100 dark:bg-guinda-900/40 text-guinda-700 dark:text-guinda-300 rounded font-medium">Reg. Proveedores</span>
                         <span class="text-gray-400">→</span>
                         <span class="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 rounded font-medium">Agendado</span>
                         <span class="text-gray-400">→</span>
@@ -218,7 +218,7 @@ const secuenciaValida = computed(() => {
                     <!-- Secuencia temporal -->
                     <div class="mt-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-1.5 text-xs text-gray-600 dark:text-gray-400">
                         <div v-if="eventoActivo.fecha_hora_inicio_proveedores" class="flex items-center gap-2">
-                            <span class="w-2 h-2 bg-blue-400 rounded-full shrink-0"></span>
+                            <span class="w-2 h-2 bg-guinda-400 rounded-full shrink-0"></span>
                             <span>Reg. Proveedores desde: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_inicio_proveedores) }}</strong></span>
                         </div>
                         <div v-if="eventoActivo.fecha_hora_inicio_compradores" class="flex items-center gap-2">

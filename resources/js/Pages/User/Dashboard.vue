@@ -26,7 +26,7 @@ const estadoConfig = {
     cancelada:  { label: 'Cancelada',  class: 'bg-gray-500/15 text-gray-500 dark:text-gray-400 border-gray-500/20' },
     completada: { label: 'Completada', class: 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/20' },
     rechazada:  { label: 'Rechazada',  class: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20' },
-    reagendada: { label: 'Reagendada', class: 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-500/20' },
+    reagendada: { label: 'Reagendada', class: 'bg-guinda-500/15 text-guinda-600 dark:text-guinda-400 border-guinda-500/20' },
 };
 
 const estadoColors = {
