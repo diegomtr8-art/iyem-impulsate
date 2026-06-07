@@ -79,6 +79,12 @@ Route::middleware([
     Route::get('/mi-panel', [CitaPublicaController::class, 'dashboard'])->name('user.dashboard');
     Route::post('/citas', [CitaPublicaController::class, 'store'])->name('citas.store')->middleware('throttle:10,1');
     Route::delete('/citas/{cita}', [CitaPublicaController::class, 'destroy'])->name('citas.destroy');
+    Route::patch('/citas/{cita}/notas', [CitaPublicaController::class, 'actualizarNotas'])->name('citas.notas');
+    Route::patch('/notificaciones/{notificacion}/leer', function (\App\Models\Notificacion $notificacion) {
+        if ($notificacion->user_id !== auth()->id()) abort(403);
+        $notificacion->update(['leida' => true]);
+        return back();
+    })->name('notificaciones.leer');
 
     // Completar perfil de proveedor
     Route::prefix('proveedor')->name('restaurantero.')->middleware('role:restaurantero')->group(function () {

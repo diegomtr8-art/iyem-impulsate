@@ -41,7 +41,7 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user() ? array_merge(
                     $request->user()->only([
-                        'id', 'name', 'email', 'telefono',
+                        'id', 'name', 'email', 'telefono', 'sitio_web',
                         'active_role', 'rol_seleccionado', 'necesidades',
                         'perfil_completo', 'email_verified_at', 'profile_photo_url',
                     ]),

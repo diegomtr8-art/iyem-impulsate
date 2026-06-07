@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import FullCalendar from '@fullcalendar/vue3';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -13,6 +13,10 @@ const props = defineProps({
     citasPendientes: Number,
     todasLasCitas: Array,
     categorias: Array,
+    tasaAceptacion: Number,
+    totalEnEvento: Number,
+    citaProxima2h: Object,
+    notificaciones: Array,
 });
 
 const page = usePage();
@@ -133,9 +137,11 @@ const citasActivas    = computed(() => props.todasLasCitas.filter(c => ['confirm
 const citasHistorial  = computed(() => props.todasLasCitas.filter(c => ['completada', 'cancelada', 'rechazada'].includes(c.estado)));
 
 const kpis = computed(() => [
-    { label: 'Citas hoy',   value: props.citasHoy,       bg: 'bg-sky-50 dark:bg-sky-500/10 border-sky-200 dark:border-sky-500/20',         iconColor: 'text-sky-600 dark:text-sky-400',     valColor: 'text-sky-700 dark:text-sky-300',     icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
-    { label: 'Esta semana', value: props.citasSemana,     bg: 'bg-guinda-50 dark:bg-guinda-500/10 border-guinda-200 dark:border-guinda-500/20', iconColor: 'text-guinda-700 dark:text-guinda-400', valColor: 'text-guinda-700 dark:text-guinda-300', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
-    { label: 'Pendientes',  value: props.citasPendientes, bg: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20',   iconColor: 'text-amber-600 dark:text-amber-400', valColor: 'text-amber-700 dark:text-amber-300', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
+    { label: 'Citas hoy',    value: props.citasHoy,       bg: 'bg-sky-50 dark:bg-sky-500/10 border-sky-200 dark:border-sky-500/20',           iconColor: 'text-sky-600 dark:text-sky-400',      valColor: 'text-sky-700 dark:text-sky-300',     icon: 'M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z' },
+    { label: 'Esta semana',  value: props.citasSemana,     bg: 'bg-guinda-50 dark:bg-guinda-500/10 border-guinda-200 dark:border-guinda-500/20', iconColor: 'text-guinda-700 dark:text-guinda-400', valColor: 'text-guinda-700 dark:text-guinda-300', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { label: 'Pendientes',   value: props.citasPendientes, bg: 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20',     iconColor: 'text-amber-600 dark:text-amber-400',  valColor: 'text-amber-700 dark:text-amber-300', icon: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z' },
+    { label: '% Aceptadas',  value: props.tasaAceptacion !== null && props.tasaAceptacion !== undefined ? props.tasaAceptacion + '%' : '—', bg: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20', iconColor: 'text-emerald-600 dark:text-emerald-400', valColor: 'text-emerald-700 dark:text-emerald-300', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+    { label: 'Total evento', value: props.totalEnEvento,   bg: 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/20', iconColor: 'text-indigo-600 dark:text-indigo-400', valColor: 'text-indigo-700 dark:text-indigo-300', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
 ]);
 
 const municipios = [
@@ -143,21 +149,104 @@ const municipios = [
     'Maxcanú','Hunucmá','Tekax','Chemax','Espita','Oxkutzcab','Peto','Temozón',
     'Kanasín','Telchac Puerto','Celestún','Ixil','Santa Elena','Muna','Tekax',
 ];
+
+// ── PERFIL INCOMPLETO ─────────────────────────────────────────
+const perfilPorcentaje = computed(() => {
+    const r = props.restaurantero;
+    if (!r) return 0;
+    let pct = 0;
+    if (r.nombre_restaurante) pct += 15;
+    if (r.descripcion)        pct += 15;
+    if (r.telefono)           pct += 10;
+    if (r.rfc)                pct += 10;
+    if (r.municipio)          pct += 10;
+    if (r.sitio_web)          pct += 5;
+    if (r.logo_path)          pct += 15;
+    if (r.productos_top?.length > 0) pct += 20;
+    return pct;
+});
+
+const perfilCamposFaltantes = computed(() => {
+    const r = props.restaurantero;
+    const f = [];
+    if (!r?.descripcion)              f.push('Descripción');
+    if (!r?.rfc)                      f.push('RFC');
+    if (!r?.municipio)                f.push('Municipio');
+    if (!r?.logo_path)                f.push('Logo');
+    if (!r?.productos_top?.length)    f.push('Al menos 1 producto');
+    if (!r?.telefono)                 f.push('Teléfono');
+    return f;
+});
+
+const bannerPerfilVisible = ref(false);
+
+onMounted(() => {
+    const key = `perfil_prov_banner_${page.props.auth.user?.id}`;
+    try {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+            const { cerradoEn } = JSON.parse(stored);
+            bannerPerfilVisible.value = Date.now() - cerradoEn > 24 * 60 * 60 * 1000;
+        } else {
+            bannerPerfilVisible.value = true;
+        }
+    } catch { bannerPerfilVisible.value = true; }
+});
+
+const cerrarBannerPerfil = () => {
+    bannerPerfilVisible.value = false;
+    try {
+        localStorage.setItem(`perfil_prov_banner_${page.props.auth.user?.id}`, JSON.stringify({ cerradoEn: Date.now() }));
+    } catch {}
+};
+
+const mostrarBannerPerfil = computed(() =>
+    !props.restaurantero?.aprobado && bannerPerfilVisible.value && perfilCamposFaltantes.value.length > 0
+);
+
+// ── NOTIFICACIONES ────────────────────────────────────────────
+const notificacionesDismissed = ref(new Set());
+const notificacionesVisibles = computed(() =>
+    (props.notificaciones || []).filter(n => !notificacionesDismissed.value.has(n.id))
+);
+const dismissNotificacion = (id) => {
+    notificacionesDismissed.value = new Set([...notificacionesDismissed.value, id]);
+    router.patch(route('notificaciones.leer', id), {}, { preserveState: true, preserveScroll: true });
+};
+
+// ── CITA PRÓXIMA 2H ───────────────────────────────────────────
+const tiempoHastaCitaProxima = computed(() => {
+    if (!props.citaProxima2h) return null;
+    const diff = new Date(props.citaProxima2h.inicio) - new Date();
+    if (diff <= 0) return 'En curso';
+    const totalMins = Math.floor(diff / 60000);
+    if (totalMins < 60) return `${totalMins} min`;
+    return `${Math.floor(totalMins / 60)}h ${totalMins % 60}min`;
+});
 </script>
 
 <template>
     <AppLayout title="Mi Negocio">
         <template #header>
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-between gap-3 flex-wrap">
                 <div>
                     <h1 class="text-xl font-bold text-gray-900 dark:text-white">Mi Negocio</h1>
                     <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">{{ restaurantero.nombre_restaurante }}</p>
                 </div>
-                <div class="flex items-center gap-3">
+                <div class="flex items-center gap-2 flex-wrap">
                     <button @click="showPerfilModal = true"
                         class="px-4 py-2 text-sm font-semibold bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors">
                         Editar perfil
                     </button>
+                    <!-- Ver perfil público -->
+                    <Link :href="route('restauranteros.show', restaurantero.id)"
+                        class="px-4 py-2 text-sm font-semibold bg-guinda-50 dark:bg-guinda-950/30 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 border border-guinda-200 dark:border-guinda-800 text-guinda-700 dark:text-guinda-400 rounded-xl transition-colors flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        Ver perfil
+                    </Link>
                     <Link :href="route('restaurantero.citas.index')"
                         class="text-sm text-guinda-700 dark:text-guinda-400 hover:underline font-medium">
                         Historial completo →
@@ -177,15 +266,15 @@ const municipios = [
                 <div class="w-8 h-8 rounded-full bg-guinda-700 dark:bg-guinda-800 flex items-center justify-center text-white font-bold text-sm shrink-0">
                     {{ $page.props.auth.user?.name?.charAt(0).toUpperCase() }}
                 </div>
-                <div class="flex-1">
+                <div class="flex-1 min-w-0">
                     <p class="font-bold text-guinda-800 dark:text-guinda-300 text-sm">
                         Bienvenido, {{ $page.props.auth.user?.name?.split(' ')[0] }}
                     </p>
                     <p class="text-xs text-guinda-600 dark:text-guinda-500">
-                        Estás en modo <strong>Proveedor</strong> — aquí gestiones tu negocio y las citas de tus compradores
+                        Estás en modo <strong>Proveedor</strong> — aquí gestionas tu negocio y las citas de tus compradores
                     </p>
                 </div>
-                <div class="shrink-0 flex items-center gap-2">
+                <div class="shrink-0 flex items-center gap-2 flex-wrap">
                     <span v-if="restaurantero.aprobado"
                         class="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-full border border-emerald-200 dark:border-emerald-800">
                         ✓ Perfil aprobado
@@ -202,6 +291,50 @@ const municipios = [
                         class="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs font-bold rounded-full border border-gray-200 dark:border-gray-700">
                         Perfil incompleto
                     </span>
+                </div>
+            </div>
+
+            <!-- ── ALERTA: CITA EN LAS PRÓXIMAS 2 HORAS ─────────── -->
+            <div v-if="citaProxima2h"
+                class="flex items-center gap-3 px-5 py-4 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800/60 rounded-2xl">
+                <div class="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/40 border border-red-200 dark:border-red-800 flex items-center justify-center shrink-0">
+                    <svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold text-red-800 dark:text-red-300">
+                        ¡Cita próxima en {{ tiempoHastaCitaProxima }}!
+                    </p>
+                    <p class="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                        {{ citaProxima2h.cliente_name }} · {{ new Date(citaProxima2h.inicio).toLocaleString('es-MX', { hour: '2-digit', minute: '2-digit', weekday: 'short', day: 'numeric', month: 'short' }) }}
+                    </p>
+                </div>
+                <span class="shrink-0 px-3 py-1 bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400 text-xs font-bold rounded-full border border-red-200 dark:border-red-800 animate-pulse">
+                    ¡Prepárate!
+                </span>
+            </div>
+
+            <!-- ── NOTIFICACIONES IN-APP ──────────────────────────── -->
+            <div v-if="notificacionesVisibles.length > 0" class="space-y-2">
+                <div
+                    v-for="notif in notificacionesVisibles" :key="notif.id"
+                    class="flex items-start gap-3 px-4 py-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 rounded-xl">
+                    <div class="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center shrink-0">
+                        <svg class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-semibold text-indigo-800 dark:text-indigo-300">{{ notif.titulo }}</p>
+                        <p class="text-xs text-indigo-600 dark:text-indigo-400 mt-0.5">{{ notif.mensaje }}</p>
+                    </div>
+                    <button @click="dismissNotificacion(notif.id)"
+                        class="shrink-0 text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors p-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
                 </div>
             </div>
 
@@ -249,34 +382,58 @@ const municipios = [
                 </div>
             </div>
 
-            <!-- Alerta si perfil incompleto -->
-            <div v-if="!restaurantero.solicitado_aprobacion_at"
-                class="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl px-5 py-4 flex items-center gap-4">
-                <svg class="w-8 h-8 text-amber-500 shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
-                </svg>
-                <div class="flex-1">
-                    <p class="font-bold text-amber-800 dark:text-amber-300 text-sm">Completa tu perfil para ser visible</p>
-                    <p class="text-xs text-amber-600 dark:text-amber-500 mt-0.5">Agrega tu descripción, fotos y productos para que el admin pueda aprobarte y aparecer en el directorio.</p>
+            <!-- ── BANNER PERFIL INCOMPLETO CON PROGRESO ──────────── -->
+            <div v-if="mostrarBannerPerfil"
+                class="bg-white dark:bg-gray-900 border border-guinda-200 dark:border-guinda-900/50 rounded-2xl px-5 py-4 shadow-sm">
+                <div class="flex items-start gap-4">
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                            <p class="text-sm font-bold text-gray-900 dark:text-white">
+                                Tu perfil está al
+                                <span class="text-guinda-700 dark:text-guinda-400">{{ perfilPorcentaje }}%</span>
+                                — complétalo para mejorar tu visibilidad
+                            </p>
+                            <button @click="cerrarBannerPerfil" class="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden mb-2">
+                            <div
+                                class="h-2 rounded-full transition-all duration-500"
+                                :class="perfilPorcentaje >= 80 ? 'bg-emerald-500' : 'bg-guinda-600'"
+                                :style="{ width: perfilPorcentaje + '%' }"
+                            ></div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Falta:</span>
+                            <span
+                                v-for="campo in perfilCamposFaltantes" :key="campo"
+                                class="inline-flex items-center px-2 py-0.5 bg-guinda-50 dark:bg-guinda-950/30 text-guinda-700 dark:text-guinda-400 text-xs font-medium rounded-full border border-guinda-200 dark:border-guinda-900">
+                                {{ campo }}
+                            </span>
+                            <button @click="showPerfilModal = true"
+                                class="ml-auto shrink-0 px-3 py-1.5 bg-guinda-800 hover:bg-guinda-700 text-white text-xs font-bold rounded-xl transition-colors">
+                                Completar ahora
+                            </button>
+                        </div>
+                    </div>
                 </div>
-                <button @click="showPerfilModal = true"
-                    class="shrink-0 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white text-sm font-bold rounded-xl transition-colors">
-                    Completar ahora
-                </button>
             </div>
 
-            <!-- ── KPI CARDS ──────────────────────────────────────── -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- ── KPI CARDS (5 métricas) ────────────────────────── -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 <div v-for="kpi in kpis" :key="kpi.label"
-                    class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 flex items-center gap-4 shadow-sm">
-                    <div :class="['w-11 h-11 rounded-xl border flex items-center justify-center shrink-0', kpi.bg]">
+                    class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 flex items-center gap-3 shadow-sm">
+                    <div :class="['w-10 h-10 rounded-xl border flex items-center justify-center shrink-0', kpi.bg]">
                         <svg :class="['w-5 h-5', kpi.iconColor]" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" :d="kpi.icon" />
                         </svg>
                     </div>
-                    <div>
-                        <p class="text-xs text-gray-500 dark:text-gray-500 font-medium">{{ kpi.label }}</p>
-                        <p :class="['text-3xl font-black', kpi.valColor]">{{ kpi.value ?? 0 }}</p>
+                    <div class="min-w-0">
+                        <p class="text-xs text-gray-500 dark:text-gray-500 font-medium truncate">{{ kpi.label }}</p>
+                        <p :class="['text-2xl font-black', kpi.valColor]">{{ kpi.value ?? 0 }}</p>
                     </div>
                 </div>
             </div>
@@ -321,7 +478,7 @@ const municipios = [
                 </div>
                 <div class="divide-y divide-gray-100 dark:divide-gray-800/40">
                     <div v-for="cita in citasPendientes" :key="cita.id"
-                        class="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-amber-50/50 dark:hover:bg-amber-950/10 transition-colors">
+                        class="px-5 py-4 flex flex-col sm:flex-row sm:items-start gap-3 hover:bg-amber-50/50 dark:hover:bg-amber-950/10 transition-colors">
                         <div class="flex items-center gap-3 flex-1 min-w-0">
                             <div class="w-9 h-9 rounded-full bg-guinda-100 dark:bg-guinda-900/30 border border-guinda-200 dark:border-guinda-800 flex items-center justify-center text-guinda-700 dark:text-guinda-400 font-bold text-sm shrink-0">
                                 {{ iniciales(cita.cliente.name) }}
@@ -330,16 +487,23 @@ const municipios = [
                                 <p class="font-bold text-gray-900 dark:text-white truncate">{{ cita.cliente.name }}</p>
                                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ cita.cliente.email }}</p>
                                 <p v-if="cita.cliente.telefono && cita.cliente.telefono !== 'N/A'" class="text-xs text-gray-400 dark:text-gray-500">{{ cita.cliente.telefono }}</p>
+                                <!-- Necesidades del comprador -->
+                                <p v-if="cita.cliente.necesidades"
+                                    class="mt-1 text-xs text-guinda-700 dark:text-guinda-400 bg-guinda-50 dark:bg-guinda-950/30 border border-guinda-200 dark:border-guinda-900/40 rounded-lg px-2 py-1 line-clamp-2">
+                                    <span class="font-semibold">Busca:</span> {{ cita.cliente.necesidades }}
+                                </p>
                             </div>
                         </div>
-                        <p class="text-sm text-gray-700 dark:text-gray-300 font-medium shrink-0">{{ fmt(cita.inicio) }}</p>
-                        <div class="flex items-center gap-2 shrink-0">
-                            <button @click="accion('aceptar', cita)" :disabled="procesando"
-                                class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl">✓ Aceptar</button>
-                            <button @click="abrirReagendar(cita)" :disabled="procesando"
-                                class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white text-xs font-bold rounded-xl">Reagendar</button>
-                            <button @click="accion('rechazar', cita)" :disabled="procesando"
-                                class="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl">Rechazar</button>
+                        <div class="flex flex-col gap-2 sm:items-end shrink-0">
+                            <p class="text-sm text-gray-700 dark:text-gray-300 font-medium">{{ fmt(cita.inicio) }}</p>
+                            <div class="flex items-center gap-2">
+                                <button @click="accion('aceptar', cita)" :disabled="procesando"
+                                    class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl min-h-[36px]">✓ Aceptar</button>
+                                <button @click="abrirReagendar(cita)" :disabled="procesando"
+                                    class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white text-xs font-bold rounded-xl min-h-[36px]">Reagendar</button>
+                                <button @click="accion('rechazar', cita)" :disabled="procesando"
+                                    class="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl min-h-[36px]">Rechazar</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -363,7 +527,6 @@ const municipios = [
                     <div v-for="cita in todasLasCitas" :key="cita.id"
                         class="px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors"
                         :class="{ 'opacity-60': ['cancelada','rechazada'].includes(cita.estado) }">
-                        <!-- Comprador -->
                         <div class="flex items-center gap-3 flex-1 min-w-0">
                             <div class="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-600 dark:text-gray-400 font-bold text-xs shrink-0">
                                 {{ iniciales(cita.cliente.name) }}
@@ -373,14 +536,11 @@ const municipios = [
                                 <p class="text-xs text-gray-500 dark:text-gray-400 truncate">{{ cita.cliente.email }}</p>
                             </div>
                         </div>
-                        <!-- Fecha -->
                         <p class="text-xs text-gray-600 dark:text-gray-400 font-medium shrink-0">{{ fmt(cita.inicio) }}</p>
-                        <!-- Estado -->
                         <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border shrink-0"
                             :class="estadoConfig[cita.estado]?.class || 'bg-gray-500/15 text-gray-400'">
                             {{ estadoConfig[cita.estado]?.label || cita.estado }}
                         </span>
-                        <!-- Acciones -->
                         <div class="flex items-center gap-2 shrink-0">
                             <template v-if="cita.estado === 'pendiente'">
                                 <button @click="accion('aceptar', cita)" :disabled="procesando"
@@ -502,8 +662,8 @@ const municipios = [
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dirección</label>
-                                    <input v-model="formPerfil.direccion" type="text"
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">RFC</label>
+                                    <input v-model="formPerfil.rfc" type="text" placeholder="XXXX000000XXX"
                                         class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
                                 </div>
                                 <div>
@@ -590,7 +750,7 @@ const municipios = [
 
         <!-- Banner: invitación a ser comprador -->
         <div v-if="!$page.props.auth.user?.is_cliente"
-            class="mt-6 bg-gradient-to-r from-guinda-900/80 to-guinda-800/60 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            class="mx-4 sm:mx-6 lg:mx-8 mt-6 mb-8 max-w-7xl lg:mx-auto bg-gradient-to-r from-guinda-900/80 to-guinda-800/60 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
             <div class="text-3xl">🛒</div>
             <div class="flex-1">
                 <h3 class="font-bold text-white mb-1">¿También buscas proveedores?</h3>

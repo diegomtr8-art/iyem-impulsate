@@ -33,9 +33,10 @@ class RestauranteroPanelController extends Controller
             'notas'            => $cita->notas,
             'propuesta_inicio' => $cita->propuesta_inicio?->toISOString(),
             'cliente' => [
-                'name'     => $cita->cliente->name ?? 'N/A',
-                'email'    => $cita->cliente->email ?? 'N/A',
-                'telefono' => $cita->cliente->telefono ?? 'N/A',
+                'name'        => $cita->cliente->name ?? 'N/A',
+                'email'       => $cita->cliente->email ?? 'N/A',
+                'telefono'    => $cita->cliente->telefono ?? 'N/A',
+                'necesidades' => $cita->cliente->necesidades ?? null,
             ],
         ];
 
@@ -49,6 +50,26 @@ class RestauranteroPanelController extends Controller
             ->map($mapCita)
             ->values();
 
+        $totalConfirmadas = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'confirmada')->count();
+        $totalRechazadas  = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'rechazada')->count();
+        $totalEnEvento    = Cita::where('restaurantero_id', $restaurantero->id)->whereNotIn('estado', ['cancelada', 'rechazada'])->count();
+        $tasaAceptacion   = ($totalConfirmadas + $totalRechazadas) > 0
+            ? round(($totalConfirmadas / ($totalConfirmadas + $totalRechazadas)) * 100)
+            : null;
+
+        $citaProxima2h = Cita::where('restaurantero_id', $restaurantero->id)
+            ->whereIn('estado', ['confirmada', 'pendiente'])
+            ->whereBetween('inicio', [Carbon::now(), Carbon::now()->addHours(2)])
+            ->with('cliente')
+            ->orderBy('inicio')
+            ->first();
+
+        $notificaciones = \App\Models\Notificacion::where('user_id', $request->user()->id)
+            ->where('leida', false)
+            ->orderByDesc('created_at')
+            ->take(3)
+            ->get(['id', 'tipo', 'titulo', 'mensaje', 'cita_id', 'created_at']);
+
         return Inertia::render('Restaurantero/Panel', [
             'restaurantero'   => $restaurantero,
             'citasHoy'        => $citasHoy,
@@ -56,6 +77,14 @@ class RestauranteroPanelController extends Controller
             'citasPendientes' => $citasPendientes,
             'todasLasCitas'   => $todasLasCitas,
             'categorias'      => \App\Models\Restaurantero::$categorias,
+            'tasaAceptacion'  => $tasaAceptacion,
+            'totalEnEvento'   => $totalEnEvento,
+            'citaProxima2h'   => $citaProxima2h ? [
+                'id'           => $citaProxima2h->id,
+                'inicio'       => $citaProxima2h->inicio->toISOString(),
+                'cliente_name' => $citaProxima2h->cliente->name ?? 'Comprador',
+            ] : null,
+            'notificaciones'  => $notificaciones,
         ]);
     }
 

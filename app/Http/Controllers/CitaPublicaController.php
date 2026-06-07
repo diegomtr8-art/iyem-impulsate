@@ -229,6 +229,9 @@ class CitaPublicaController extends Controller
 
         $proveedores = Restaurantero::where('activo', true)
             ->when($evento, fn($q) => $q->where('edicion_id', $evento->id))
+            ->when($evento, fn($q) => $q->withCount(['citas as citas_evento_count' => fn($q) =>
+                $q->where('edicion_id', $evento->id)->whereNotIn('estado', ['cancelada', 'rechazada'])
+            ]))
             ->select(['id', 'nombre_restaurante', 'categoria', 'descripcion', 'logo_path', 'municipio', 'productos_top'])
             ->get()
             ->sortByDesc(function ($p) use ($keywords) {
@@ -245,6 +248,12 @@ class CitaPublicaController extends Controller
             ->take(20)
             ->values();
 
+        $notificaciones = \App\Models\Notificacion::where('user_id', $request->user()->id)
+            ->where('leida', false)
+            ->orderByDesc('created_at')
+            ->take(3)
+            ->get(['id', 'tipo', 'titulo', 'mensaje', 'cita_id', 'created_at']);
+
         return Inertia::render('User/Dashboard', [
             'citas'              => $citas,
             'citasCount'         => $citasCount,
@@ -252,6 +261,19 @@ class CitaPublicaController extends Controller
             'edicionesHistorial' => $edicionesHistorial,
             'proveedores'        => $proveedores,
             'tieneKeywords'      => $keywords->isNotEmpty(),
+            'notificaciones'     => $notificaciones,
         ]);
+    }
+
+    public function actualizarNotas(Request $request, Cita $cita)
+    {
+        if ($cita->cliente_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $request->validate(['notas' => 'nullable|string|max:1000']);
+        $cita->update(['notas' => $request->notas]);
+
+        return back()->with('success', 'Notas actualizadas.');
     }
 }
