@@ -5,6 +5,7 @@ import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import FullCalendar from '@fullcalendar/vue3';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
+import esLocale from '@fullcalendar/core/locales/es';
 
 const props = defineProps({
     restaurantero: Object,
@@ -34,7 +35,7 @@ const estadoConfig = {
 const calendarOptions = ref({
     plugins: [timeGridPlugin, dayGridPlugin],
     initialView: 'timeGridWeek',
-    locale: 'es',
+    locale: esLocale,
     headerToolbar: { left: 'prev,next today', center: 'title', right: 'timeGridWeek,dayGridMonth' },
     slotMinTime: '09:00:00', slotMaxTime: '16:00:00',
     hiddenDays: [0, 6], slotDuration: '00:30:00', height: 380,

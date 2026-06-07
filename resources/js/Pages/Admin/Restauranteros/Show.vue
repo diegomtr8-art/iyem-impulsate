@@ -6,6 +6,7 @@ import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
+import esLocale from '@fullcalendar/core/locales/es';
 
 const props = defineProps({
     restaurantero: Object,
@@ -75,7 +76,7 @@ const estadoClases = {
 const calendarOptions = ref({
     plugins: [dayGridPlugin, timeGridPlugin, interactionPlugin],
     initialView: 'timeGridWeek',
-    locale: 'es',
+    locale: esLocale,
     headerToolbar: {
         left: 'prev,next today',
         center: 'title',

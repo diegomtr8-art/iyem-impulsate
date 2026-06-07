@@ -33,11 +33,24 @@ class RecordatorioCita2h implements ShouldQueue
         Notificacion::crear(
             $this->cita->cliente_id,
             'recordatorio_2h',
-            '🔔 Cita en 2 horas',
+            'Cita en 2 horas',
             "En 2 horas tienes cita con {$this->cita->restaurantero->nombre_restaurante} a las {$this->cita->inicio->format('H:i')}.",
             $this->cita->id
         );
 
         $this->cita->update(['recordatorio_2h_enviado' => true]);
+
+        // Notificar a todos los admins
+        $admins = \App\Models\User::role('admin')->get();
+        foreach ($admins as $admin) {
+            Notificacion::crear(
+                $admin->id,
+                'recordatorio_2h',
+                '[Admin] Cita en 2h: ' . ($this->cita->restaurantero->nombre_restaurante ?? '—'),
+                ($this->cita->cliente->name ?? '—') . ' → ' . ($this->cita->restaurantero->nombre_restaurante ?? '—')
+                . ' · ' . $this->cita->inicio->format('d/m H:i') . 'h',
+                $this->cita->id
+            );
+        }
     }
 }

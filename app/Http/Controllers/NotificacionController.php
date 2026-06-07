@@ -58,7 +58,7 @@ class NotificacionController extends Controller
                     Notificacion::crear(
                         $admin->id,
                         'recordatorio_30m',
-                        "⏰ Cita en ~30 min: {$hora}",
+                        "[Admin] Cita en ~30 min: {$hora}",
                         "{$comprador} con {$proveedor} a las {$hora}.",
                         $cita->id
                     );
@@ -88,7 +88,7 @@ class NotificacionController extends Controller
                     Notificacion::crear(
                         $user->id,
                         'recordatorio_30m',
-                        "⏰ Cita en ~30 min a las {$hora}",
+                        "Cita en ~30 min a las {$hora}",
                         "Con {$cita->cliente?->name} a las {$hora}.",
                         $cita->id
                     );

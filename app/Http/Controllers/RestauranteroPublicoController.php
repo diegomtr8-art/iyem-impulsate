@@ -50,7 +50,9 @@ class RestauranteroPublicoController extends Controller
 
     public function show(Restaurantero $restaurantero, Request $request)
     {
-        abort_if(!$restaurantero->activo, 404);
+        $esDueno = auth()->check() && auth()->id() === $restaurantero->user_id;
+        $esAdmin = auth()->check() && auth()->user()->hasRole('admin');
+        abort_if(!$restaurantero->activo && !$esDueno && !$esAdmin, 404);
 
         // Track page visit
         $ua = $request->userAgent() ?? '';

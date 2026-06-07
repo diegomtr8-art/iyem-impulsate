@@ -21,9 +21,8 @@ class RecordatorioCita extends Mailable
 
     public function envelope(): Envelope
     {
-        $emoji = $this->tipo === '2h' ? '🔔' : '⏰';
         $tiempo = $this->tipo === '2h' ? 'en 2 horas' : 'mañana';
-        return new Envelope(subject: "{$emoji} Recordatorio: tienes una cita {$tiempo} — Impulsate");
+        return new Envelope(subject: "Recordatorio: tienes una cita {$tiempo} — Impulsate");
     }
 
     public function content(): Content

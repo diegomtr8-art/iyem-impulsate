@@ -9,4 +9,4 @@ Artisan::command('inspire', function () {
 })->purpose('Display an inspiring quote');
 
 // Recordatorios cada 15 minutos
-Schedule::command('citas:enviar-recordatorios')->everyFifteenMinutes();
+Schedule::command('citas:enviar-recordatorios')->everyFiveMinutes();

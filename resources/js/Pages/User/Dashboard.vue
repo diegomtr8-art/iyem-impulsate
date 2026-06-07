@@ -5,6 +5,7 @@ import { ref, computed, onMounted } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
+import esLocale from '@fullcalendar/core/locales/es';
 
 const props = defineProps({
     citas: Array,
@@ -76,7 +77,7 @@ const citasActivas = computed(() =>
 const calendarOptions = computed(() => ({
     plugins: [dayGridPlugin, timeGridPlugin],
     initialView: 'dayGridMonth',
-    locale: 'es',
+    locale: esLocale,
     headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
     initialDate: proximaCita.value ? proximaCita.value.inicio : undefined,
     events: calendarEvents.value,
