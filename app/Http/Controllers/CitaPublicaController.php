@@ -94,8 +94,9 @@ class CitaPublicaController extends Controller
             return back()->withErrors(['servicio' => 'Este restaurantero no tiene servicios disponibles.']);
         }
 
-        $inicio = \Carbon\Carbon::parse($request->fecha . ' ' . $request->hora);
-        $fin    = $inicio->copy()->addMinutes($servicio->duracion_minutos ?? 30);
+        $inicio   = \Carbon\Carbon::parse($request->fecha . ' ' . $request->hora);
+        $duracion = $evento->tiempo_entre_citas_minutos ?? $servicio->duracion_minutos ?? 30;
+        $fin      = $inicio->copy()->addMinutes($duracion);
 
         // Colchón de 10 minutos: el bloque que debe quedar libre alrededor de la nueva cita
         $buffer = 10;
@@ -302,6 +303,36 @@ class CitaPublicaController extends Controller
             ->take(3)
             ->get(['id', 'tipo', 'titulo', 'mensaje', 'cita_id', 'created_at']);
 
+        $todosLosEventos = Evento::orderByDesc('fecha_hora_inicio')->get()
+            ->map(function ($ev) use ($request) {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $ev->id)
+                    ->where('user_id', $request->user()->id)
+                    ->get();
+                return [
+                    'id'                            => $ev->id,
+                    'nombre'                        => $ev->nombre,
+                    'sector_economico'              => $ev->sector_economico,
+                    'activa'                        => $ev->activa,
+                    'fecha_hora_inicio'             => $ev->fecha_hora_inicio?->toISOString(),
+                    'fecha_hora_fin'                => $ev->fecha_hora_fin?->toISOString(),
+                    'fecha_hora_inicio_proveedores' => $ev->fecha_hora_inicio_proveedores?->toISOString(),
+                    'fecha_hora_fin_proveedores'    => $ev->fecha_hora_fin_proveedores?->toISOString(),
+                    'fecha_hora_inicio_compradores' => $ev->fecha_hora_inicio_compradores?->toISOString(),
+                    'fecha_hora_fin_compradores'    => $ev->fecha_hora_fin_compradores?->toISOString(),
+                    'max_citas_por_comprador'       => $ev->max_citas_por_comprador,
+                    'tiempo_entre_citas_minutos'    => $ev->tiempo_entre_citas_minutos,
+                    'registro_proveedor_abierto'    => $ev->registroProveedoresAbierto(),
+                    'registro_comprador_abierto'    => $ev->registroCompradoresAbierto(),
+                    'segundos_hasta_proveedores'    => $ev->segundosHastaProveedores(),
+                    'segundos_hasta_compradores'    => $ev->segundosHastaCompradores(),
+                    'mi_registro' => [
+                        'comprador' => $registro->firstWhere('tipo', 'comprador'),
+                        'proveedor' => $registro->firstWhere('tipo', 'proveedor'),
+                    ],
+                ];
+            });
+
         return Inertia::render('User/Dashboard', [
             'citas'              => $citas,
             'citasCount'         => $citasCount,
@@ -311,6 +342,7 @@ class CitaPublicaController extends Controller
             'compradorAprobado'  => $compradorAprobado,
             'tieneKeywords'      => $keywords->isNotEmpty(),
             'notificaciones'     => $notificaciones,
+            'eventos'            => $todosLosEventos,
         ]);
     }
 

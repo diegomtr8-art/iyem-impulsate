@@ -38,24 +38,44 @@ class ProveedorPerfilController extends Controller
         }
 
         $request->validate([
-            'nombre_restaurante' => ['required', 'string', 'max:200'],
-            'descripcion'        => ['nullable', 'string', 'max:2000'],
-            'telefono'           => ['nullable', 'string', 'max:20'],
-            'direccion'          => ['nullable', 'string', 'max:300'],
-            'municipio'          => ['nullable', 'string', 'max:100'],
-            'rfc'                => ['nullable', 'string', 'max:13'],
-            'sitio_web'          => ['nullable', 'url', 'max:200'],
-            'foto'               => ['nullable', 'image', 'max:4096'],
-            'productos'          => ['nullable', 'array', 'max:5'],
-            'productos.*.nombre' => ['nullable', 'string', 'max:200'],
+            'nombre_restaurante'      => ['required', 'string', 'max:200'],
+            'razon_social'            => ['nullable', 'string', 'max:200'],
+            'nombre_representante'    => ['nullable', 'string', 'max:200'],
+            'curp_representante'      => ['nullable', 'string', 'max:18'],
+            'fecha_inicio_operaciones'=> ['nullable', 'date'],
+            'num_empleados'           => ['nullable', 'integer', 'min:0'],
+            'domicilio_en_yucatan'    => ['nullable', 'boolean'],
+            'descripcion'             => ['nullable', 'string', 'max:2000'],
+            'mercado_meta'            => ['nullable', 'string', 'max:1000'],
+            'tiempo_vida_anaquel'     => ['nullable', 'string', 'max:500'],
+            'requisitos_alimentos'    => ['nullable', 'array'],
+            'apoyo_requisitos'        => ['nullable', 'array'],
+            'requiere_refrigeracion'  => ['nullable', 'boolean'],
+            'requiere_congelacion'    => ['nullable', 'boolean'],
+            'telefono'                => ['nullable', 'string', 'max:20'],
+            'direccion'               => ['nullable', 'string', 'max:300'],
+            'municipio'               => ['nullable', 'string', 'max:100'],
+            'rfc'                     => ['nullable', 'string', 'max:13'],
+            'sitio_web'               => ['nullable', 'url', 'max:200'],
+            'foto'                    => ['nullable', 'image', 'max:4096'],
+            'productos'               => ['nullable', 'array', 'max:5'],
+            'productos.*.nombre'      => ['nullable', 'string', 'max:200'],
             'productos.*.descripcion' => ['nullable', 'string', 'max:500'],
-            'categorias_json'    => ['nullable', 'array'],
+            'categorias_json'         => ['nullable', 'array'],
         ]);
 
         $data = $request->only([
-            'nombre_restaurante', 'descripcion', 'telefono',
-            'direccion', 'municipio', 'rfc', 'sitio_web',
+            'nombre_restaurante', 'razon_social', 'nombre_representante',
+            'curp_representante', 'fecha_inicio_operaciones', 'num_empleados',
+            'mercado_meta', 'tiempo_vida_anaquel',
+            'descripcion', 'telefono', 'direccion', 'municipio', 'rfc', 'sitio_web',
         ]);
+
+        $data['domicilio_en_yucatan']   = filter_var($request->domicilio_en_yucatan, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $data['requiere_refrigeracion'] = filter_var($request->requiere_refrigeracion, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $data['requiere_congelacion']   = filter_var($request->requiere_congelacion, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $data['requisitos_alimentos']   = $request->requisitos_alimentos ?? [];
+        $data['apoyo_requisitos']       = $request->apoyo_requisitos ?? [];
 
         if ($request->hasFile('foto')) {
             if ($restaurantero->logo_path) {

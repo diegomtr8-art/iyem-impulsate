@@ -5,8 +5,11 @@ import InputError from '@/Components/InputError.vue';
 defineProps({ user: Object });
 
 const form = useForm({
-    telefono: '',
-    curp: '',
+    telefono:       '',
+    curp:           '',
+    rfc:            '',
+    municipio:      '',
+    nombre_empresa: '',
 });
 
 const submit = () => {
@@ -48,6 +51,37 @@ const submit = () => {
                             class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 transition-colors uppercase"
                             placeholder="XXXX000000XXXXXXXX" style="text-transform:uppercase" />
                         <InputError class="mt-1.5" :message="form.errors.curp" />
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            RFC <span class="text-gray-400 font-normal">(opcional)</span>
+                        </label>
+                        <input v-model="form.rfc" type="text" maxlength="13"
+                            class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 transition-colors uppercase"
+                            placeholder="XXXX000000XXX"
+                            @input="form.rfc = form.rfc.replace(/[^a-zA-ZñÑ&0-9]/g,'').toUpperCase().slice(0,13)" />
+                        <InputError class="mt-1.5" :message="form.errors.rfc" />
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Municipio <span class="text-gray-400 font-normal">(opcional)</span>
+                        </label>
+                        <input v-model="form.municipio" type="text" maxlength="100"
+                            class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 transition-colors"
+                            placeholder="Mérida" />
+                        <InputError class="mt-1.5" :message="form.errors.municipio" />
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Nombre de empresa <span class="text-gray-400 font-normal">(opcional)</span>
+                        </label>
+                        <input v-model="form.nombre_empresa" type="text" maxlength="200"
+                            class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 transition-colors"
+                            placeholder="Mi Empresa S.A. de C.V." />
+                        <InputError class="mt-1.5" :message="form.errors.nombre_empresa" />
                     </div>
 
                     <button type="submit" :disabled="form.processing"

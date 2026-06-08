@@ -21,13 +21,19 @@ class CompletarPerfilController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'telefono' => ['required', 'string', 'max:20'],
-            'curp'     => ['nullable', 'string', 'size:18'],
+            'telefono'       => ['required', 'string', 'max:20'],
+            'curp'           => ['nullable', 'string', 'max:18'],
+            'rfc'            => ['nullable', 'string', 'max:13'],
+            'municipio'      => ['nullable', 'string', 'max:100'],
+            'nombre_empresa' => ['nullable', 'string', 'max:200'],
         ]);
 
         $request->user()->update([
             'telefono'        => $request->telefono,
-            'curp'            => $request->curp,
+            'curp'            => $request->curp ? strtoupper($request->curp) : null,
+            'rfc'             => $request->rfc ? strtoupper($request->rfc) : null,
+            'municipio'       => $request->municipio,
+            'nombre_empresa'  => $request->nombre_empresa,
             'perfil_completo' => true,
         ]);
 
@@ -38,17 +44,25 @@ class CompletarPerfilController extends Controller
     public function actualizarComprador(Request $request)
     {
         $request->validate([
-            'name'       => ['required', 'string', 'max:255'],
-            'telefono'   => ['nullable', 'string', 'max:20'],
-            'sitio_web'  => ['nullable', 'url', 'max:200'],
-            'necesidades'=> ['nullable', 'string', 'max:2000'],
+            'name'          => ['required', 'string', 'max:255'],
+            'telefono'      => ['nullable', 'string', 'max:20'],
+            'curp'          => ['nullable', 'string', 'max:18'],
+            'rfc'           => ['nullable', 'string', 'max:13'],
+            'municipio'     => ['nullable', 'string', 'max:100'],
+            'nombre_empresa'=> ['nullable', 'string', 'max:200'],
+            'sitio_web'     => ['nullable', 'url', 'max:200'],
+            'necesidades'   => ['nullable', 'string', 'max:2000'],
         ]);
 
         $request->user()->update([
-            'name'        => $request->name,
-            'telefono'    => $request->telefono,
-            'sitio_web'   => $request->sitio_web,
-            'necesidades' => $request->necesidades,
+            'name'          => $request->name,
+            'telefono'      => $request->telefono,
+            'curp'          => $request->curp ? strtoupper($request->curp) : null,
+            'rfc'           => $request->rfc ? strtoupper($request->rfc) : null,
+            'municipio'     => $request->municipio,
+            'nombre_empresa'=> $request->nombre_empresa,
+            'sitio_web'     => $request->sitio_web,
+            'necesidades'   => $request->necesidades,
         ]);
 
         return back()->with('success', 'Perfil actualizado correctamente.');

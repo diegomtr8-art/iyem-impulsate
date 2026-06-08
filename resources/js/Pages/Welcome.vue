@@ -5,7 +5,6 @@ import { usePage } from '@inertiajs/vue3';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 
 const props = defineProps({
-    restauranteros: Array,
     canLogin: Boolean,
     canRegister: Boolean,
 });
@@ -17,7 +16,6 @@ const mobileMenuOpen = ref(false);
 const navSolido = ref(false);
 const statsVisible = ref(false);
 
-const countProveedores = ref(0);
 const countCitas = ref(0);
 const countPorciento = ref(0);
 
@@ -26,19 +24,16 @@ let scrollHandler = null;
 function runCountUp() {
     if (statsVisible.value) return;
     statsVisible.value = true;
-    const totalP = props.restauranteros?.length || 47;
     const duration = 1800;
     const steps = 60;
     let step = 0;
     const timer = setInterval(() => {
         step++;
         const ease = 1 - Math.pow(2, -10 * (step / steps));
-        countProveedores.value = Math.round(totalP * ease);
         countCitas.value = Math.round(6 * ease);
         countPorciento.value = Math.round(100 * ease);
         if (step >= steps) {
             clearInterval(timer);
-            countProveedores.value = totalP;
             countCitas.value = 6;
             countPorciento.value = 100;
         }
@@ -63,8 +58,6 @@ onMounted(() => {
 onUnmounted(() => {
     if (scrollHandler) window.removeEventListener('scroll', scrollHandler);
 });
-
-const proveedoresDestacados = computed(() => (props.restauranteros || []).slice(0, 6));
 
 const pasos = [
     {
@@ -125,12 +118,6 @@ const queEsCards = [
                     </Link>
 
                     <div class="hidden md:flex items-center gap-6">
-                        <Link :href="route('restauranteros.index')"
-                              :class="['text-sm font-medium transition-colors',
-                                  navSolido ? 'text-gray-600 dark:text-gray-300 hover:text-guinda-600 dark:hover:text-guinda-400'
-                                            : 'text-guinda-800 dark:text-white/80 hover:text-guinda-600 dark:hover:text-white']">
-                            Proveedores
-                        </Link>
                         <a href="#como-funciona"
                            :class="['text-sm font-medium transition-colors',
                                navSolido ? 'text-gray-600 dark:text-gray-300 hover:text-guinda-600 dark:hover:text-guinda-400'
@@ -183,7 +170,6 @@ const queEsCards = [
                 </div>
 
                 <div v-if="mobileMenuOpen" class="md:hidden bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 py-3 space-y-1">
-                    <Link :href="route('restauranteros.index')" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Proveedores</Link>
                     <a href="#como-funciona" @click="mobileMenuOpen=false" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Cómo funciona</a>
                     <a href="#ubicacion" @click="mobileMenuOpen=false" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Contacto</a>
                     <div class="pt-3 px-4 flex flex-col gap-2 border-t border-gray-100 dark:border-gray-800 mt-2">
@@ -266,13 +252,9 @@ const queEsCards = [
                 </p>
 
                 <div class="hero-ctas flex flex-col sm:flex-row items-center justify-center gap-4">
-                    <Link :href="route('restauranteros.index')"
-                          class="px-8 py-3.5 bg-guinda-700 hover:bg-guinda-600 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-guinda-900/25 hover:-translate-y-0.5 text-sm w-full sm:w-auto text-center">
-                        Explorar Proveedores
-                    </Link>
                     <Link v-if="canRegister" :href="route('register')"
-                          class="px-8 py-3.5 border border-guinda-300/60 dark:border-white/20 hover:border-guinda-500 dark:hover:border-white/40 text-guinda-700 dark:text-white/85 hover:bg-guinda-50/80 dark:hover:bg-white/5 font-semibold rounded-xl transition-all duration-200 hover:-translate-y-0.5 text-sm w-full sm:w-auto text-center">
-                        Registrarse gratis
+                          class="px-8 py-3.5 bg-guinda-700 hover:bg-guinda-600 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-guinda-900/25 hover:-translate-y-0.5 text-sm w-full sm:w-auto text-center">
+                        Comenzar ahora — Es gratuito
                     </Link>
                 </div>
             </div>
@@ -288,11 +270,7 @@ const queEsCards = [
         <!-- ═══════════════════════════ STATS ═══════════════════════════ -->
         <section class="bg-guinda-900 dark:bg-guinda-950 py-16">
             <div data-stats="true" class="fade-up max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-10 sm:gap-0 text-center text-white">
-                    <div class="sm:border-r sm:border-guinda-700/40">
-                        <div class="text-5xl sm:text-6xl font-black mb-2 tabular-nums">{{ countProveedores }}+</div>
-                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase">Proveedores activos</div>
-                    </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-10 sm:gap-0 text-center text-white">
                     <div class="sm:border-r sm:border-guinda-700/40">
                         <div class="text-5xl sm:text-6xl font-black mb-2 tabular-nums">{{ countCitas }}</div>
                         <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase">Número de eventos realizados</div>
@@ -433,7 +411,7 @@ const queEsCards = [
                         <h3 class="text-xl font-black text-gray-900 dark:text-white mb-2">Soy Comprador</h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Busco proveedores de calidad para mi empresa o proyecto.</p>
                         <ul class="space-y-3 mb-8">
-                            <li v-for="item in ['Encuentra proveedores verificados por el IYEM', 'Agenda citas sin costo ni intermediarios', 'Conecta presencialmente en Mérida, Yucatán', 'Descubre nuevas oportunidades de negocio']"
+                            <li v-for="item in ['Conecta con empresas verificadas por el IYEM', 'Agenda citas sin costo ni intermediarios', 'Conecta presencialmente en Mérida, Yucatán', 'Descubre nuevas oportunidades de negocio']"
                                 :key="item" class="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
                                 <svg class="w-5 h-5 text-guinda-600 dark:text-guinda-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -441,9 +419,9 @@ const queEsCards = [
                                 {{ item }}
                             </li>
                         </ul>
-                        <Link :href="route('restauranteros.index')"
+                        <Link v-if="canRegister" :href="route('register')"
                               class="inline-flex items-center gap-2 bg-guinda-700 hover:bg-guinda-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all duration-200 hover:-translate-y-0.5">
-                            Explorar proveedores
+                            Registrarse gratis
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
                             </svg>
@@ -480,67 +458,6 @@ const queEsCards = [
             </div>
         </section>
 
-        <!-- ═══════════════════════════ PROVEEDORES DESTACADOS ═══════════════════════════ -->
-        <section class="py-24">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center mb-16 fade-up">
-                    <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">Proveedores Destacados</h2>
-                    <p class="text-gray-500 dark:text-gray-400 max-w-xl mx-auto">Perfiles verificados registrados en el evento activo del programa Impúlsate.</p>
-                </div>
-
-                <div v-if="proveedoresDestacados.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <Link v-for="(r, i) in proveedoresDestacados" :key="r.id"
-                        :href="route('restauranteros.show', r.id)"
-                        class="fade-up bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-500/40 hover:-translate-y-1 hover:shadow-xl hover:shadow-guinda-500/5 transition-all duration-300 group"
-                        :style="`transition-delay: ${i * 80}ms`">
-                        <div class="h-44 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-800 dark:to-gray-900 flex items-center justify-center relative overflow-hidden">
-                            <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
-                                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                            <svg v-else class="w-16 h-16 text-gray-300 dark:text-gray-700" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016 2.993 2.993 0 002.25-1.016 3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
-                            </svg>
-                            <div v-if="r.municipio" class="absolute top-3 left-3 flex items-center gap-1 bg-white/90 dark:bg-gray-950/80 text-guinda-700 dark:text-guinda-400 text-xs font-medium px-2.5 py-1 rounded-full backdrop-blur">
-                                <svg class="w-3 h-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                                </svg>
-                                {{ r.municipio }}
-                            </div>
-                        </div>
-                        <div class="p-5">
-                            <h3 class="font-bold text-gray-900 dark:text-white text-base mb-2 leading-snug">{{ r.nombre_restaurante }}</h3>
-                            <p v-if="r.descripcion" class="text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-2 mb-3">{{ r.descripcion }}</p>
-                            <div class="flex items-center justify-between mt-2">
-                                <span class="text-xs text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{{ r.citas_count || 0 }} citas</span>
-                                <span class="text-guinda-600 dark:text-guinda-400 text-sm font-medium group-hover:text-guinda-500 dark:group-hover:text-guinda-300 transition-colors flex items-center gap-1">
-                                    Ver perfil
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </span>
-                            </div>
-                        </div>
-                    </Link>
-                </div>
-
-                <div v-else class="text-center py-16 fade-up">
-                    <svg class="w-16 h-16 mx-auto mb-4 text-gray-200 dark:text-gray-800" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016 2.993 2.993 0 002.25-1.016 3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
-                    </svg>
-                    <p class="text-lg font-medium text-gray-400 dark:text-gray-600">Aún no hay proveedores registrados.</p>
-                </div>
-
-                <div class="text-center mt-12 fade-up">
-                    <Link :href="route('restauranteros.index')"
-                          class="inline-flex items-center gap-2 border border-guinda-500/30 hover:border-guinda-500 text-guinda-600 dark:text-guinda-400 hover:text-guinda-500 dark:hover:text-guinda-300 font-semibold px-6 py-3 rounded-xl transition-all duration-200 hover:-translate-y-0.5">
-                        Ver todos los proveedores
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-                        </svg>
-                    </Link>
-                </div>
-            </div>
-        </section>
-
         <!-- ═══════════════════════════ CTA FINAL ═══════════════════════════ -->
         <section class="py-24 bg-guinda-900 dark:bg-guinda-950">
             <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center fade-up">
@@ -559,10 +476,6 @@ const queEsCards = [
                     <Link v-if="canRegister" :href="route('register')"
                           class="px-8 py-4 bg-white hover:bg-guinda-50 text-guinda-800 font-bold rounded-xl transition-all duration-200 shadow-lg shadow-black/20 hover:-translate-y-0.5 text-sm w-full sm:w-auto text-center">
                         Comenzar ahora — Es gratuito
-                    </Link>
-                    <Link :href="route('restauranteros.index')"
-                          class="px-8 py-4 border border-guinda-600/60 hover:border-white/40 text-guinda-200 hover:text-white font-semibold rounded-xl transition-all duration-200 hover:-translate-y-0.5 text-sm w-full sm:w-auto text-center">
-                        Explorar proveedores
                     </Link>
                 </div>
             </div>

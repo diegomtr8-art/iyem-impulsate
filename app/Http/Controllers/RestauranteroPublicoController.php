@@ -137,7 +137,7 @@ class RestauranteroPublicoController extends Controller
         $evento = Evento::activo();
 
         return Inertia::render('Restauranteros/Show', [
-            'restaurantero' => $restaurantero,
+            'restaurantero' => $restaurantero->makeHidden(['telefono', 'rfc', 'direccion']),
             'citasCount'    => $citasCount,
             'citasOcupadas' => $citasOcupadas,
             'evento'        => $evento ? [
@@ -146,6 +146,8 @@ class RestauranteroPublicoController extends Controller
                 'fecha_hora_fin'                => $evento->fecha_hora_fin?->format('Y-m-d'),
                 'fecha_inicio_agenda'           => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
                 'fecha_fin_agenda'              => $evento->fecha_hora_fin?->format('Y-m-d'),
+                'tiempo_entre_citas_minutos'    => $evento->tiempo_entre_citas_minutos ?? 30,
+                'max_citas_por_comprador'       => $evento->max_citas_por_comprador ?? 3,
             ] : null,
         ]);
     }

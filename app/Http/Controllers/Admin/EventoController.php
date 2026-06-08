@@ -37,35 +37,66 @@ class EventoController extends Controller
         ]);
     }
 
+    private function validationRules(): array
+    {
+        return [
+            'nombre'                          => 'required|string|max:200',
+            'sector_economico'                => 'nullable|string|max:100',
+            'descripcion'                     => 'nullable|string|max:1000',
+            'fecha_hora_inicio'               => 'nullable|date',
+            'fecha_hora_fin'                  => 'nullable|date|after_or_equal:fecha_hora_inicio',
+            'fecha_hora_inicio_proveedores'   => 'nullable|date',
+            'fecha_hora_fin_proveedores'      => 'nullable|date|after_or_equal:fecha_hora_inicio_proveedores',
+            'fecha_hora_inicio_compradores'   => 'nullable|date|after_or_equal:fecha_hora_inicio_proveedores',
+            'fecha_hora_fin_compradores'      => 'nullable|date|after_or_equal:fecha_hora_inicio_compradores',
+            'max_citas_por_comprador'         => 'nullable|integer|min:1|max:50',
+            'tiempo_entre_citas_minutos'      => [
+                'nullable', 'integer', 'min:5', 'max:120',
+                function ($attribute, $value, $fail) {
+                    if ($value !== null && $value % 5 !== 0) {
+                        $fail('El tiempo entre citas debe ser múltiplo de 5 (5, 10, 15, 20, 25, 30...).');
+                    }
+                },
+            ],
+        ];
+    }
+
+    private function eventoFields(Request $request): array
+    {
+        return [
+            'nombre'                         => $request->nombre,
+            'sector_economico'               => $request->sector_economico,
+            'descripcion'                    => $request->descripcion,
+            'fecha_hora_inicio'              => $request->fecha_hora_inicio,
+            'fecha_hora_fin'                 => $request->fecha_hora_fin,
+            'fecha_hora_inicio_proveedores'  => $request->fecha_hora_inicio_proveedores,
+            'fecha_hora_fin_proveedores'     => $request->fecha_hora_fin_proveedores,
+            'fecha_hora_inicio_compradores'  => $request->fecha_hora_inicio_compradores,
+            'fecha_hora_fin_compradores'     => $request->fecha_hora_fin_compradores,
+            'max_citas_por_comprador'        => $request->max_citas_por_comprador ?? 3,
+            'tiempo_entre_citas_minutos'     => $request->tiempo_entre_citas_minutos ?? 30,
+        ];
+    }
+
     public function store(Request $request)
     {
-        $request->validate([
-            'nombre'                         => 'required|string|max:200',
-            'sector_economico'               => 'nullable|string|max:100',
-            'descripcion'                    => 'nullable|string|max:1000',
-            'fecha_hora_inicio'              => 'nullable|date',
-            'fecha_hora_fin'                 => 'nullable|date|after_or_equal:fecha_hora_inicio',
-            'fecha_hora_inicio_proveedores'  => 'nullable|date',
-            'fecha_hora_inicio_compradores'  => 'nullable|date|after_or_equal:fecha_hora_inicio_proveedores',
-            'max_citas_por_comprador'        => 'nullable|integer|min:1|max:50',
-            'tiempo_entre_citas_minutos'     => 'nullable|integer|min:5|max:120',
-        ]);
+        $request->validate($this->validationRules());
 
-        Evento::create([
-            'nombre'                        => $request->nombre,
-            'sector_economico'              => $request->sector_economico,
-            'descripcion'                   => $request->descripcion,
-            'fecha_hora_inicio'             => $request->fecha_hora_inicio,
-            'fecha_hora_fin'                => $request->fecha_hora_fin,
-            'fecha_hora_inicio_proveedores' => $request->fecha_hora_inicio_proveedores,
-            'fecha_hora_inicio_compradores' => $request->fecha_hora_inicio_compradores,
-            'max_citas_por_comprador'       => $request->max_citas_por_comprador ?? 3,
-            'tiempo_entre_citas_minutos'    => $request->tiempo_entre_citas_minutos ?? 30,
-            'fecha_inicio'                  => $request->fecha_hora_inicio ?? now()->toDateString(),
-            'activa'                        => false,
-        ]);
+        Evento::create(array_merge($this->eventoFields($request), [
+            'fecha_inicio' => $request->fecha_hora_inicio ?? now()->toDateString(),
+            'activa'       => false,
+        ]));
 
         return back()->with('success', 'Evento creado. Actívalo cuando estés listo.');
+    }
+
+    public function update(Request $request, Evento $evento)
+    {
+        $request->validate($this->validationRules());
+
+        $evento->update($this->eventoFields($request));
+
+        return back()->with('success', 'Evento actualizado correctamente.');
     }
 
     public function archivar(Evento $evento)
@@ -90,6 +121,19 @@ class EventoController extends Controller
             'activa'      => true,
             'fecha_corte' => null,
         ]);
+
+        // Sync service duration for all approved providers in this event
+        if ($evento->tiempo_entre_citas_minutos) {
+            \App\Models\Servicio::whereIn('restaurantero_id',
+                \App\Models\Restaurantero::whereExists(function ($q) use ($evento) {
+                    $q->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'restauranteros.user_id')
+                        ->where('evento_usuario.evento_id', $evento->id)
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                })->pluck('id')
+            )->update(['duracion_minutos' => $evento->tiempo_entre_citas_minutos]);
+        }
 
         return back()->with('success', 'Evento "' . $evento->nombre . '" activado.');
     }

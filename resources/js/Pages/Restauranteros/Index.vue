@@ -13,6 +13,12 @@ const props = defineProps({
 
 const page = usePage();
 const auth = computed(() => page.props.auth);
+const eventoActivo = computed(() => page.props.eventoActivo);
+const tituloPagina = computed(() =>
+    eventoActivo.value
+        ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
+        : 'Proveedores'
+);
 
 const search = ref(props.filters?.search || '');
 const categoriaActiva = ref(props.filters?.categoria || '');
@@ -76,7 +82,7 @@ const seleccionarCategoria = (cat) => {
             <!-- Header + Search -->
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10">
                 <div>
-                    <h1 class="text-3xl font-black text-gray-900 dark:text-white">Proveedores</h1>
+                    <h1 class="text-3xl font-black text-gray-900 dark:text-white">{{ tituloPagina }}</h1>
                     <p class="text-gray-500 dark:text-gray-400 mt-1">Explora y agenda citas con los mejores proveedores del sector.</p>
                 </div>
                 <div class="w-full sm:w-72">

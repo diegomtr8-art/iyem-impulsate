@@ -22,6 +22,11 @@ class EventoRegistroController extends Controller
             return back()->withErrors(['error' => 'Este evento ya ha finalizado.']);
         }
 
+        $finCompradores = $evento->fecha_hora_fin_compradores ?? $evento->fecha_hora_fin;
+        if ($finCompradores && now()->gt($finCompradores)) {
+            return back()->withErrors(['error' => 'El período de registro de compradores ya cerró.']);
+        }
+
         $registro = DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
             ->where('user_id', $user->id)
@@ -35,7 +40,6 @@ class EventoRegistroController extends Controller
             if ($registro->estado === 'aprobado') {
                 return back()->with('success', 'Ya estás aprobado en este evento como comprador.');
             }
-            // Si fue rechazado, se permite re-solicitar
             DB::table('evento_usuario')
                 ->where('evento_id', $evento->id)
                 ->where('user_id', $user->id)
@@ -52,7 +56,6 @@ class EventoRegistroController extends Controller
             ]);
         }
 
-        // Notificar al admin
         $admin = User::role('admin')->first();
         if ($admin) {
             Notificacion::crear(
@@ -74,7 +77,6 @@ class EventoRegistroController extends Controller
             return back()->withErrors(['error' => 'Necesitas el rol de proveedor para registrarte.']);
         }
 
-        // Verificar que el restaurantero esté aprobado globalmente
         $restaurantero = $user->restaurantero;
         if (!$restaurantero || !$restaurantero->aprobado) {
             return back()->withErrors(['error' => 'Tu perfil de proveedor aún no ha sido aprobado por el administrador. Espera la aprobación antes de registrarte al evento.']);
@@ -82,6 +84,12 @@ class EventoRegistroController extends Controller
 
         if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
             return back()->withErrors(['error' => 'Este evento ya ha finalizado.']);
+        }
+
+        if ($evento->fecha_hora_fin_proveedores && now()->gt($evento->fecha_hora_fin_proveedores)) {
+            return back()->withErrors(['error' =>
+                'El período de registro de proveedores ya cerró el ' .
+                $evento->fecha_hora_fin_proveedores->format('d/m/Y H:i') . '.']);
         }
 
         $registro = DB::table('evento_usuario')
@@ -97,7 +105,6 @@ class EventoRegistroController extends Controller
             if ($registro->estado === 'aprobado') {
                 return back()->with('success', 'Ya estás aprobado en este evento como proveedor.');
             }
-            // Si fue rechazado, se permite re-solicitar
             DB::table('evento_usuario')
                 ->where('evento_id', $evento->id)
                 ->where('user_id', $user->id)
@@ -114,7 +121,6 @@ class EventoRegistroController extends Controller
             ]);
         }
 
-        // Notificar al admin
         $admin = User::role('admin')->first();
         if ($admin) {
             Notificacion::crear(
@@ -125,6 +131,6 @@ class EventoRegistroController extends Controller
             );
         }
 
-        return back()->with('success', 'Tu solicitud fue enviada. El administrador la aprobará pronto.');
+        return back()->with('success', 'Tu solicitud de registro como proveedor fue enviada. El administrador la aprobará pronto.');
     }
 }

@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import TabEventos from '@/Components/TabEventos.vue';
 import { ref, computed, onMounted } from 'vue';
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import FullCalendar from '@fullcalendar/vue3';
@@ -18,6 +19,7 @@ const props = defineProps({
     totalEnEvento: Number,
     citaProxima2h: Object,
     notificaciones: Array,
+    eventos: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -86,15 +88,27 @@ const productosInputs = ref(
 );
 
 const formPerfil = useForm({
-    nombre_restaurante: props.restaurantero.nombre_restaurante || '',
-    descripcion:        props.restaurantero.descripcion || '',
-    telefono:           props.restaurantero.telefono || '',
-    municipio:          props.restaurantero.municipio || '',
-    direccion:          props.restaurantero.direccion || '',
-    sitio_web:          props.restaurantero.sitio_web || '',
-    rfc:                props.restaurantero.rfc || '',
-    productos_top:      [],
-    foto:               null,
+    nombre_restaurante:      props.restaurantero.nombre_restaurante || '',
+    razon_social:            props.restaurantero.razon_social || '',
+    nombre_representante:    props.restaurantero.nombre_representante || '',
+    curp_representante:      props.restaurantero.curp_representante || '',
+    fecha_inicio_operaciones:props.restaurantero.fecha_inicio_operaciones || '',
+    num_empleados:           props.restaurantero.num_empleados ?? '',
+    domicilio_en_yucatan:    props.restaurantero.domicilio_en_yucatan ?? null,
+    descripcion:             props.restaurantero.descripcion || '',
+    mercado_meta:            props.restaurantero.mercado_meta || '',
+    tiempo_vida_anaquel:     props.restaurantero.tiempo_vida_anaquel || '',
+    requisitos_alimentos:    props.restaurantero.requisitos_alimentos || [],
+    apoyo_requisitos:        props.restaurantero.apoyo_requisitos || [],
+    requiere_refrigeracion:  props.restaurantero.requiere_refrigeracion ?? null,
+    requiere_congelacion:    props.restaurantero.requiere_congelacion ?? null,
+    telefono:                props.restaurantero.telefono || '',
+    municipio:               props.restaurantero.municipio || '',
+    direccion:               props.restaurantero.direccion || '',
+    sitio_web:               props.restaurantero.sitio_web || '',
+    rfc:                     props.restaurantero.rfc || '',
+    productos_top:           [],
+    foto:                    null,
 });
 
 const guardandoPerfil = ref(false);
@@ -102,13 +116,25 @@ const guardandoPerfil = ref(false);
 const submitPerfil = () => {
     guardandoPerfil.value = true;
     const fd = new FormData();
-    fd.append('nombre_restaurante', formPerfil.nombre_restaurante);
-    fd.append('descripcion',        formPerfil.descripcion || '');
-    fd.append('telefono',           formPerfil.telefono || '');
-    fd.append('municipio',          formPerfil.municipio || '');
-    fd.append('direccion',          formPerfil.direccion || '');
-    fd.append('sitio_web',          formPerfil.sitio_web || '');
-    fd.append('rfc',                formPerfil.rfc || '');
+    fd.append('nombre_restaurante',       formPerfil.nombre_restaurante);
+    fd.append('razon_social',             formPerfil.razon_social || '');
+    fd.append('nombre_representante',     formPerfil.nombre_representante || '');
+    fd.append('curp_representante',       formPerfil.curp_representante || '');
+    fd.append('fecha_inicio_operaciones', formPerfil.fecha_inicio_operaciones || '');
+    fd.append('num_empleados',            formPerfil.num_empleados ?? '');
+    if (formPerfil.domicilio_en_yucatan !== null) fd.append('domicilio_en_yucatan', formPerfil.domicilio_en_yucatan ? '1' : '0');
+    fd.append('descripcion',              formPerfil.descripcion || '');
+    fd.append('mercado_meta',             formPerfil.mercado_meta || '');
+    fd.append('tiempo_vida_anaquel',      formPerfil.tiempo_vida_anaquel || '');
+    (formPerfil.requisitos_alimentos || []).forEach(v => fd.append('requisitos_alimentos[]', v));
+    (formPerfil.apoyo_requisitos || []).forEach(v => fd.append('apoyo_requisitos[]', v));
+    if (formPerfil.requiere_refrigeracion !== null) fd.append('requiere_refrigeracion', formPerfil.requiere_refrigeracion ? '1' : '0');
+    if (formPerfil.requiere_congelacion !== null) fd.append('requiere_congelacion', formPerfil.requiere_congelacion ? '1' : '0');
+    fd.append('telefono',                 formPerfil.telefono || '');
+    fd.append('municipio',                formPerfil.municipio || '');
+    fd.append('direccion',                formPerfil.direccion || '');
+    fd.append('sitio_web',                formPerfil.sitio_web || '');
+    fd.append('rfc',                      formPerfil.rfc || '');
     if (formPerfil.foto) fd.append('foto', formPerfil.foto);
 
     let idx = 0;
@@ -215,6 +241,8 @@ const dismissNotificacion = (id) => {
     router.patch(route('notificaciones.leer', id), {}, { preserveState: true, preserveScroll: true });
 };
 
+const mainTab = ref('panel');
+
 // ── CITA PRÓXIMA 2H ───────────────────────────────────────────
 const tiempoHastaCitaProxima = computed(() => {
     if (!props.citaProxima2h) return null;
@@ -261,6 +289,49 @@ const tiempoHastaCitaProxima = computed(() => {
         </template>
 
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+            <!-- ── TABS PRINCIPALES ─────────────────────────────────── -->
+            <div class="overflow-x-auto -mx-1 px-1">
+                <div class="flex border-b border-gray-200 dark:border-gray-700 gap-0">
+                    <button @click="mainTab = 'panel'"
+                        class="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        :class="mainTab === 'panel'
+                            ? 'border-b-2 border-guinda-700 text-guinda-700 dark:text-guinda-400 dark:border-guinda-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                        Mi Panel
+                    </button>
+                    <button @click="mainTab = 'citas'"
+                        class="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        :class="mainTab === 'citas'
+                            ? 'border-b-2 border-guinda-700 text-guinda-700 dark:text-guinda-400 dark:border-guinda-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                        Mis Citas
+                    </button>
+                    <button @click="mainTab = 'eventos'"
+                        class="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        :class="mainTab === 'eventos'
+                            ? 'border-b-2 border-guinda-700 text-guinda-700 dark:text-guinda-400 dark:border-guinda-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                        Eventos
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── TAB EVENTOS ──────────────────────────────────────── -->
+            <div v-if="mainTab === 'eventos'">
+                <TabEventos :eventos="eventos" />
+            </div>
+
+            <!-- ── TAB CITAS ────────────────────────────────────────── -->
+            <div v-if="mainTab === 'citas'">
+                <Link :href="route('restaurantero.citas.index')"
+                    class="inline-flex items-center gap-2 px-4 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
+                    Ver historial completo de citas →
+                </Link>
+            </div>
+
+            <!-- ── TAB PANEL ────────────────────────────────────────── -->
+            <template v-if="mainTab === 'panel'">
 
             <!-- ── BANNER MODO PROVEEDOR ─────────────────────────── -->
             <div class="flex items-center gap-3 px-4 py-3 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-900/40 rounded-2xl">
@@ -336,65 +407,6 @@ const tiempoHastaCitaProxima = computed(() => {
                             <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                         </svg>
                     </button>
-                </div>
-            </div>
-
-            <!-- ── CARD REGISTRO AL EVENTO (PROVEEDOR) ─────────────── -->
-            <div v-if="$page.props.eventoActivo">
-                <!-- Sin solicitud -->
-                <div v-if="!$page.props.registro_evento"
-                    class="bg-gradient-to-r from-guinda-900/60 to-guinda-800/40 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div class="flex-1">
-                        <h3 class="font-bold text-white mb-1">Hay un evento disponible: {{ $page.props.eventoActivo.nombre }}</h3>
-                        <p class="text-gray-300 text-sm">Regístrate como proveedor en el evento para que los compradores puedan agendarte citas.</p>
-                    </div>
-                    <button
-                        @click="router.post(route('evento.registrar-proveedor', $page.props.eventoActivo.id))"
-                        class="shrink-0 px-5 py-2.5 bg-guinda-500 hover:bg-guinda-400 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
-                        Registrarme como Proveedor
-                    </button>
-                </div>
-
-                <!-- Pendiente -->
-                <div v-else-if="$page.props.registro_evento.estado === 'pendiente'"
-                    class="flex items-start gap-3 px-4 py-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
-                    <div class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="font-semibold text-amber-800 dark:text-amber-300 text-sm">Tu solicitud como proveedor está siendo revisada</p>
-                        <p class="text-amber-700 dark:text-amber-400/80 text-xs mt-0.5">
-                            Cuando sea aprobada, aparecerás en el listado de proveedores del evento <strong>{{ $page.props.eventoActivo.nombre }}</strong>.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Aprobado -->
-                <div v-else-if="$page.props.registro_evento.estado === 'aprobado'"
-                    class="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm">
-                    <svg class="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    <span class="text-emerald-700 dark:text-emerald-400 font-medium">Aprobado como proveedor en {{ $page.props.eventoActivo.nombre }}</span>
-                </div>
-
-                <!-- Rechazado -->
-                <div v-else-if="$page.props.registro_evento.estado === 'rechazado'"
-                    class="flex items-start gap-3 px-4 py-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-2xl">
-                    <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="font-semibold text-red-700 dark:text-red-400 text-sm">Tu solicitud como proveedor fue rechazada</p>
-                        <p v-if="$page.props.registro_evento.motivo_rechazo" class="text-red-600 dark:text-red-400/80 text-xs mt-0.5">
-                            Motivo: {{ $page.props.registro_evento.motivo_rechazo }}
-                        </p>
-                        <p class="text-red-500 dark:text-red-500/70 text-xs mt-1">Si crees que es un error, contacta al administrador.</p>
-                    </div>
                 </div>
             </div>
 
@@ -612,6 +624,7 @@ const tiempoHastaCitaProxima = computed(() => {
                 <FullCalendar :options="calendarOptions" />
             </div>
 
+            </template><!-- /mainTab === 'panel' -->
         </div>
 
         <!-- Modal Reagendar -->
@@ -709,6 +722,100 @@ const tiempoHastaCitaProxima = computed(() => {
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sitio web</label>
                                     <input v-model="formPerfil.sitio_web" type="url" placeholder="https://..."
                                         class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Información legal y operativa (IYEM) -->
+                        <div>
+                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Información legal y operativa</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Razón social</label>
+                                    <input v-model="formPerfil.razon_social" type="text" maxlength="200" placeholder="Mi Empresa S.A. de C.V."
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre del representante legal</label>
+                                    <input v-model="formPerfil.nombre_representante" type="text" maxlength="200" placeholder="Nombre completo"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CURP del representante</label>
+                                    <input v-model="formPerfil.curp_representante" type="text" maxlength="18" placeholder="XXXX000000XXXXXXXX"
+                                        @input="formPerfil.curp_representante = formPerfil.curp_representante.toUpperCase().slice(0,18)"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 uppercase" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de inicio de operaciones</label>
+                                    <input v-model="formPerfil.fecha_inicio_operaciones" type="date"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Número de empleados</label>
+                                    <input v-model.number="formPerfil.num_empleados" type="number" min="0" placeholder="0"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Domicilio fiscal en Yucatán?</label>
+                                    <select v-model="formPerfil.domicilio_en_yucatan"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                                        <option :value="null">— Sin especificar —</option>
+                                        <option :value="true">Sí</option>
+                                        <option :value="false">No</option>
+                                    </select>
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mercado meta / Segmento objetivo</label>
+                                    <textarea v-model="formPerfil.mercado_meta" rows="2" placeholder="¿A quién va dirigido tu producto o servicio?"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 resize-none" />
+                                </div>
+                                <div class="sm:col-span-2">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tiempo de vida en anaquel (si aplica)</label>
+                                    <input v-model="formPerfil.tiempo_vida_anaquel" type="text" maxlength="500"
+                                        placeholder="Ej: Vasos 365 días, Mermelada 180 días"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                                <!-- Solo alimentos y bebidas -->
+                                <div class="sm:col-span-2 space-y-3">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Requisitos de alimentos y bebidas (marcar los que cumple)</label>
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        <label v-for="req in ['Tabla Nutrimental','Etiquetado NOM-051','Código de barras','Registro de Marca','Cert. calidad/inocuidad']"
+                                            :key="req" class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                                            <input type="checkbox" :value="req" v-model="formPerfil.requisitos_alimentos"
+                                                class="rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+                                            {{ req }}
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="sm:col-span-2 space-y-3">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">¿En qué requisitos requieres apoyo del IYEM?</label>
+                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                        <label v-for="req in ['Tabla Nutrimental','Etiquetado NOM-051','Código de barras','Registro de Marca','Cert. calidad/inocuidad']"
+                                            :key="req" class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+                                            <input type="checkbox" :value="req" v-model="formPerfil.apoyo_requisitos"
+                                                class="rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+                                            {{ req }}
+                                        </label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Requiere refrigeración?</label>
+                                    <select v-model="formPerfil.requiere_refrigeracion"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                                        <option :value="null">— No aplica —</option>
+                                        <option :value="true">Sí</option>
+                                        <option :value="false">No</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Requiere congelación (-4° o menos)?</label>
+                                    <select v-model="formPerfil.requiere_congelacion"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                                        <option :value="null">— No aplica —</option>
+                                        <option :value="true">Sí</option>
+                                        <option :value="false">No</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>

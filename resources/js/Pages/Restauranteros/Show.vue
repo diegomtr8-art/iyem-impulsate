@@ -17,7 +17,8 @@ const registerUrl = computed(() => route('register'));
 const page = usePage();
 const auth = computed(() => page.props.auth);
 const isAdmin = computed(() => auth.value.user?.is_admin ?? false);
-const limiteAlcanzado = computed(() => auth.value.user && props.citasCount >= 12);
+const maxCitas = computed(() => props.evento?.max_citas_por_comprador ?? 3);
+const limiteAlcanzado = computed(() => auth.value.user && props.citasCount >= maxCitas.value);
 
 // ── RANGO DE FECHAS DEL EVENTO ──────────────────────────────────────────────
 const edicionInicioAgenda = computed(() => props.evento?.fecha_inicio_agenda ? new Date(props.evento.fecha_inicio_agenda + 'T00:00:00') : null);
@@ -43,7 +44,30 @@ const puedeRetrocederSemana = computed(() => weekOffset.value > 0);
 
 // ── SEMANA ─────────────────────────────────────────────────────────────────
 const weekOffset = ref(0);
-const timeSlots = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30'];
+
+const intervalo = computed(() => {
+    const t = props.evento?.tiempo_entre_citas_minutos ?? 30;
+    return Math.max(5, Math.round(t / 5) * 5);
+});
+
+const timeSlots = computed(() => {
+    const slots = [];
+    const inicio = 9 * 60;
+    const fin    = 16 * 60;
+    const paso   = intervalo.value;
+    for (let min = inicio; min < fin; min += paso) {
+        const hh = String(Math.floor(min / 60)).padStart(2, '0');
+        const mm = String(min % 60).padStart(2, '0');
+        slots.push(`${hh}:${mm}`);
+    }
+    return slots;
+});
+
+const duracionTexto = computed(() => {
+    const min = props.evento?.tiempo_entre_citas_minutos ?? 30;
+    return `${min} minutos · Sin costo · Gobierno de Yucatán`;
+});
+
 const diasNombre = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
 
 function padZero(n) { return String(n).padStart(2, '0'); }
@@ -117,7 +141,7 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                     <div class="flex items-center justify-between mb-5">
                         <div>
                             <h3 class="text-lg font-bold text-gray-900 dark:text-white">Mesa de Networking</h3>
-                            <p class="text-xs text-guinda-600 dark:text-guinda-400 mt-0.5">30 minutos · Sin costo · Gobierno de Yucatán</p>
+                            <p class="text-xs text-guinda-600 dark:text-guinda-400 mt-0.5">{{ duracionTexto }}</p>
                         </div>
                         <button @click="cerrarModal" class="text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors p-1">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
@@ -262,10 +286,6 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                         </div>
 
                         <div class="space-y-2.5 text-sm border-t border-gray-100 dark:border-gray-800 pt-4">
-                            <div v-if="restaurantero.telefono" class="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
-                                <svg class="w-4 h-4 text-guinda-500 dark:text-guinda-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                                {{ restaurantero.telefono }}
-                            </div>
                             <div v-if="restaurantero.user?.email" class="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
                                 <svg class="w-4 h-4 text-guinda-500 dark:text-guinda-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                                 {{ restaurantero.user.email }}
@@ -284,7 +304,7 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                                 <span class="text-guinda-700 dark:text-guinda-400 text-xs font-semibold">Servicio gratuito — Impulsate</span>
                             </div>
                             <h3 class="text-xl font-bold text-gray-900 dark:text-white">Mesa de Networking</h3>
-                            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">30 minutos · Sin costo para el empresario</p>
+                            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{{ duracionTexto }}</p>
                         </div>
 
                         <div class="text-sm text-gray-500 dark:text-gray-400 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-5">
@@ -313,13 +333,13 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
 
                         <!-- Límite alcanzado -->
                         <div v-else-if="limiteAlcanzado" class="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/30 rounded-xl p-4 text-center">
-                            <p class="text-red-600 dark:text-red-400 text-sm font-medium">Has alcanzado el límite de 12 citas</p>
+                            <p class="text-red-600 dark:text-red-400 text-sm font-medium">Has alcanzado el límite de {{ maxCitas }} citas</p>
                         </div>
 
                         <!-- Contador de citas -->
                         <div v-else class="bg-guinda-50 dark:bg-guinda-500/10 border border-guinda-200 dark:border-guinda-500/20 rounded-xl p-3 flex items-center justify-between">
                             <span class="text-gray-600 dark:text-gray-400 text-sm">Citas usadas</span>
-                            <span class="text-guinda-700 dark:text-guinda-400 font-bold text-sm">{{ citasCount }}/12</span>
+                            <span class="text-guinda-700 dark:text-guinda-400 font-bold text-sm">{{ citasCount }}/{{ maxCitas }}</span>
                         </div>
                     </div>
                 </div>
@@ -370,7 +390,7 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                     <span class="text-gray-500 dark:text-gray-400"> para seleccionar un horario</span>
                 </div>
                 <div v-else-if="limiteAlcanzado" class="mb-5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/30 rounded-xl p-4 text-center">
-                    <p class="text-red-600 dark:text-red-400 text-sm font-medium">Has alcanzado el límite de 12 citas</p>
+                    <p class="text-red-600 dark:text-red-400 text-sm font-medium">Has alcanzado el límite de {{ maxCitas }} citas</p>
                 </div>
 
                 <!-- Leyenda -->

@@ -1,5 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
+import TabEventos from '@/Components/TabEventos.vue';
 import { Link, router, usePage, useForm } from '@inertiajs/vue3';
 import { ref, computed, onMounted } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
@@ -16,12 +17,14 @@ const props = defineProps({
     compradorAprobado: Boolean,
     tieneKeywords: Boolean,
     notificaciones: Array,
+    eventos: { type: Array, default: () => [] },
 });
 
 const page = usePage();
 const historialAbierto = ref(false);
-const MAX_CITAS = computed(() => props.evento?.max_citas_por_comprador ?? 12);
+const MAX_CITAS = computed(() => props.evento?.max_citas_por_comprador ?? 3);
 const activeTab = ref('lista');
+const mainTab = ref('citas');
 
 const estadoConfig = {
     pendiente:  { label: 'Pendiente',  class: 'bg-guinda-500/15 text-guinda-600 dark:text-guinda-400 border-guinda-500/20' },
@@ -93,10 +96,14 @@ const calendarOptions = computed(() => ({
 // ── Perfil del comprador ─────────────────────────────────────
 const showPerfilModal = ref(false);
 const formPerfil = useForm({
-    name:        page.props.auth.user?.name || '',
-    telefono:    page.props.auth.user?.telefono || '',
-    sitio_web:   page.props.auth.user?.sitio_web || '',
-    necesidades: page.props.auth.user?.necesidades || '',
+    name:           page.props.auth.user?.name || '',
+    telefono:       page.props.auth.user?.telefono || '',
+    curp:           page.props.auth.user?.curp || '',
+    rfc:            page.props.auth.user?.rfc || '',
+    municipio:      page.props.auth.user?.municipio || '',
+    nombre_empresa: page.props.auth.user?.nombre_empresa || '',
+    sitio_web:      page.props.auth.user?.sitio_web || '',
+    necesidades:    page.props.auth.user?.necesidades || '',
 });
 const submitPerfil = () => {
     formPerfil.post(route('perfil.comprador.actualizar'), {
@@ -254,6 +261,34 @@ const guardarNota = (citaId) => {
 
         <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
+            <!-- ── TABS PRINCIPALES ─────────────────────────────────── -->
+            <div class="overflow-x-auto -mx-1 px-1">
+                <div class="flex border-b border-gray-200 dark:border-gray-700 gap-0">
+                    <button @click="mainTab = 'citas'"
+                        class="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        :class="mainTab === 'citas'
+                            ? 'border-b-2 border-guinda-700 text-guinda-700 dark:text-guinda-400 dark:border-guinda-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                        Mis Citas
+                    </button>
+                    <button @click="mainTab = 'eventos'"
+                        class="px-5 py-3 text-sm font-semibold transition-colors whitespace-nowrap"
+                        :class="mainTab === 'eventos'
+                            ? 'border-b-2 border-guinda-700 text-guinda-700 dark:text-guinda-400 dark:border-guinda-400'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'">
+                        Eventos
+                    </button>
+                </div>
+            </div>
+
+            <!-- ── TAB EVENTOS ──────────────────────────────────────── -->
+            <div v-if="mainTab === 'eventos'">
+                <TabEventos :eventos="eventos" />
+            </div>
+
+            <!-- ── TAB CITAS ────────────────────────────────────────── -->
+            <template v-if="mainTab === 'citas'">
+
             <!-- ── BANNER MODO COMPRADOR ─────────────────────────── -->
             <div class="flex items-center gap-3 px-4 py-3 bg-guinda-50 dark:bg-guinda-950/30 border border-guinda-200 dark:border-guinda-900 rounded-2xl">
                 <div class="w-8 h-8 rounded-full bg-guinda-700 dark:bg-guinda-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
@@ -328,65 +363,6 @@ const guardarNota = (citaId) => {
                                 Completar perfil
                             </button>
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ── CARD REGISTRO AL EVENTO ───────────────────────── -->
-            <div v-if="$page.props.eventoActivo">
-                <!-- Sin solicitud: invitación a registrarse -->
-                <div v-if="!$page.props.registro_evento"
-                    class="bg-gradient-to-r from-emerald-900/60 to-teal-900/40 border border-emerald-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div class="flex-1">
-                        <h3 class="font-bold text-white mb-1">Hay un evento disponible: {{ $page.props.eventoActivo.nombre }}</h3>
-                        <p class="text-gray-300 text-sm">Regístrate para poder agendar citas con los proveedores participantes.</p>
-                    </div>
-                    <button
-                        @click="router.post(route('evento.registrar-comprador', $page.props.eventoActivo.id))"
-                        class="shrink-0 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm rounded-xl transition-colors shadow-sm">
-                        Registrarme al Evento
-                    </button>
-                </div>
-
-                <!-- Pendiente -->
-                <div v-else-if="$page.props.registro_evento.estado === 'pendiente'"
-                    class="flex items-start gap-3 px-4 py-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
-                    <div class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="font-semibold text-amber-800 dark:text-amber-300 text-sm">Tu solicitud está siendo revisada</p>
-                        <p class="text-amber-700 dark:text-amber-400/80 text-xs mt-0.5">
-                            El administrador revisará tu solicitud al evento <strong>{{ $page.props.eventoActivo.nombre }}</strong> y recibirás una notificación con la respuesta.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Aprobado -->
-                <div v-else-if="$page.props.registro_evento.estado === 'aprobado'"
-                    class="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm">
-                    <svg class="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
-                    </svg>
-                    <span class="text-emerald-700 dark:text-emerald-400 font-medium">Aprobado en {{ $page.props.eventoActivo.nombre }}</span>
-                </div>
-
-                <!-- Rechazado -->
-                <div v-else-if="$page.props.registro_evento.estado === 'rechazado'"
-                    class="flex items-start gap-3 px-4 py-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-2xl">
-                    <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="font-semibold text-red-700 dark:text-red-400 text-sm">Tu solicitud fue rechazada</p>
-                        <p v-if="$page.props.registro_evento.motivo_rechazo" class="text-red-600 dark:text-red-400/80 text-xs mt-0.5">
-                            Motivo: {{ $page.props.registro_evento.motivo_rechazo }}
-                        </p>
-                        <p class="text-red-500 dark:text-red-500/70 text-xs mt-1">Si crees que es un error, contacta al administrador.</p>
                     </div>
                 </div>
             </div>
@@ -839,6 +815,7 @@ const guardarNota = (citaId) => {
                 </div>
             </div>
 
+            </template><!-- /mainTab === 'citas' -->
         </div>
 
         <!-- Modal Perfil Comprador -->
@@ -870,6 +847,22 @@ const guardarNota = (citaId) => {
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correo electrónico</label>
                                 <input :value="$page.props.auth.user?.email" type="email" disabled
                                     class="w-full text-sm bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-400 rounded-xl px-3 py-2.5 cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Empresa <span class="text-gray-400 font-normal">(opcional)</span></label>
+                                <input v-model="formPerfil.nombre_empresa" type="text" maxlength="200" placeholder="Mi Empresa S.A. de C.V."
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Municipio <span class="text-gray-400 font-normal">(opcional)</span></label>
+                                <input v-model="formPerfil.municipio" type="text" maxlength="100" placeholder="Mérida"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">RFC <span class="text-gray-400 font-normal">(opcional)</span></label>
+                                <input v-model="formPerfil.rfc" type="text" maxlength="13" placeholder="XXXX000000XXX"
+                                    @input="formPerfil.rfc = formPerfil.rfc.replace(/[^a-zA-ZñÑ&0-9]/g,'').toUpperCase().slice(0,13)"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 uppercase" />
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Página web <span class="text-gray-400 font-normal">(opcional)</span></label>

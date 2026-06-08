@@ -42,7 +42,8 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user() ? array_merge(
                     $request->user()->only([
-                        'id', 'name', 'email', 'telefono', 'sitio_web',
+                        'id', 'name', 'email', 'telefono', 'curp', 'rfc',
+                        'municipio', 'nombre_empresa', 'sitio_web',
                         'active_role', 'rol_seleccionado', 'necesidades',
                         'perfil_completo', 'email_verified_at', 'profile_photo_url',
                     ]),
@@ -68,14 +69,32 @@ class HandleInertiaRequests extends Middleware
             'eventoActivo' => fn () => Evento::activo()?->only([
                 'id', 'nombre', 'sector_economico', 'max_citas_por_comprador',
                 'fecha_hora_inicio', 'fecha_hora_fin',
-                'fecha_hora_inicio_proveedores', 'fecha_hora_inicio_compradores',
+                'fecha_hora_inicio_proveedores', 'fecha_hora_fin_proveedores',
+                'fecha_hora_inicio_compradores', 'fecha_hora_fin_compradores',
+                'tiempo_entre_citas_minutos',
             ]),
-            'registradoEnEvento' => fn () => $request->user() && Evento::activo()
-                ? [
-                    'comprador' => Evento::activo()?->compradores()->where('user_id', $request->user()->id)->exists(),
-                    'proveedor' => Evento::activo()?->proveedores()->where('user_id', $request->user()->id)->exists(),
-                ]
-                : ['comprador' => false, 'proveedor' => false],
+            'registradoEnEvento' => function () use ($request) {
+                $evento = Evento::activo();
+                if (!$evento || !$request->user()) {
+                    return ['comprador' => null, 'proveedor' => null];
+                }
+                $registros = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $request->user()->id)
+                    ->get()
+                    ->keyBy('tipo');
+
+                return [
+                    'comprador' => $registros->has('comprador') ? [
+                        'estado'         => $registros['comprador']->estado,
+                        'motivo_rechazo' => $registros['comprador']->motivo_rechazo,
+                    ] : null,
+                    'proveedor' => $registros->has('proveedor') ? [
+                        'estado'         => $registros['proveedor']->estado,
+                        'motivo_rechazo' => $registros['proveedor']->motivo_rechazo,
+                    ] : null,
+                ];
+            },
             'registro_evento' => function () use ($request) {
                 $evento = Evento::activo();
                 if (!$evento || !$request->user()) return null;
