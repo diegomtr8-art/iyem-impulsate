@@ -6,6 +6,7 @@ use App\Models\Cita;
 use App\Models\Evento;
 use App\Models\Restaurantero;
 use App\Models\User;
+use Illuminate\Support\Str;
 use Maatwebsite\Excel\Concerns\Exportable;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\FromCollection;
@@ -23,13 +24,35 @@ class EventoCompletoExport implements WithMultipleSheets
 
     public function sheets(): array
     {
-        return [
+        $sheets = [
             new EventoSheet($this->evento),
             new ProveedoresEventoSheet($this->evento),
             new CompradoresEventoSheet($this->evento),
             new CitasEventoSheet($this->evento),
             new ResumenEventoSheet($this->evento),
         ];
+
+        // Hasta 20 hojas adicionales, una por proveedor aprobado
+        $proveedores = Restaurantero::whereHas('user', function ($q) {
+                $q->whereExists(function ($sub) {
+                    $sub->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'users.id')
+                        ->where('evento_usuario.evento_id', $this->evento->id)
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                });
+            })
+            ->with(['citas' => function ($q) {
+                $q->where('edicion_id', $this->evento->id)->with('cliente');
+            }])
+            ->take(20)
+            ->get();
+
+        foreach ($proveedores as $proveedor) {
+            $sheets[] = new CitasProveedorSheet($proveedor, $this->evento);
+        }
+
+        return $sheets;
     }
 }
 
@@ -67,7 +90,7 @@ class EventoSheet implements FromArray, WithTitle, WithStyles
     }
 }
 
-// ── Hoja 2: Proveedores del evento ────────────────────────────────────────────
+// ── Hoja 2: Proveedores del evento (solo aprobados) ───────────────────────────
 class ProveedoresEventoSheet implements FromCollection, WithHeadings, WithTitle, WithStyles
 {
     public function __construct(private Evento $evento) {}
@@ -76,31 +99,39 @@ class ProveedoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
 
     public function collection()
     {
-        return Restaurantero::where('edicion_id', $this->evento->id)
+        return Restaurantero::whereHas('user', function ($q) {
+                $q->whereExists(function ($sub) {
+                    $sub->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'users.id')
+                        ->where('evento_usuario.evento_id', $this->evento->id)
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                });
+            })
             ->with('user')
-            ->withCount(['citas as total_citas' => fn($q) => $q->where('edicion_id', $this->evento->id)])
+            ->withCount(['citas as total_citas'    => fn($q) => $q->where('edicion_id', $this->evento->id)])
             ->withCount(['citas as citas_aceptadas' => fn($q) => $q->where('edicion_id', $this->evento->id)->where('estado', 'confirmada')])
             ->withCount(['citas as citas_pendientes' => fn($q) => $q->where('edicion_id', $this->evento->id)->where('estado', 'pendiente')])
             ->orderBy('nombre_restaurante')
             ->get()
             ->map(fn($r) => [
-                'Empresa'           => $r->nombre_restaurante,
-                'Categoría'         => $r->categoria ?? '—',
-                'Municipio'         => $r->municipio ?? '—',
-                'RFC'               => $r->rfc ?? '—',
-                'Teléfono'          => $r->telefono ?? '—',
-                'Email'             => $r->user?->email ?? '—',
-                'Total Citas'       => $r->total_citas,
-                'Citas Aceptadas'   => $r->citas_aceptadas,
-                'Citas Pendientes'  => $r->citas_pendientes,
-                'Aprobado'          => $r->aprobado ? 'Sí' : 'No',
-                'Registro'          => $r->created_at->format('d/m/Y'),
+                'Empresa'            => $r->nombre_restaurante,
+                'Categoría'          => $r->categoria ?? '—',
+                'Municipio'          => $r->municipio ?? '—',
+                'RFC'                => $r->rfc ?? '—',
+                'Teléfono'           => $r->telefono ?? '—',
+                'Email'              => $r->user?->email ?? '—',
+                'Total Citas'        => $r->total_citas,
+                'Citas Aceptadas'    => $r->citas_aceptadas,
+                'Citas Pendientes'   => $r->citas_pendientes,
+                'Estado en Evento'   => 'Aprobado',
+                'Registro'           => $r->created_at->format('d/m/Y'),
             ]);
     }
 
     public function headings(): array
     {
-        return ['Empresa', 'Categoría', 'Municipio', 'RFC', 'Teléfono', 'Email', 'Total Citas', 'Citas Aceptadas', 'Citas Pendientes', 'Aprobado', 'Registro'];
+        return ['Empresa', 'Categoría', 'Municipio', 'RFC', 'Teléfono', 'Email', 'Total Citas', 'Citas Aceptadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
     }
 
     public function styles(Worksheet $sheet): array
@@ -111,7 +142,7 @@ class ProveedoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
     }
 }
 
-// ── Hoja 3: Compradores del evento ────────────────────────────────────────────
+// ── Hoja 3: Compradores del evento (solo aprobados) ───────────────────────────
 class CompradoresEventoSheet implements FromCollection, WithHeadings, WithTitle, WithStyles
 {
     public function __construct(private Evento $evento) {}
@@ -120,7 +151,14 @@ class CompradoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
 
     public function collection()
     {
+        $aprobadosIds = \DB::table('evento_usuario')
+            ->where('evento_id', $this->evento->id)
+            ->where('tipo', 'comprador')
+            ->where('estado', 'aprobado')
+            ->pluck('user_id');
+
         return User::role('cliente')
+            ->whereIn('id', $aprobadosIds)
             ->withCount([
                 'citasComoCliente as total_citas' => fn($q) => $q->where('edicion_id', $this->evento->id),
                 'citasComoCliente as confirmadas'  => fn($q) => $q->where('edicion_id', $this->evento->id)->where('estado', 'confirmada'),
@@ -136,13 +174,14 @@ class CompradoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
                 'Total Citas'        => $u->total_citas,
                 'Citas Confirmadas'  => $u->confirmadas,
                 'Citas Pendientes'   => $u->pendientes,
+                'Estado en Evento'   => 'Aprobado',
                 'Registro'           => $u->created_at->format('d/m/Y'),
             ]);
     }
 
     public function headings(): array
     {
-        return ['Nombre', 'Email', 'Teléfono', 'CURP', 'Total Citas', 'Citas Confirmadas', 'Citas Pendientes', 'Registro'];
+        return ['Nombre', 'Email', 'Teléfono', 'CURP', 'Total Citas', 'Citas Confirmadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
     }
 
     public function styles(Worksheet $sheet): array
@@ -212,13 +251,28 @@ class ResumenEventoSheet implements FromArray, WithTitle, WithStyles
         $citasCanceladas   = (clone $citas)->where('estado', 'cancelada')->count();
         $citasCompletadas  = (clone $citas)->where('estado', 'completada')->count();
         $citasRechazadas   = (clone $citas)->where('estado', 'rechazada')->count();
-        $totalProveedores  = Restaurantero::where('edicion_id', $e->id)->count();
-        $totalCompradores  = User::role('cliente')
-            ->whereHas('citasComoCliente', fn($q) => $q->where('edicion_id', $e->id))
+
+        $totalProveedores = \DB::table('evento_usuario')
+            ->where('evento_id', $e->id)
+            ->where('tipo', 'proveedor')
+            ->where('estado', 'aprobado')
             ->count();
 
-        // Top 10 proveedores por citas
-        $topProveedores = Restaurantero::where('edicion_id', $e->id)
+        $totalCompradores = \DB::table('evento_usuario')
+            ->where('evento_id', $e->id)
+            ->where('tipo', 'comprador')
+            ->where('estado', 'aprobado')
+            ->count();
+
+        $topProveedores = Restaurantero::whereHas('user', function ($q) use ($e) {
+                $q->whereExists(function ($sub) use ($e) {
+                    $sub->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'users.id')
+                        ->where('evento_usuario.evento_id', $e->id)
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                });
+            })
             ->withCount(['citas as total' => fn($q) => $q->where('edicion_id', $e->id)])
             ->orderByDesc('total')
             ->take(10)
@@ -233,8 +287,8 @@ class ResumenEventoSheet implements FromArray, WithTitle, WithStyles
             ['Citas Completadas', $citasCompletadas],
             ['Citas Canceladas', $citasCanceladas],
             ['Citas Rechazadas', $citasRechazadas],
-            ['Total Proveedores', $totalProveedores],
-            ['Total Compradores', $totalCompradores],
+            ['Total Proveedores Aprobados', $totalProveedores],
+            ['Total Compradores Aprobados', $totalCompradores],
             ['', ''],
             ['Top 10 Proveedores por Citas', ''],
             ['Proveedor', 'Total Citas'],
@@ -253,6 +307,73 @@ class ResumenEventoSheet implements FromArray, WithTitle, WithStyles
             1  => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']], 'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '8B1028']]],
             12 => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']], 'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '4B5563']]],
             13 => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']], 'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '8B1028']]],
+        ];
+    }
+}
+
+// ── Hoja por proveedor: Citas individuales ────────────────────────────────────
+class CitasProveedorSheet implements FromArray, WithTitle, WithStyles
+{
+    public function __construct(
+        private Restaurantero $restaurantero,
+        private Evento $evento
+    ) {}
+
+    public function title(): string
+    {
+        $nombre = $this->restaurantero->nombre_restaurante ?? 'Proveedor';
+        return Str::limit(preg_replace('/[\/\\\?\*\[\]:]/', '', $nombre), 28);
+    }
+
+    public function array(): array
+    {
+        $rows = [
+            ['CITAS DE: ' . ($this->restaurantero->nombre_restaurante ?? '—')],
+            ['Evento: ' . $this->evento->nombre],
+            [''],
+            ['#', 'Comprador', 'Email', 'Teléfono', 'Fecha', 'Hora Inicio', 'Hora Fin', 'Estado', 'Notas'],
+        ];
+
+        $citas = $this->restaurantero->citas()
+            ->where('edicion_id', $this->evento->id)
+            ->with('cliente')
+            ->orderBy('inicio')
+            ->get();
+
+        foreach ($citas as $i => $cita) {
+            $rows[] = [
+                $i + 1,
+                $cita->cliente?->name ?? '—',
+                $cita->cliente?->email ?? '—',
+                $cita->cliente?->telefono ?? '—',
+                $cita->inicio?->format('d/m/Y') ?? '—',
+                $cita->inicio?->format('H:i') ?? '—',
+                $cita->fin?->format('H:i') ?? '—',
+                ucfirst($cita->estado),
+                $cita->notas ?? '—',
+            ];
+        }
+
+        if (count($rows) === 4) {
+            $rows[] = ['Sin citas registradas en este evento'];
+        }
+
+        $rows[] = [''];
+        $rows[] = ['Total citas:', $citas->count()];
+        $rows[] = ['Confirmadas:', $citas->where('estado', 'confirmada')->count()];
+        $rows[] = ['Pendientes:', $citas->where('estado', 'pendiente')->count()];
+        $rows[] = ['Rechazadas:', $citas->where('estado', 'rechazada')->count()];
+
+        return $rows;
+    }
+
+    public function styles(Worksheet $sheet): array
+    {
+        return [
+            1 => ['font' => ['bold' => true, 'size' => 13, 'color' => ['rgb' => 'FFFFFF']],
+                  'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '8B1028']]],
+            4 => ['font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                  'fill' => ['fillType' => 'solid', 'startColor' => ['rgb' => '4A0510']]],
         ];
     }
 }

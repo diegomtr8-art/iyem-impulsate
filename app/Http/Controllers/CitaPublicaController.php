@@ -36,6 +36,33 @@ class CitaPublicaController extends Controller
             return back()->withErrors(['edicion' => 'No hay un evento activo. Contacta al administrador.']);
         }
 
+        // Verificar que el comprador esté aprobado en el evento activo
+        $registroEvento = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $request->user()->id)
+            ->where('tipo', 'comprador')
+            ->where('estado', 'aprobado')
+            ->first();
+
+        if (!$registroEvento) {
+            $solicitudPendiente = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $request->user()->id)
+                ->where('tipo', 'comprador')
+                ->where('estado', 'pendiente')
+                ->exists();
+
+            if ($solicitudPendiente) {
+                return back()->withErrors([
+                    'error' => 'Tu solicitud de registro al evento está pendiente de aprobación. Recibirás una notificación cuando sea aprobada.',
+                ]);
+            }
+
+            return back()->withErrors([
+                'error' => 'Debes estar registrado y aprobado en el evento para agendar citas.',
+            ]);
+        }
+
         // Validar ventana temporal de compradores
         if ($evento->fecha_hora_inicio_compradores && now()->lt($evento->fecha_hora_inicio_compradores)) {
             return back()->withErrors(['fecha' => 'El período de agendado aún no ha comenzado. Apertura: ' . $evento->fecha_hora_inicio_compradores->format('d/m/Y H:i') . '.']);

@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\UserAdminController;
 use App\Http\Controllers\Admin\MetricasController;
 use App\Http\Controllers\Admin\CalendarioController;
 use App\Http\Controllers\Admin\EventoController;
+use App\Http\Controllers\Admin\EventoSolicitudesController;
 use App\Http\Controllers\Admin\TorreControlController;
 use App\Http\Controllers\RestauranteroPanelController;
 use App\Http\Controllers\Auth\SocialAuthController;
@@ -134,6 +135,13 @@ Route::middleware([
             Route::post('/{evento}/archivar', [EventoController::class, 'archivar'])->name('archivar');
             Route::post('/{evento}/activar', [EventoController::class, 'activar'])->name('activar');
             Route::delete('/{evento}', [EventoController::class, 'destroy'])->name('destroy');
+
+            // Solicitudes de registro al evento
+            Route::get('/{evento}/solicitudes', [EventoSolicitudesController::class, 'index'])->name('solicitudes');
+            Route::post('/{evento}/solicitudes/{user}/aprobar', [EventoSolicitudesController::class, 'aprobar'])->name('solicitudes.aprobar');
+            Route::post('/{evento}/solicitudes/{user}/rechazar', [EventoSolicitudesController::class, 'rechazar'])->name('solicitudes.rechazar');
+            Route::post('/{evento}/solicitudes/{user}/revertir', [EventoSolicitudesController::class, 'revertirPendiente'])->name('solicitudes.revertir');
+            Route::post('/{evento}/solicitudes/aprobar-todos', [EventoSolicitudesController::class, 'aprobarTodos'])->name('solicitudes.aprobar-todos');
         });
 
         Route::get('/calendario', [CalendarioController::class, 'index'])->name('calendario');
@@ -157,7 +165,8 @@ Route::middleware([
 
         // Exportaciones Excel
         Route::get('/exportar',              [\App\Http\Controllers\Admin\ExportController::class, 'index'])->name('exportar.index');
-        Route::get('/exportar/evento-completo', [\App\Http\Controllers\Admin\ExportController::class, 'eventoCompleto'])->name('exportar.evento-completo');
+        Route::get('/exportar/evento/{evento}', [\App\Http\Controllers\Admin\ExportController::class, 'eventoCompleto'])->name('exportar.evento');
+        Route::get('/exportar/evento-completo', [\App\Http\Controllers\Admin\ExportController::class, 'eventoCompletoActivo'])->name('exportar.evento-completo');
         Route::get('/exportar/compradores', [\App\Http\Controllers\Admin\ExportController::class, 'compradores'])->name('exportar.compradores');
         Route::get('/exportar/proveedores', [\App\Http\Controllers\Admin\ExportController::class, 'proveedores'])->name('exportar.proveedores');
         Route::get('/exportar/citas',       [\App\Http\Controllers\Admin\ExportController::class, 'citas'])->name('exportar.citas');

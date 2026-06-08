@@ -22,16 +22,21 @@ class ExportController extends Controller
         ]);
     }
 
-    public function eventoCompleto()
+    public function eventoCompleto(Evento $evento)
+    {
+        $slug     = Str::slug($evento->nombre);
+        $filename = "evento_{$slug}_" . now()->format('Y-m-d') . '.xlsx';
+        return Excel::download(new EventoCompletoExport($evento), $filename);
+    }
+
+    public function eventoCompletoActivo()
     {
         $evento = Evento::activo();
         if (!$evento) {
             return back()->withErrors(['error' => 'No hay un evento activo para exportar.']);
         }
-
-        $slug = Str::slug($evento->nombre);
+        $slug     = Str::slug($evento->nombre);
         $filename = "evento_{$slug}_" . now()->format('Y-m-d') . '.xlsx';
-
         return Excel::download(new EventoCompletoExport($evento), $filename);
     }
 

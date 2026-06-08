@@ -8,6 +8,7 @@ const props = defineProps({
     restauranteros: Object,
     filters: Object,
     categorias: Array,
+    sin_evento: { type: Boolean, default: false },
 });
 
 const page = usePage();
@@ -89,8 +90,20 @@ const seleccionarCategoria = (cat) => {
                 </div>
             </div>
 
+            <!-- Banner sin evento activo -->
+            <div v-if="sin_evento"
+                class="mb-10 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-10 text-center">
+                <svg class="w-16 h-16 mx-auto text-gray-300 dark:text-gray-700 mb-4" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
+                </svg>
+                <h2 class="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">No hay un evento activo en este momento</h2>
+                <p class="text-gray-500 dark:text-gray-400 text-sm max-w-sm mx-auto">
+                    Vuelve pronto para conocer a los proveedores participantes en el próximo evento de Impulsate.
+                </p>
+            </div>
+
             <!-- Filtro por categoría -->
-            <div v-if="categorias && categorias.length > 0" class="flex flex-wrap gap-2 mb-8">
+            <div v-if="!sin_evento && categorias && categorias.length > 0" class="flex flex-wrap gap-2 mb-8">
                 <button
                     @click="seleccionarCategoria('')"
                     :class="categoriaActiva === ''
@@ -114,7 +127,7 @@ const seleccionarCategoria = (cat) => {
             </div>
 
             <!-- Grid -->
-            <div v-if="restauranteros.data.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <Link v-for="r in restauranteros.data" :key="r.id"
                     :href="route('restauranteros.show', r.id)"
                     class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">

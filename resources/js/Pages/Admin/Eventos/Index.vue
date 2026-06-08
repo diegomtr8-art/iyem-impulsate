@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { router } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 
 const props = defineProps({
@@ -254,6 +254,28 @@ const secuenciaValida = computed(() => {
                             <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Usuarios activos</div>
                         </div>
                     </div>
+
+                    <!-- Acciones adicionales evento activo -->
+                    <div class="flex flex-col sm:flex-row gap-3 mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
+                        <Link :href="route('admin.eventos.solicitudes', eventoActivo.id)"
+                            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-100 dark:hover:bg-amber-950/30 text-amber-800 dark:text-amber-400 text-sm font-semibold rounded-xl transition-colors relative">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <span>Ver solicitudes</span>
+                            <span v-if="eventoActivo.solicitudes_pendientes > 0"
+                                class="inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full text-xs font-bold bg-guinda-600 text-white animate-pulse">
+                                {{ eventoActivo.solicitudes_pendientes }}
+                            </span>
+                        </Link>
+                        <a :href="route('admin.exportar.evento', eventoActivo.id)"
+                            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 hover:bg-emerald-100 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-sm font-semibold rounded-xl transition-colors">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            Descargar Excel
+                        </a>
+                    </div>
                 </div>
 
                 <div v-else class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl p-6">
@@ -296,11 +318,29 @@ const secuenciaValida = computed(() => {
                             <span>{{ evento.usuarios_count }} usuarios</span>
                         </div>
 
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <button @click="activar(evento)"
                                 class="flex-1 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 text-xs font-semibold rounded-lg transition-colors text-center">
                                 Reactivar
                             </button>
+                            <Link :href="route('admin.eventos.solicitudes', evento.id)"
+                                class="relative px-3 py-1.5 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-100 dark:hover:bg-amber-950/30 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                </svg>
+                                Solicitudes
+                                <span v-if="evento.solicitudes_pendientes > 0"
+                                    class="inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-xs font-bold bg-guinda-600 text-white animate-pulse">
+                                    {{ evento.solicitudes_pendientes }}
+                                </span>
+                            </Link>
+                            <a :href="route('admin.exportar.evento', evento.id)"
+                                class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-200 dark:hover:bg-gray-700 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                                </svg>
+                                Excel
+                            </a>
                             <button v-if="evento.citas_count === 0" @click="eliminar(evento)"
                                 class="px-3 py-1.5 text-red-400 dark:text-red-500 hover:text-red-500 dark:hover:text-red-400 text-xs font-medium rounded-lg hover:bg-red-50 dark:hover:bg-red-900/10 transition-colors">
                                 Eliminar

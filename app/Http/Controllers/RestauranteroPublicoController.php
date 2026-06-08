@@ -13,19 +13,36 @@ class RestauranteroPublicoController extends Controller
     {
         $evento = Evento::activo();
 
-        $query = Restaurantero::where('activo', true)
+        if (!$evento) {
+            return Inertia::render('Restauranteros/Index', [
+                'restauranteros' => [],
+                'sin_evento'     => true,
+                'filters'        => $request->only(['search', 'categoria']),
+                'categorias'     => [],
+            ]);
+        }
+
+        $query = Restaurantero::query()
+            ->where('activo', true)
+            ->where('aprobado', true)
+            ->whereHas('user', function ($q) use ($evento) {
+                $q->whereExists(function ($sub) use ($evento) {
+                    $sub->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'users.id')
+                        ->where('evento_usuario.evento_id', $evento->id)
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                });
+            })
             ->withCount('citas')
             ->orderByDesc('created_at');
-
-        if ($evento) {
-            $query->where('edicion_id', $evento->id);
-        }
 
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('nombre_restaurante', 'like', "%{$search}%")
-                  ->orWhere('direccion', 'like', "%{$search}%");
+                  ->orWhere('direccion', 'like', "%{$search}%")
+                  ->orWhere('descripcion', 'like', "%{$search}%");
             });
         }
 
@@ -34,6 +51,16 @@ class RestauranteroPublicoController extends Controller
         }
 
         $categorias = Restaurantero::where('activo', true)
+            ->where('aprobado', true)
+            ->whereHas('user', function ($q) use ($evento) {
+                $q->whereExists(function ($sub) use ($evento) {
+                    $sub->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'users.id')
+                        ->where('evento_usuario.evento_id', $evento->id)
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                });
+            })
             ->whereNotNull('categoria')
             ->distinct()
             ->orderBy('categoria')
@@ -43,6 +70,7 @@ class RestauranteroPublicoController extends Controller
 
         return Inertia::render('Restauranteros/Index', [
             'restauranteros' => $restauranteros,
+            'sin_evento'     => false,
             'filters'        => $request->only(['search', 'categoria']),
             'categorias'     => $categorias,
         ]);
@@ -75,7 +103,6 @@ class RestauranteroPublicoController extends Controller
         }]);
 
         $citasCount = 0;
-        // Inicializar siempre — si el usuario no está autenticado queda vacío
         $slotsBloquedosCliente = collect();
 
         if ($request->user()) {
@@ -83,7 +110,6 @@ class RestauranteroPublicoController extends Controller
                 ->whereNotIn('estado', ['cancelada'])
                 ->count();
 
-            // Traer las citas del cliente para bloquear sus slots en este calendario
             $slotsBloquedosCliente = $request->user()
                 ->citasComoCliente()
                 ->where('inicio', '>=', now())
@@ -91,13 +117,11 @@ class RestauranteroPublicoController extends Controller
                 ->whereNotIn('estado', ['cancelada'])
                 ->get(['inicio', 'fin'])
                 ->map(fn($c) => [
-                    // Con colchón de 10 min
                     'inicio' => $c->inicio->copy()->subMinutes(10)->format('Y-m-d H:i'),
                     'fin'    => $c->fin->copy()->addMinutes(10)->format('Y-m-d H:i'),
                 ]);
         }
 
-        // Citas ocupadas del PROVEEDOR (próximos 60 días)
         $citasOcupadas = $restaurantero->citas()
             ->where('inicio', '>=', now())
             ->where('inicio', '<=', now()->addDays(60))
@@ -107,7 +131,6 @@ class RestauranteroPublicoController extends Controller
                 'inicio' => $c->inicio->format('Y-m-d H:i'),
                 'fin'    => $c->fin->format('Y-m-d H:i'),
             ])
-            // Combinar con los slots bloqueados del cliente
             ->toBase()->merge($slotsBloquedosCliente)
             ->values();
 
@@ -118,12 +141,11 @@ class RestauranteroPublicoController extends Controller
             'citasCount'    => $citasCount,
             'citasOcupadas' => $citasOcupadas,
             'evento'        => $evento ? [
-                'nombre'                      => $evento->nombre,
+                'nombre'                        => $evento->nombre,
                 'fecha_hora_inicio_compradores' => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
-                'fecha_hora_fin'               => $evento->fecha_hora_fin?->format('Y-m-d'),
-                // Legacy campos para compatibilidad con la vista
-                'fecha_inicio_agenda' => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
-                'fecha_fin_agenda'    => $evento->fecha_hora_fin?->format('Y-m-d'),
+                'fecha_hora_fin'                => $evento->fecha_hora_fin?->format('Y-m-d'),
+                'fecha_inicio_agenda'           => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
+                'fecha_fin_agenda'              => $evento->fecha_hora_fin?->format('Y-m-d'),
             ] : null,
         ]);
     }

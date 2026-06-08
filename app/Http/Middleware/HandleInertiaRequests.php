@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Evento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -75,6 +76,19 @@ class HandleInertiaRequests extends Middleware
                     'proveedor' => Evento::activo()?->proveedores()->where('user_id', $request->user()->id)->exists(),
                 ]
                 : ['comprador' => false, 'proveedor' => false],
+            'registro_evento' => function () use ($request) {
+                $evento = Evento::activo();
+                if (!$evento || !$request->user()) return null;
+                $reg = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $request->user()->id)
+                    ->first();
+                return $reg ? [
+                    'estado'         => $reg->estado,
+                    'tipo'           => $reg->tipo,
+                    'motivo_rechazo' => $reg->motivo_rechazo,
+                ] : null;
+            },
         ];
     }
 }

@@ -7,19 +7,27 @@ use App\Models\Cita;
 use App\Models\Evento;
 use App\Models\Restaurantero;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class EventoController extends Controller
 {
     public function index()
     {
+        $pendientesPorEvento = DB::table('evento_usuario')
+            ->where('estado', 'pendiente')
+            ->selectRaw('evento_id, count(*) as total')
+            ->groupBy('evento_id')
+            ->pluck('total', 'evento_id');
+
         $eventos = Evento::withCount(['citas', 'restauranteros'])
             ->orderByDesc('created_at')
             ->get()
-            ->map(function ($evento) {
+            ->map(function ($evento) use ($pendientesPorEvento) {
                 $evento->usuarios_count = Cita::where('edicion_id', $evento->id)
                     ->distinct('cliente_id')
                     ->count('cliente_id');
+                $evento->solicitudes_pendientes = $pendientesPorEvento[$evento->id] ?? 0;
                 return $evento;
             });
 

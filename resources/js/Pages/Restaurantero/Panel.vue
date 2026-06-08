@@ -341,9 +341,9 @@ const tiempoHastaCitaProxima = computed(() => {
 
             <!-- ── CARD REGISTRO AL EVENTO (PROVEEDOR) ─────────────── -->
             <div v-if="$page.props.eventoActivo">
-                <div v-if="!$page.props.registradoEnEvento?.proveedor"
+                <!-- Sin solicitud -->
+                <div v-if="!$page.props.registro_evento"
                     class="bg-gradient-to-r from-guinda-900/60 to-guinda-800/40 border border-guinda-700/50 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                    <div class="text-3xl">📅</div>
                     <div class="flex-1">
                         <h3 class="font-bold text-white mb-1">Hay un evento disponible: {{ $page.props.eventoActivo.nombre }}</h3>
                         <p class="text-gray-300 text-sm">Regístrate como proveedor en el evento para que los compradores puedan agendarte citas.</p>
@@ -354,9 +354,47 @@ const tiempoHastaCitaProxima = computed(() => {
                         Registrarme como Proveedor
                     </button>
                 </div>
-                <div v-else class="flex items-center gap-3 px-4 py-3 bg-guinda-50 dark:bg-guinda-900/20 border border-guinda-200 dark:border-guinda-800 rounded-xl text-sm">
-                    <svg class="w-4 h-4 text-guinda-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    <span class="text-guinda-700 dark:text-guinda-400 font-medium">Registrado en {{ $page.props.eventoActivo.nombre }}</span>
+
+                <!-- Pendiente -->
+                <div v-else-if="$page.props.registro_evento.estado === 'pendiente'"
+                    class="flex items-start gap-3 px-4 py-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl">
+                    <div class="w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                        <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-amber-800 dark:text-amber-300 text-sm">Tu solicitud como proveedor está siendo revisada</p>
+                        <p class="text-amber-700 dark:text-amber-400/80 text-xs mt-0.5">
+                            Cuando sea aprobada, aparecerás en el listado de proveedores del evento <strong>{{ $page.props.eventoActivo.nombre }}</strong>.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Aprobado -->
+                <div v-else-if="$page.props.registro_evento.estado === 'aprobado'"
+                    class="flex items-center gap-3 px-4 py-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl text-sm">
+                    <svg class="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span class="text-emerald-700 dark:text-emerald-400 font-medium">Aprobado como proveedor en {{ $page.props.eventoActivo.nombre }}</span>
+                </div>
+
+                <!-- Rechazado -->
+                <div v-else-if="$page.props.registro_evento.estado === 'rechazado'"
+                    class="flex items-start gap-3 px-4 py-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-2xl">
+                    <div class="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-700 flex items-center justify-center shrink-0 mt-0.5">
+                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-red-700 dark:text-red-400 text-sm">Tu solicitud como proveedor fue rechazada</p>
+                        <p v-if="$page.props.registro_evento.motivo_rechazo" class="text-red-600 dark:text-red-400/80 text-xs mt-0.5">
+                            Motivo: {{ $page.props.registro_evento.motivo_rechazo }}
+                        </p>
+                        <p class="text-red-500 dark:text-red-500/70 text-xs mt-1">Si crees que es un error, contacta al administrador.</p>
+                    </div>
                 </div>
             </div>
 
