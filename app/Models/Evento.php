@@ -46,11 +46,11 @@ class Evento extends Model
 
     public static function activo(): ?self
     {
+        // Un evento está activo desde que el admin lo activa hasta que llega fecha_hora_fin.
+        // No se bloquea por fecha_hora_inicio: ese campo marca cuándo ocurre físicamente el
+        // evento, no cuándo abren las inscripciones. Los controladores manejan sus propias
+        // ventanas temporales (agendado, inscripciones, etc.).
         return static::where('activa', true)
-            ->where(function ($q) {
-                $q->whereNull('fecha_hora_inicio')
-                  ->orWhere('fecha_hora_inicio', '<=', now());
-            })
             ->where(function ($q) {
                 $q->whereNull('fecha_hora_fin')
                   ->orWhere('fecha_hora_fin', '>=', now());
@@ -60,12 +60,12 @@ class Evento extends Model
 
     public function citas()
     {
-        return $this->hasMany(Cita::class);
+        return $this->hasMany(Cita::class, 'edicion_id');
     }
 
     public function restauranteros()
     {
-        return $this->hasMany(Restaurantero::class);
+        return $this->hasMany(Restaurantero::class, 'edicion_id');
     }
 
     public function compradores()

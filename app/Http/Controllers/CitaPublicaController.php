@@ -254,26 +254,47 @@ class CitaPublicaController extends Controller
             ->take(15)
             ->values();
 
-        $proveedores = Restaurantero::where('activo', true)
-            ->when($evento, fn($q) => $q->where('edicion_id', $evento->id))
-            ->when($evento, fn($q) => $q->withCount(['citas as citas_evento_count' => fn($q) =>
-                $q->where('edicion_id', $evento->id)->whereNotIn('estado', ['cancelada', 'rechazada'])
-            ]))
-            ->select(['id', 'nombre_restaurante', 'categoria', 'descripcion', 'logo_path', 'municipio', 'productos_top'])
-            ->get()
-            ->sortByDesc(function ($p) use ($keywords) {
-                if ($keywords->isEmpty()) return 0;
-                $text = mb_strtolower(
-                    ($p->nombre_restaurante ?? '') . ' ' .
-                    ($p->descripcion ?? '') . ' ' .
-                    ($p->categoria ?? '') . ' ' .
-                    implode(' ', array_column($p->productos_top ?? [], 'nombre')) . ' ' .
-                    implode(' ', is_array($p->productos_top) ? array_filter($p->productos_top, 'is_string') : [])
-                );
-                return $keywords->filter(fn($kw) => str_contains($text, $kw))->count();
-            })
-            ->take(20)
-            ->values();
+        // Solo mostrar proveedores si el comprador está aprobado en el evento activo
+        $compradorAprobado = $evento && DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $request->user()->id)
+            ->where('tipo', 'comprador')
+            ->where('estado', 'aprobado')
+            ->exists();
+
+        $proveedores = collect();
+
+        if ($compradorAprobado) {
+            $proveedores = Restaurantero::where('activo', true)
+                ->where('aprobado', true)
+                ->whereHas('user', function ($q) use ($evento) {
+                    $q->whereExists(function ($sub) use ($evento) {
+                        $sub->from('evento_usuario')
+                            ->whereColumn('evento_usuario.user_id', 'users.id')
+                            ->where('evento_usuario.evento_id', $evento->id)
+                            ->where('evento_usuario.tipo', 'proveedor')
+                            ->where('evento_usuario.estado', 'aprobado');
+                    });
+                })
+                ->withCount(['citas as citas_evento_count' => fn($q) =>
+                    $q->where('edicion_id', $evento->id)->whereNotIn('estado', ['cancelada', 'rechazada'])
+                ])
+                ->select(['id', 'nombre_restaurante', 'categoria', 'descripcion', 'logo_path', 'municipio', 'productos_top'])
+                ->get()
+                ->sortByDesc(function ($p) use ($keywords) {
+                    if ($keywords->isEmpty()) return 0;
+                    $text = mb_strtolower(
+                        ($p->nombre_restaurante ?? '') . ' ' .
+                        ($p->descripcion ?? '') . ' ' .
+                        ($p->categoria ?? '') . ' ' .
+                        implode(' ', array_column($p->productos_top ?? [], 'nombre')) . ' ' .
+                        implode(' ', is_array($p->productos_top) ? array_filter($p->productos_top, 'is_string') : [])
+                    );
+                    return $keywords->filter(fn($kw) => str_contains($text, $kw))->count();
+                })
+                ->take(20)
+                ->values();
+        }
 
         $notificaciones = \App\Models\Notificacion::where('user_id', $request->user()->id)
             ->where('leida', false)
@@ -287,6 +308,7 @@ class CitaPublicaController extends Controller
             'evento'             => $evento,
             'edicionesHistorial' => $edicionesHistorial,
             'proveedores'        => $proveedores,
+            'compradorAprobado'  => $compradorAprobado,
             'tieneKeywords'      => $keywords->isNotEmpty(),
             'notificaciones'     => $notificaciones,
         ]);
