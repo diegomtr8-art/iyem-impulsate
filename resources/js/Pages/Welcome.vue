@@ -3,6 +3,10 @@ import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import { Swiper, SwiperSlide } from 'swiper/vue';
+import { Autoplay, Pagination } from 'swiper/modules';
+import 'swiper/css';
+import 'swiper/css/pagination';
 
 const props = defineProps({
     canLogin: Boolean,
@@ -135,6 +139,39 @@ const queEsCards = [
         path: 'M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941',
     },
 ];
+
+const eventos = [
+    {
+        id: 1,
+        nombre: 'CANIRAC Yucatán',
+        sector: 'Restaurantes y alimentos',
+        fecha: 'Julio 2026',
+        img: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&auto=format&fit=crop&q=80',
+    },
+    {
+        id: 2,
+        nombre: 'Chedraui',
+        sector: 'Retail',
+        fecha: 'Agosto 2026',
+        img: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?w=800&auto=format&fit=crop&q=80',
+    },
+    {
+        id: 3,
+        nombre: 'OXXO Herencia Viva',
+        sector: 'Productos locales y artesanías',
+        fecha: 'Septiembre 2026',
+        img: 'https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?w=800&auto=format&fit=crop&q=80',
+    },
+];
+
+const swiperModules = [Autoplay, Pagination];
+const swiperRef = ref(null);
+function onSwiper(sw) { swiperRef.value = sw; }
+function swiperNext() { swiperRef.value?.slideNext(); }
+function swiperPrev() { swiperRef.value?.slidePrev(); }
+function scrollToEncuentros() {
+    document.getElementById('proximos-encuentros')?.scrollIntoView({ behavior: 'smooth' });
+}
 </script>
 
 <template>
@@ -290,8 +327,15 @@ const queEsCards = [
                 <div class="hero-ctas flex flex-col sm:flex-row items-center justify-center gap-4">
                     <Link v-if="canRegister" :href="route('register')"
                           class="px-8 py-3.5 bg-guinda-700 hover:bg-guinda-600 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-guinda-900/25 hover:-translate-y-0.5 text-sm w-full sm:w-auto text-center">
-                        Comenzar ahora — Es gratuito
+                        Quiero participar
                     </Link>
+                    <button @click="scrollToEncuentros"
+                            class="inline-flex items-center justify-center gap-2.5 px-8 py-3.5 border border-guinda-400/50 dark:border-white/25 text-guinda-700 dark:text-white/85 hover:bg-guinda-50/80 dark:hover:bg-white/5 hover:border-guinda-500 dark:hover:border-white/50 font-semibold rounded-xl transition-all duration-200 text-sm w-full sm:w-auto">
+                        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                        </svg>
+                        Ver próximos eventos
+                    </button>
                 </div>
             </div>
 
@@ -353,6 +397,95 @@ const queEsCards = [
                     </div>
 
                 </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════ PRÓXIMOS ENCUENTROS ════════════════════ -->
+        <section id="proximos-encuentros" class="py-20 relative" style="background:#0f1117; overflow:hidden;">
+            <!-- Halo decorativo -->
+            <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[300px] opacity-[0.13]"
+                     style="background: radial-gradient(ellipse at center, #8b1028 0%, transparent 70%); filter: blur(50px);"></div>
+                <div class="absolute bottom-0 right-0 w-[400px] h-[200px] opacity-[0.07]"
+                     style="background: radial-gradient(ellipse at right bottom, #8b1028 0%, transparent 70%); filter: blur(60px);"></div>
+            </div>
+
+            <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <!-- Header -->
+                <div class="text-center mb-12 fade-up">
+                    <span class="inline-flex items-center gap-2 bg-guinda-500/10 border border-guinda-500/25 text-guinda-400 text-[11px] font-bold px-4 py-1.5 rounded-full mb-5 tracking-widest uppercase">
+                        <span class="w-1.5 h-1.5 rounded-full bg-guinda-400 animate-pulse"></span>
+                        Agenda 2026
+                    </span>
+                    <h2 class="text-3xl sm:text-4xl font-black text-white mb-4">
+                        Próximos Encuentros
+                        <span class="text-transparent bg-clip-text" style="background-image: linear-gradient(90deg, #f36178, #c8113b);"> de Negocios</span>
+                    </h2>
+                    <p class="text-gray-400 max-w-xl mx-auto text-base leading-relaxed">
+                        Conecta con las empresas más importantes de la región.
+                    </p>
+                </div>
+
+                <!-- Carousel wrapper (padding da espacio a sombras y botones) -->
+                <div class="encuentros-outer relative">
+                    <Swiper
+                        :modules="swiperModules"
+                        :slides-per-view="1.15"
+                        :centered-slides="true"
+                        :space-between="20"
+                        :loop="true"
+                        :speed="520"
+                        :autoplay="{ delay: 4000, disableOnInteraction: false, pauseOnMouseEnter: true }"
+                        :pagination="{ clickable: true, el: '.encuentros-pagination' }"
+                        :breakpoints="{
+                            640:  { slidesPerView: 1.35, spaceBetween: 24 },
+                            1024: { slidesPerView: 3,    spaceBetween: 28, centeredSlides: true },
+                        }"
+                        class="encuentros-swiper"
+                        @swiper="onSwiper"
+                    >
+                        <SwiperSlide v-for="ev in eventos" :key="ev.id" class="encuentros-slide">
+                            <div class="encuentros-card group">
+                                <!-- Imagen de fondo con zoom al hover -->
+                                <div class="encuentros-img" :style="{ backgroundImage: `url('${ev.img}')` }"></div>
+                                <!-- Overlay gradiente oscuro -->
+                                <div class="encuentros-overlay"></div>
+                                <!-- Contenido inferior -->
+                                <div class="encuentros-body">
+                                    <span class="encuentros-badge">{{ ev.sector }}</span>
+                                    <h3 class="encuentros-title">{{ ev.nombre }}</h3>
+                                    <div class="encuentros-fecha">
+                                        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                                        </svg>
+                                        {{ ev.fecha }}
+                                    </div>
+                                    <Link v-if="canRegister" :href="route('register')" class="encuentros-cta">
+                                        Solicitar participación
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                                        </svg>
+                                    </Link>
+                                </div>
+                            </div>
+                        </SwiperSlide>
+                    </Swiper>
+
+                    <!-- Flechas de navegación circulares -->
+                    <button @click="swiperPrev" class="encuentros-nav encuentros-nav-prev" aria-label="Evento anterior">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                        </svg>
+                    </button>
+                    <button @click="swiperNext" class="encuentros-nav encuentros-nav-next" aria-label="Evento siguiente">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Dots de paginación -->
+                <div class="encuentros-pagination mt-8"></div>
             </div>
         </section>
 
@@ -889,6 +1022,171 @@ const queEsCards = [
 .shape-d { animation: floatShape 10s ease-in-out infinite; animation-delay: -6s; }
 .shape-e { animation: floatShape 15s ease-in-out infinite; animation-delay: -3s; }
 .shape-f { animation: floatShape  9s ease-in-out infinite; animation-delay: -7s; }
+
+/* ── Encuentros Carousel ──────────────────────────────────── */
+.encuentros-outer {
+    padding: 20px 0 24px;
+}
+
+.encuentros-swiper {
+    overflow: visible !important;
+}
+
+.encuentros-slide {
+    height: auto;
+    transition: transform 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                opacity   0.45s ease;
+}
+
+/* Spotlight effect en desktop (3 slides visibles) */
+@media (min-width: 1024px) {
+    :deep(.encuentros-swiper .swiper-slide:not(.swiper-slide-active)) {
+        transform: scale(0.875);
+        opacity: 0.6;
+    }
+    :deep(.encuentros-swiper .swiper-slide-active) {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.encuentros-card {
+    position: relative;
+    height: 460px;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+    transition: box-shadow 0.35s ease;
+    cursor: pointer;
+}
+.encuentros-card:hover {
+    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.7);
+}
+
+.encuentros-img {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    transition: transform 0.65s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.encuentros-card:hover .encuentros-img {
+    transform: scale(1.06);
+}
+
+.encuentros-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        transparent       15%,
+        rgba(0,0,0,0.35)  52%,
+        rgba(0,0,0,0.88) 100%
+    );
+}
+
+.encuentros-body {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    padding: 28px;
+    gap: 11px;
+}
+
+.encuentros-badge {
+    display: inline-flex;
+    align-self: flex-start;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #fff;
+    background: rgba(139, 16, 40, 0.72);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 4px 13px;
+    border-radius: 100px;
+}
+
+.encuentros-title {
+    font-size: 1.85rem;
+    font-weight: 900;
+    color: #fff;
+    line-height: 1.1;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.45);
+}
+
+.encuentros-fecha {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.72);
+    font-weight: 500;
+}
+
+.encuentros-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    align-self: flex-start;
+    margin-top: 2px;
+    background: #8b1028;
+    color: #fff;
+    font-weight: 700;
+    font-size: 0.85rem;
+    padding: 10px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 18px rgba(139, 16, 40, 0.42);
+    transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+    text-decoration: none;
+}
+.encuentros-cta:hover {
+    background: #a5122d;
+    transform: translateY(-2px);
+    box-shadow: 0 8px 28px rgba(139, 16, 40, 0.55);
+}
+
+/* Flechas nav circulares */
+.encuentros-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: rgba(15, 17, 23, 0.65);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 22px rgba(0, 0, 0, 0.45);
+    transition: background 0.22s, transform 0.22s, box-shadow 0.22s, border-color 0.22s;
+    cursor: pointer;
+}
+.encuentros-nav:hover {
+    background: rgba(139, 16, 40, 0.82);
+    transform: translateY(-50%) scale(1.12);
+    box-shadow: 0 8px 32px rgba(139, 16, 40, 0.48);
+    border-color: rgba(139, 16, 40, 0.55);
+}
+.encuentros-nav-prev { left: 6px; }
+.encuentros-nav-next { right: 6px; }
+@media (min-width: 768px) {
+    .encuentros-nav-prev { left: -14px; }
+    .encuentros-nav-next { right: -14px; }
+}
+@media (min-width: 1280px) {
+    .encuentros-nav-prev { left: -22px; }
+    .encuentros-nav-next { right: -22px; }
+}
 </style>
 
 <style>
@@ -897,5 +1195,28 @@ const queEsCards = [
 }
 .dark .hero-section {
     background: linear-gradient(145deg, #0d0204 0%, #150307 45%, #1a0608 100%);
+}
+
+/* ── Encuentros pagination dots (Swiper los inyecta, necesita CSS global) ── */
+.encuentros-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+    min-height: 14px;
+}
+.encuentros-pagination .swiper-pagination-bullet {
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 100px !important;
+    background: rgba(255, 255, 255, 0.22) !important;
+    opacity: 1 !important;
+    margin: 0 !important;
+    transition: width 0.3s ease, background 0.3s ease !important;
+    cursor: pointer;
+}
+.encuentros-pagination .swiper-pagination-bullet-active {
+    width: 26px !important;
+    background: #8b1028 !important;
 }
 </style>
