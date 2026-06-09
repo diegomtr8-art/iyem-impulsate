@@ -21,7 +21,9 @@ class Evento extends Model
         'fecha_hora_inicio',
         'fecha_hora_fin',
         'fecha_hora_inicio_proveedores',
+        'fecha_hora_fin_proveedores',
         'fecha_hora_inicio_compradores',
+        'fecha_hora_fin_compradores',
         'max_citas_por_comprador',
         'tiempo_entre_citas_minutos',
         // Legacy agenda fields (se mantienen por compatibilidad)
@@ -40,8 +42,42 @@ class Evento extends Model
             'fecha_hora_inicio'              => 'datetime',
             'fecha_hora_fin'                 => 'datetime',
             'fecha_hora_inicio_proveedores'  => 'datetime',
+            'fecha_hora_fin_proveedores'     => 'datetime',
             'fecha_hora_inicio_compradores'  => 'datetime',
+            'fecha_hora_fin_compradores'     => 'datetime',
         ];
+    }
+
+    public function registroProveedoresAbierto(): bool
+    {
+        $inicio = $this->fecha_hora_inicio_proveedores;
+        $fin    = $this->fecha_hora_fin_proveedores;
+        if ($inicio && now()->lt($inicio)) return false;
+        if ($fin && now()->gt($fin)) return false;
+        return true;
+    }
+
+    public function registroCompradoresAbierto(): bool
+    {
+        $inicio = $this->fecha_hora_inicio_compradores;
+        $fin    = $this->fecha_hora_fin_compradores ?? $this->fecha_hora_fin;
+        if ($inicio && now()->lt($inicio)) return false;
+        if ($fin && now()->gt($fin)) return false;
+        return true;
+    }
+
+    public function segundosHastaProveedores(): ?int
+    {
+        if (!$this->fecha_hora_inicio_proveedores) return null;
+        $diff = now()->diffInSeconds($this->fecha_hora_inicio_proveedores, false);
+        return $diff > 0 ? $diff : null;
+    }
+
+    public function segundosHastaCompradores(): ?int
+    {
+        if (!$this->fecha_hora_inicio_compradores) return null;
+        $diff = now()->diffInSeconds($this->fecha_hora_inicio_compradores, false);
+        return $diff > 0 ? $diff : null;
     }
 
     public static function activo(): ?self

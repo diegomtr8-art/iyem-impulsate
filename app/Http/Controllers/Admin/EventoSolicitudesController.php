@@ -25,6 +25,12 @@ class EventoSolicitudesController extends Controller
             ->get()
             ->keyBy('id');
 
+        $citasHistoricoPorUser = DB::table('citas')
+            ->whereIn('cliente_id', $userIds)
+            ->selectRaw('cliente_id, count(*) as total')
+            ->groupBy('cliente_id')
+            ->pluck('total', 'cliente_id');
+
         $mapear = fn($reg) => [
             'id'             => $reg->id,
             'user_id'        => $reg->user_id,
@@ -34,15 +40,38 @@ class EventoSolicitudesController extends Controller
             'respondido_at'  => $reg->respondido_at,
             'created_at'     => $reg->created_at,
             'user'           => isset($users[$reg->user_id]) ? [
-                'id'       => $users[$reg->user_id]->id,
-                'name'     => $users[$reg->user_id]->name,
-                'email'    => $users[$reg->user_id]->email,
-                'telefono' => $users[$reg->user_id]->telefono,
+                'id'                => $users[$reg->user_id]->id,
+                'name'              => $users[$reg->user_id]->name,
+                'email'             => $users[$reg->user_id]->email,
+                'telefono'          => $users[$reg->user_id]->telefono,
+                'sitio_web'         => $users[$reg->user_id]->sitio_web,
+                'necesidades'       => $users[$reg->user_id]->necesidades,
+                'created_at'        => $users[$reg->user_id]->created_at,
+                'citas_historico'   => $citasHistoricoPorUser[$reg->user_id] ?? 0,
             ] : null,
             'restaurantero'  => ($reg->tipo === 'proveedor' && isset($users[$reg->user_id]))
-                ? optional($users[$reg->user_id]->restaurantero)->only([
-                    'id', 'nombre_restaurante', 'categoria', 'municipio', 'rfc', 'logo_path', 'aprobado',
-                  ])
+                ? (function () use ($users, $reg) {
+                    $r = $users[$reg->user_id]->restaurantero;
+                    if (!$r) return null;
+                    return [
+                        'id'                => $r->id,
+                        'nombre_restaurante'=> $r->nombre_restaurante,
+                        'descripcion'       => $r->descripcion,
+                        'categoria'         => $r->categoria,
+                        'municipio'         => $r->municipio,
+                        'rfc'               => $r->rfc,
+                        'telefono'          => $r->telefono,
+                        'sitio_web'         => $r->sitio_web,
+                        'redes_sociales'    => $r->redes_sociales,
+                        'productos_top'     => $r->productos_top,
+                        'logo_path'         => $r->logo_path,
+                        'foto_path'         => $r->foto_path,
+                        'activo'            => $r->activo,
+                        'aprobado'          => $r->aprobado,
+                        'created_at'        => $r->created_at,
+                        'citas_count'       => \App\Models\Cita::where('restaurantero_id', $r->id)->count(),
+                    ];
+                })()
                 : null,
         ];
 

@@ -923,7 +923,16 @@ const guardarNota = (citaId) => {
 .fc-button { background: #f3f4f6 !important; border-color: #d1d5db !important; color: #111827 !important; font-size: 0.75rem !important; font-weight: 600 !important; }
 .fc-button:hover, .fc-button-active { background: #8b1028 !important; border-color: #710d21 !important; color: #ffffff !important; }
 .fc-button:focus { box-shadow: 0 0 0 2px rgba(139,16,40,0.3) !important; }
-.fc-event-title, .fc-event-time { color: #ffffff !important; font-weight: 600 !important; }
+/* Dot events (mes): fondo transparente → texto oscuro */
+.fc-daygrid-dot-event .fc-event-title { color: #111827 !important; font-weight: 600 !important; }
+.fc-daygrid-dot-event .fc-event-time  { color: #6b7280 !important; font-weight: 500 !important; }
+/* Block/timegrid events: tienen fondo de color → texto blanco */
+.fc-daygrid-block-event .fc-event-title,
+.fc-daygrid-block-event .fc-event-time,
+.fc-timegrid-event .fc-event-title,
+.fc-timegrid-event .fc-event-time { color: #ffffff !important; font-weight: 600 !important; }
+/* List view */
+.fc-list-event-title a, .fc-list-event-time { color: #111827 !important; }
 .fc-timegrid-slot-label-cushion, .fc-timegrid-axis-cushion { color: #374151 !important; font-weight: 500 !important; }
 .fc-daygrid-more-link { color: #8b1028 !important; font-weight: 700 !important; }
 

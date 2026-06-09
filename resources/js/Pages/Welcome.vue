@@ -16,28 +16,50 @@ const mobileMenuOpen = ref(false);
 const navSolido = ref(false);
 const statsVisible = ref(false);
 
-const countCitas = ref(0);
-const countPorciento = ref(0);
+const count200 = ref(0);
+const count600 = ref(0);
+const count10 = ref(0);
+
+const faqOpen = ref(null);
+const faqItems = [
+    {
+        q: '¿Es necesario pagar para participar?',
+        a: 'No. Impúlsate es un programa 100% gratuito para compradores y proveedores. El IYEM cubre todos los costos como parte del apoyo al ecosistema empresarial yucateco.',
+    },
+    {
+        q: '¿Quién puede participar?',
+        a: 'Cualquier empresa o emprendedor que opere en el Estado de Yucatán. Tanto compradores (empresas que buscan proveedores) como proveedores (empresas que ofrecen productos o servicios) pueden registrarse.',
+    },
+    {
+        q: '¿Cómo se realizan las citas?',
+        a: 'Las citas son presenciales en nuestras instalaciones ubicadas en Mérida, Yucatán. Cada reunión tiene una duración aproximada de 30 minutos y se realiza en el horario previamente agendado en la plataforma.',
+    },
+    {
+        q: '¿Cuántas citas puedo agendar?',
+        a: 'No hay un límite establecido. Puedes agendar tantas citas como desees dentro de los horarios disponibles del evento. Entre más citas agendes, mayores oportunidades de negocio podrás generar.',
+    },
+];
 
 let scrollHandler = null;
 
 function runCountUp() {
     if (statsVisible.value) return;
     statsVisible.value = true;
-    const duration = 1800;
-    const steps = 60;
-    let step = 0;
-    const timer = setInterval(() => {
-        step++;
-        const ease = 1 - Math.pow(2, -10 * (step / steps));
-        countCitas.value = Math.round(6 * ease);
-        countPorciento.value = Math.round(100 * ease);
-        if (step >= steps) {
-            clearInterval(timer);
-            countCitas.value = 6;
-            countPorciento.value = 100;
-        }
-    }, duration / steps);
+    const targets = [[count200, 200], [count600, 600], [count10, 10]];
+    targets.forEach(([counter, target]) => {
+        const duration = 1800;
+        const steps = 60;
+        let step = 0;
+        const timer = setInterval(() => {
+            step++;
+            const ease = 1 - Math.pow(2, -10 * (step / steps));
+            counter.value = Math.round(target * ease);
+            if (step >= steps) {
+                clearInterval(timer);
+                counter.value = target;
+            }
+        }, duration / steps);
+    });
 }
 
 onMounted(() => {
@@ -82,6 +104,20 @@ const pasos = [
     },
 ];
 
+const beneficiosCompradores = [
+    'Encuentra nuevos proveedores locales.',
+    'Reduce costos de adquisición.',
+    'Conoce productos innovadores.',
+    'Agenda reuniones personalizadas.',
+];
+
+const beneficiosProveedores = [
+    'Presenta tu empresa directamente a compradores.',
+    'Genera prospectos calificados.',
+    'Accede a grandes empresas y cadenas comerciales.',
+    'Amplía tu red de contactos estratégicos.',
+];
+
 const queEsCards = [
     {
         titulo: 'Programa Gubernamental',
@@ -102,7 +138,7 @@ const queEsCards = [
 </script>
 
 <template>
-    <Head title="Encuentro de Negocios Impulsate — Yucatán" />
+    <Head title="Impulsate - Encuentro de Negocios" />
 
     <div class="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white">
 
@@ -268,17 +304,130 @@ const queEsCards = [
         </section>
 
         <!-- ═══════════════════════════ STATS ═══════════════════════════ -->
-        <section class="bg-guinda-900 dark:bg-guinda-950 py-16">
-            <div data-stats="true" class="fade-up max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-10 sm:gap-0 text-center text-white">
-                    <div class="sm:border-r sm:border-guinda-700/40">
-                        <div class="text-5xl sm:text-6xl font-black mb-2 tabular-nums">{{ countCitas }}</div>
-                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase">Número de eventos realizados</div>
+        <section class="py-20" style="background: linear-gradient(135deg, #6b0d1e 0%, #8b1028 45%, #5a0a18 100%);">
+            <div data-stats="true" class="fade-up max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 text-center text-white">
+
+                    <!-- 200+ empresas -->
+                    <div class="group">
+                        <div class="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors">
+                            <svg class="w-6 h-6 text-guinda-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21" />
+                            </svg>
+                        </div>
+                        <div class="text-4xl sm:text-5xl font-black mb-2 tabular-nums">{{ count200 }}<span class="text-guinda-300">+</span></div>
+                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase leading-snug">Empresas<br class="hidden sm:block" />registradas</div>
                     </div>
-                    <div>
-                        <div class="text-5xl sm:text-6xl font-black mb-2 tabular-nums">{{ countPorciento }}%</div>
-                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase">Completamente gratuito</div>
+
+                    <!-- 600+ citas -->
+                    <div class="group">
+                        <div class="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors">
+                            <svg class="w-6 h-6 text-guinda-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                            </svg>
+                        </div>
+                        <div class="text-4xl sm:text-5xl font-black mb-2 tabular-nums">{{ count600 }}<span class="text-guinda-300">+</span></div>
+                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase leading-snug">Citas de negocios<br class="hidden sm:block" />realizadas</div>
                     </div>
+
+                    <!-- 10+ encuentros -->
+                    <div class="group">
+                        <div class="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors">
+                            <svg class="w-6 h-6 text-guinda-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.503-1.125-1.125-1.125h-.871M7.5 18.75v-3.375c0-.621.504-1.125 1.125-1.125h.872m5.007 0H9.497m5.007 0a7.454 7.454 0 01-.982-3.172M9.497 14.25a7.454 7.454 0 00.981-3.172M5.25 4.236c-.982.143-1.954.317-2.916.52A6.003 6.003 0 007.73 9.728M5.25 4.236V4.5c0 2.108.966 3.99 2.48 5.228M5.25 4.236V2.721C7.456 2.41 9.71 2.25 12 2.25c2.291 0 4.545.16 6.75.47v1.516M7.73 9.728a6.726 6.726 0 002.748 1.35m8.272-6.842V4.5c0 2.108-.966 3.99-2.48 5.228m2.48-5.492a46.32 46.32 0 012.916.52 6.003 6.003 0 01-5.395 4.972m0 0a6.726 6.726 0 01-2.749 1.35m0 0a6.772 6.772 0 01-3.044 0" />
+                            </svg>
+                        </div>
+                        <div class="text-4xl sm:text-5xl font-black mb-2 tabular-nums">{{ count10 }}<span class="text-guinda-300">+</span></div>
+                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase leading-snug">Encuentros<br class="hidden sm:block" />realizados</div>
+                    </div>
+
+                    <!-- Compradoras nacionales -->
+                    <div class="group">
+                        <div class="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center mx-auto mb-4 group-hover:bg-white/20 transition-colors">
+                            <svg class="w-6 h-6 text-guinda-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253M3 12c0 .778.099 1.533.284 2.253" />
+                            </svg>
+                        </div>
+                        <div class="text-2xl sm:text-3xl font-black mb-2 leading-tight">Empresas<br /><span class="text-guinda-300">compradoras</span></div>
+                        <div class="text-guinda-300 text-xs font-semibold tracking-widest uppercase leading-snug">Nacionales<br class="hidden sm:block" />y regionales</div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══════════════════════ ¿POR QUÉ PARTICIPAR? ══════════════════ -->
+        <section class="py-24 bg-white dark:bg-gray-950">
+            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+
+                <!-- Título de sección -->
+                <div class="text-center mb-14 fade-up">
+                    <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white">
+                        ¿Por qué
+                        <span class="text-transparent bg-clip-text" style="background-image: linear-gradient(90deg, #c8113b, #f36178)">
+                            participar?
+                        </span>
+                    </h2>
+                    <p class="mt-4 text-gray-500 dark:text-gray-400 max-w-xl mx-auto text-base leading-relaxed">
+                        Impúlsate está diseñado para crear conexiones de valor reales entre compradores y proveedores de Yucatán.
+                    </p>
+                </div>
+
+                <!-- Columnas -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+
+                    <!-- Compradores -->
+                    <div class="fade-up group bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 hover:shadow-xl hover:border-guinda-400/40 dark:hover:border-guinda-500/30 transition-all duration-300">
+                        <div class="flex items-center gap-4 mb-7">
+                            <div class="w-13 h-13 w-[52px] h-[52px] rounded-xl bg-guinda-100 dark:bg-guinda-500/15 flex items-center justify-center shrink-0">
+                                <!-- Heroicon: building-office-2 -->
+                                <svg class="w-7 h-7 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-black text-gray-900 dark:text-white">Compradores</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Empresas que buscan proveedores estratégicos</p>
+                            </div>
+                        </div>
+                        <ul class="space-y-3.5">
+                            <li v-for="item in beneficiosCompradores" :key="item" class="flex items-start gap-3">
+                                <span class="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full bg-guinda-100 dark:bg-guinda-500/15 flex items-center justify-center">
+                                    <svg class="w-3 h-3 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                    </svg>
+                                </span>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{{ item }}</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Proveedores -->
+                    <div class="fade-up group bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 hover:shadow-xl hover:border-guinda-400/40 dark:hover:border-guinda-500/30 transition-all duration-300" style="transition-delay: 100ms">
+                        <div class="flex items-center gap-4 mb-7">
+                            <div class="w-[52px] h-[52px] rounded-xl bg-guinda-100 dark:bg-guinda-500/15 flex items-center justify-center shrink-0">
+                                <!-- Heroicon: user-group -->
+                                <svg class="w-7 h-7 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 class="text-xl font-black text-gray-900 dark:text-white">Proveedores</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Empresas que quieren crecer y conectar</p>
+                            </div>
+                        </div>
+                        <ul class="space-y-3.5">
+                            <li v-for="item in beneficiosProveedores" :key="item" class="flex items-start gap-3">
+                                <span class="mt-0.5 flex-shrink-0 w-5 h-5 rounded-full bg-guinda-100 dark:bg-guinda-500/15 flex items-center justify-center">
+                                    <svg class="w-3 h-3 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                    </svg>
+                                </span>
+                                <span class="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{{ item }}</span>
+                            </li>
+                        </ul>
+                    </div>
+
                 </div>
             </div>
         </section>
@@ -556,6 +705,38 @@ const queEsCards = [
             </div>
         </section>
 
+        <!-- ═══════════════════════════ FAQ ═══════════════════════════ -->
+        <section class="py-24 bg-white dark:bg-gray-950">
+            <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="text-center mb-14 fade-up">
+                    <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">Preguntas frecuentes</h2>
+                    <p class="text-gray-500 dark:text-gray-400 max-w-lg mx-auto">Todo lo que necesitas saber antes de participar en Impúlsate.</p>
+                </div>
+                <div class="space-y-3 fade-up">
+                    <div v-for="(item, i) in faqItems" :key="i"
+                         class="border rounded-2xl overflow-hidden transition-colors duration-200"
+                         :class="faqOpen === i ? 'border-guinda-400/50 dark:border-guinda-500/40 bg-guinda-50/50 dark:bg-guinda-500/5' : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/50'">
+                        <button class="w-full flex items-center justify-between px-6 py-5 text-left"
+                                @click="faqOpen = faqOpen === i ? null : i">
+                            <span class="font-bold text-sm sm:text-base pr-4 transition-colors duration-200"
+                                  :class="faqOpen === i ? 'text-guinda-700 dark:text-guinda-400' : 'text-gray-900 dark:text-white'">
+                                {{ item.q }}
+                            </span>
+                            <svg class="w-5 h-5 shrink-0 transition-transform duration-300"
+                                 :class="faqOpen === i ? 'rotate-180 text-guinda-600 dark:text-guinda-400' : 'rotate-0 text-gray-400 dark:text-gray-600'"
+                                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+                        <div class="overflow-hidden transition-all duration-300 ease-in-out"
+                             :style="faqOpen === i ? 'max-height: 200px; opacity: 1;' : 'max-height: 0; opacity: 0;'">
+                            <p class="px-6 pb-6 text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ item.a }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- ═══════════════════════════ FOOTER ═══════════════════════════ -->
         <footer class="bg-gray-50 dark:bg-gray-950 border-t border-gray-200 dark:border-gray-900">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
@@ -579,7 +760,6 @@ const queEsCards = [
                     <div>
                         <h4 class="font-bold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider mb-5">Navegación</h4>
                         <ul class="space-y-3">
-                            <li><Link :href="route('restauranteros.index')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Proveedores</Link></li>
                             <li><a href="#como-funciona" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Cómo funciona</a></li>
                             <li><a href="#ubicacion" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Nuestra oficina</a></li>
                             <li v-if="canRegister"><Link :href="route('register')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Registrarse gratis</Link></li>

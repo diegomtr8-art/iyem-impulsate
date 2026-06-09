@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cita;
+use App\Models\Evento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Carbon\Carbon;
 
@@ -70,6 +72,36 @@ class RestauranteroPanelController extends Controller
             ->take(3)
             ->get(['id', 'tipo', 'titulo', 'mensaje', 'cita_id', 'created_at']);
 
+        $todosLosEventos = Evento::orderByDesc('fecha_hora_inicio')->get()
+            ->map(function ($ev) use ($request) {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $ev->id)
+                    ->where('user_id', $request->user()->id)
+                    ->get();
+                return [
+                    'id'                            => $ev->id,
+                    'nombre'                        => $ev->nombre,
+                    'sector_economico'              => $ev->sector_economico,
+                    'activa'                        => $ev->activa,
+                    'fecha_hora_inicio'             => $ev->fecha_hora_inicio?->toISOString(),
+                    'fecha_hora_fin'                => $ev->fecha_hora_fin?->toISOString(),
+                    'fecha_hora_inicio_proveedores' => $ev->fecha_hora_inicio_proveedores?->toISOString(),
+                    'fecha_hora_fin_proveedores'    => $ev->fecha_hora_fin_proveedores?->toISOString(),
+                    'fecha_hora_inicio_compradores' => $ev->fecha_hora_inicio_compradores?->toISOString(),
+                    'fecha_hora_fin_compradores'    => $ev->fecha_hora_fin_compradores?->toISOString(),
+                    'max_citas_por_comprador'       => $ev->max_citas_por_comprador,
+                    'tiempo_entre_citas_minutos'    => $ev->tiempo_entre_citas_minutos,
+                    'registro_proveedor_abierto'    => $ev->registroProveedoresAbierto(),
+                    'registro_comprador_abierto'    => $ev->registroCompradoresAbierto(),
+                    'segundos_hasta_proveedores'    => $ev->segundosHastaProveedores(),
+                    'segundos_hasta_compradores'    => $ev->segundosHastaCompradores(),
+                    'mi_registro' => [
+                        'comprador' => $registro->firstWhere('tipo', 'comprador'),
+                        'proveedor' => $registro->firstWhere('tipo', 'proveedor'),
+                    ],
+                ];
+            });
+
         return Inertia::render('Restaurantero/Panel', [
             'restaurantero'   => $restaurantero,
             'citasHoy'        => $citasHoy,
@@ -85,6 +117,7 @@ class RestauranteroPanelController extends Controller
                 'cliente_name' => $citaProxima2h->cliente->name ?? 'Comprador',
             ] : null,
             'notificaciones'  => $notificaciones,
+            'eventos'         => $todosLosEventos,
         ]);
     }
 

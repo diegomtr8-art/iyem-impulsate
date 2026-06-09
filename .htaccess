@@ -11,6 +11,9 @@ Options -Indexes
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
+    # Route /storage/ requests to public/storage/ (Laravel symlink lives there)
+    RewriteRule ^storage/(.+)$ public/storage/$1 [L]
+
     # Static files and directories: serve directly (no rewrite)
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d

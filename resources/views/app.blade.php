@@ -4,7 +4,25 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+        <title inertia>Impulsate - Encuentro de Negocios</title>
+
+        <!-- SEO -->
+        <meta name="description" content="Programa tu cita y conecta con los mejores empresarios de Yucatán en el Encuentro de Negocios Impulsate.">
+
+        <!-- Open Graph -->
+        <meta property="og:title" content="Impulsate - Encuentro de Negocios">
+        <meta property="og:description" content="Programa tu cita y conecta con los mejores empresarios de Yucatán en el Encuentro de Negocios Impulsate.">
+        <meta property="og:url" content="https://impulsate.iyemyucatan.com">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="Impulsate">
+
+        <!-- Twitter Card -->
+        <meta name="twitter:card" content="summary_large_image">
+        <meta name="twitter:title" content="Impulsate - Encuentro de Negocios">
+        <meta name="twitter:description" content="Programa tu cita y conecta con los mejores empresarios de Yucatán en el Encuentro de Negocios Impulsate.">
+
+        <!-- Favicon -->
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">

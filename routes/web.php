@@ -132,6 +132,7 @@ Route::middleware([
         Route::prefix('eventos')->name('eventos.')->group(function () {
             Route::get('/', [EventoController::class, 'index'])->name('index');
             Route::post('/', [EventoController::class, 'store'])->name('store');
+            Route::patch('/{evento}', [EventoController::class, 'update'])->name('update');
             Route::post('/{evento}/archivar', [EventoController::class, 'archivar'])->name('archivar');
             Route::post('/{evento}/activar', [EventoController::class, 'activar'])->name('activar');
             Route::delete('/{evento}', [EventoController::class, 'destroy'])->name('destroy');

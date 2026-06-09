@@ -21,6 +21,8 @@ const switchRole = () => {
     if (switchingRole.value) return;
     switchingRole.value = true;
     router.post(route('switch.role'), {}, {
+        onSuccess: () => { switchingRole.value = false; },
+        onError: () => { switchingRole.value = false; },
         onFinish: () => { switchingRole.value = false; },
     });
 };
