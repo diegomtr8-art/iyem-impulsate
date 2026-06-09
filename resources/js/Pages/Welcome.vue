@@ -23,20 +23,20 @@ const count10 = ref(0);
 const faqOpen = ref(null);
 const faqItems = [
     {
-        q: '¿Es necesario pagar para participar?',
-        a: 'No. Impúlsate es un programa 100% gratuito para compradores y proveedores. El IYEM cubre todos los costos como parte del apoyo al ecosistema empresarial yucateco.',
+        q: '¿Tiene costo participar?' ,
+        a: 'No. La participación es completamente gratuita.',
     },
     {
-        q: '¿Quién puede participar?',
-        a: 'Cualquier empresa o emprendedor que opere en el Estado de Yucatán. Tanto compradores (empresas que buscan proveedores) como proveedores (empresas que ofrecen productos o servicios) pueden registrarse.',
+        q: '¿Quién puede registrarse?',
+        a: ' Personas físicas con actividad empresarial y personas morales legalmente constituidas ' ,
     },
     {
-        q: '¿Cómo se realizan las citas?',
-        a: 'Las citas son presenciales en nuestras instalaciones ubicadas en Mérida, Yucatán. Cada reunión tiene una duración aproximada de 30 minutos y se realiza en el horario previamente agendado en la plataforma.',
+        q: '¿Las citas son presenciales?',
+        a: 'Sí, salvo que se indique lo contrario en la convocatoria' ,
     },
     {
-        q: '¿Cuántas citas puedo agendar?',
-        a: 'No hay un límite establecido. Puedes agendar tantas citas como desees dentro de los horarios disponibles del evento. Entre más citas agendes, mayores oportunidades de negocio podrás generar.',
+        q: '¿Cómo se seleccionan las citas?',
+        a: 'Con base en el perfil y necesidades de compradores y proveedores.',
     },
 ];
 
