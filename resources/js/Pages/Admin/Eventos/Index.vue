@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 
 const props = defineProps({
@@ -9,10 +9,14 @@ const props = defineProps({
 });
 
 const mostrarForm = ref(false);
-const form = ref({
+const previewNuevo = ref(null);
+const previewEditar = ref(null);
+
+const form = useForm({
     nombre: '',
     sector_economico: '',
     descripcion: '',
+    imagen: null,
     fecha_hora_inicio: '',
     fecha_hora_fin: '',
     fecha_hora_inicio_proveedores: '',
@@ -22,13 +26,21 @@ const form = ref({
     max_citas_por_comprador: 3,
     tiempo_entre_citas_minutos: 30,
 });
+
+const onImagenNuevo = (e) => {
+    const f = e.target.files[0];
+    form.imagen = f ?? null;
+    previewNuevo.value = f ? URL.createObjectURL(f) : null;
+};
 
 const modalEditar = ref(false);
 const eventoEditando = ref(null);
-const formEditar = ref({
+const formEditar = useForm({
     nombre: '',
     sector_economico: '',
     descripcion: '',
+    imagen: null,
+    _method: 'PATCH',
     fecha_hora_inicio: '',
     fecha_hora_fin: '',
     fecha_hora_inicio_proveedores: '',
@@ -39,33 +51,41 @@ const formEditar = ref({
     tiempo_entre_citas_minutos: 30,
 });
 
+const onImagenEditar = (e) => {
+    const f = e.target.files[0];
+    formEditar.imagen = f ?? null;
+    previewEditar.value = f ? URL.createObjectURL(f) : null;
+};
+
 const abrirEditar = (evento) => {
     eventoEditando.value = evento;
+    previewEditar.value = evento.imagen_url ?? null;
     const toLocal = (iso) => {
         if (!iso) return '';
         const d = new Date(iso);
         const pad = n => String(n).padStart(2, '0');
         return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     };
-    formEditar.value = {
-        nombre:                        evento.nombre || '',
-        sector_economico:              evento.sector_economico || '',
-        descripcion:                   evento.descripcion || '',
-        fecha_hora_inicio:             toLocal(evento.fecha_hora_inicio),
-        fecha_hora_fin:                toLocal(evento.fecha_hora_fin),
-        fecha_hora_inicio_proveedores: toLocal(evento.fecha_hora_inicio_proveedores),
-        fecha_hora_fin_proveedores:    toLocal(evento.fecha_hora_fin_proveedores),
-        fecha_hora_inicio_compradores: toLocal(evento.fecha_hora_inicio_compradores),
-        fecha_hora_fin_compradores:    toLocal(evento.fecha_hora_fin_compradores),
-        max_citas_por_comprador:       evento.max_citas_por_comprador || 3,
-        tiempo_entre_citas_minutos:    evento.tiempo_entre_citas_minutos || 30,
-    };
+    formEditar.nombre                        = evento.nombre || '';
+    formEditar.sector_economico              = evento.sector_economico || '';
+    formEditar.descripcion                   = evento.descripcion || '';
+    formEditar.imagen                        = null;
+    formEditar._method                       = 'PATCH';
+    formEditar.fecha_hora_inicio             = toLocal(evento.fecha_hora_inicio);
+    formEditar.fecha_hora_fin                = toLocal(evento.fecha_hora_fin);
+    formEditar.fecha_hora_inicio_proveedores = toLocal(evento.fecha_hora_inicio_proveedores);
+    formEditar.fecha_hora_fin_proveedores    = toLocal(evento.fecha_hora_fin_proveedores);
+    formEditar.fecha_hora_inicio_compradores = toLocal(evento.fecha_hora_inicio_compradores);
+    formEditar.fecha_hora_fin_compradores    = toLocal(evento.fecha_hora_fin_compradores);
+    formEditar.max_citas_por_comprador       = evento.max_citas_por_comprador || 3;
+    formEditar.tiempo_entre_citas_minutos    = evento.tiempo_entre_citas_minutos || 30;
     modalEditar.value = true;
 };
 
 const guardarEdicion = () => {
-    router.patch(route('admin.eventos.update', eventoEditando.value.id), formEditar.value, {
-        onSuccess: () => { modalEditar.value = false; },
+    formEditar.post(route('admin.eventos.update', eventoEditando.value.id), {
+        forceFormData: true,
+        onSuccess: () => { modalEditar.value = false; previewEditar.value = null; },
     });
 };
 
@@ -73,16 +93,12 @@ const eventoActivo = computed(() => props.eventos.find(e => e.activa) || null);
 const eventosArchivados = computed(() => props.eventos.filter(e => !e.activa));
 
 const crearEvento = () => {
-    router.post(route('admin.eventos.store'), form.value, {
+    form.post(route('admin.eventos.store'), {
+        forceFormData: true,
         onSuccess: () => {
             mostrarForm.value = false;
-            form.value = {
-                nombre: '', sector_economico: '', descripcion: '',
-                fecha_hora_inicio: '', fecha_hora_fin: '',
-                fecha_hora_inicio_proveedores: '', fecha_hora_fin_proveedores: '',
-                fecha_hora_inicio_compradores: '', fecha_hora_fin_compradores: '',
-                max_citas_por_comprador: 3, tiempo_entre_citas_minutos: 30,
-            };
+            previewNuevo.value = null;
+            form.reset();
         },
     });
 };
@@ -90,6 +106,11 @@ const crearEvento = () => {
 const archivar = (evento) => {
     if (!confirm(`¿Archivar el evento "${evento.nombre}"? Los usuarios no podrán agendar nuevas citas hasta que actives otro evento.`)) return;
     router.post(route('admin.eventos.archivar', evento.id));
+};
+
+const enviarEncuestas = (evento) => {
+    if (!confirm(`¿Enviar encuesta de satisfacción a todos los participantes aprobados de "${evento.nombre}"?`)) return;
+    router.post(route('admin.eventos.enviar-encuestas', evento.id));
 };
 
 const activar = (evento) => {
@@ -113,14 +134,12 @@ const formatFechaCorta = (fecha) => {
 };
 
 // Diagrama de secuencia
-const secuenciaValida = computed(() => {
-    const f = form.value;
-    return f.fecha_hora_inicio_proveedores && f.fecha_hora_inicio_compradores && f.fecha_hora_inicio;
-});
-const secuenciaValidaEditar = computed(() => {
-    const f = formEditar.value;
-    return f.fecha_hora_inicio_proveedores && f.fecha_hora_inicio_compradores && f.fecha_hora_inicio;
-});
+const secuenciaValida = computed(() =>
+    form.fecha_hora_inicio_proveedores && form.fecha_hora_inicio_compradores && form.fecha_hora_inicio
+);
+const secuenciaValidaEditar = computed(() =>
+    formEditar.fecha_hora_inicio_proveedores && formEditar.fecha_hora_inicio_compradores && formEditar.fecha_hora_inicio
+);
 </script>
 
 <template>
@@ -172,6 +191,14 @@ const secuenciaValidaEditar = computed(() => {
                         <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descripción</label>
                         <input v-model="form.descripcion" type="text" placeholder="Descripción breve del evento..."
                             class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB)</span></label>
+                        <input type="file" accept="image/*" @change="onImagenNuevo"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        <div v-if="previewNuevo" class="mt-2">
+                            <img :src="previewNuevo" alt="Preview" class="h-28 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                        </div>
                     </div>
                 </div>
 
@@ -338,6 +365,13 @@ const secuenciaValidaEditar = computed(() => {
 
                     <!-- Acciones adicionales evento activo -->
                     <div class="flex flex-col sm:flex-row gap-3 mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
+                        <button @click="enviarEncuestas(eventoActivo)"
+                            class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-800/40 hover:bg-guinda-100 dark:hover:bg-guinda-950/30 text-guinda-700 dark:text-guinda-400 text-sm font-semibold rounded-xl transition-colors">
+                            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                            </svg>
+                            Enviar encuestas
+                        </button>
                         <Link :href="route('admin.eventos.solicitudes', eventoActivo.id)"
                             class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 hover:bg-amber-100 dark:hover:bg-amber-950/30 text-amber-800 dark:text-amber-400 text-sm font-semibold rounded-xl transition-colors relative">
                             <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -467,6 +501,14 @@ const secuenciaValidaEditar = computed(() => {
                                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descripción</label>
                                 <input v-model="formEditar.descripcion" type="text"
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional — deja vacío para conservar la actual)</span></label>
+                                <input type="file" accept="image/*" @change="onImagenEditar"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                                <div v-if="previewEditar" class="mt-2">
+                                    <img :src="previewEditar" alt="Preview" class="h-24 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                                </div>
                             </div>
                         </div>
                         <div class="p-4 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-800/30 rounded-xl">

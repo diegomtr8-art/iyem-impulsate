@@ -113,4 +113,17 @@ class NotificacionController extends Controller
 
         return response()->json(['ok' => true]);
     }
+
+    public function eliminar(Request $request, Notificacion $notificacion)
+    {
+        if ($notificacion->user_id !== $request->user()->id) abort(403);
+        $notificacion->delete();
+        return response()->json(['ok' => true]);
+    }
+
+    public function eliminarTodas(Request $request)
+    {
+        Notificacion::where('user_id', $request->user()->id)->delete();
+        return response()->json(['ok' => true]);
+    }
 }

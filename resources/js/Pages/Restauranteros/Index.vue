@@ -24,7 +24,7 @@ const search = ref(props.filters?.search || '');
 const categoriaActiva = ref(props.filters?.categoria || '');
 
 const aplicarFiltros = () => {
-    router.get(route('restauranteros.index'), {
+    router.get(route('proveedores.index'), {
         search: search.value,
         categoria: categoriaActiva.value,
     }, {
@@ -135,7 +135,7 @@ const seleccionarCategoria = (cat) => {
             <!-- Grid -->
             <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <Link v-for="r in restauranteros.data" :key="r.id"
-                    :href="route('restauranteros.show', r.id)"
+                    :href="route('proveedores.show', r.id)"
                     class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">
                     <!-- Foto -->
                     <div class="h-40 bg-gradient-to-br from-gray-100 dark:from-gray-800 to-gray-200 dark:to-gray-900 flex items-center justify-center overflow-hidden">

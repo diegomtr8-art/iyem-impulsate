@@ -47,7 +47,7 @@ const switchRole = () => {
 
                         <!-- Desktop nav -->
                         <div class="hidden sm:flex items-center gap-1">
-                            <Link :href="route('restauranteros.index')"
+                            <Link :href="route('proveedores.index')"
                                 class="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-lg transition-colors">
                                 Proveedores
                             </Link>
@@ -145,7 +145,7 @@ const switchRole = () => {
 
                 <!-- Mobile menu -->
                 <div v-if="showingMenu" class="sm:hidden border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 space-y-1 transition-colors duration-300">
-                    <Link :href="route('restauranteros.index')" @click="showingMenu=false"
+                    <Link :href="route('proveedores.index')" @click="showingMenu=false"
                         class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-xl">
                         Proveedores
                     </Link>
@@ -231,7 +231,7 @@ const switchRole = () => {
                             <h4 class="text-xs font-bold uppercase tracking-widest text-guinda-700 dark:text-guinda-400 mb-4">Navegación</h4>
                             <ul class="space-y-2.5">
                                 <li><Link :href="route('home')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Inicio</Link></li>
-                                <li><Link :href="route('restauranteros.index')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Proveedores</Link></li>
+                                <li><Link :href="route('proveedores.index')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Proveedores</Link></li>
                                 <li v-if="$page.props.auth?.user"><Link :href="route('user.dashboard')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Mis Citas</Link></li>
                                 <li v-if="!$page.props.auth?.user"><Link :href="route('register')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Agendar Cita</Link></li>
                                 <li v-if="!$page.props.auth?.user"><Link :href="route('login')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Iniciar sesión</Link></li>

@@ -18,5 +18,8 @@ class DatabaseSeeder extends Seeder
         $this->call([
             RolesAndPermissionsSeeder::class,
         ]);
+        // Para datos de demostración, ejecutar manualmente:
+        // php artisan db:seed --class=LimpiarYResetearSeeder --force
+        // php artisan db:seed --class=DemoDataSeeder --force
     }
 }

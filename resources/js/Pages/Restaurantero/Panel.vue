@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TabEventos from '@/Components/TabEventos.vue';
+import EventosSidebar from '@/Components/EventosSidebar.vue';
 import { ref, computed, onMounted } from 'vue';
 import { Link, router, useForm, usePage } from '@inertiajs/vue3';
 import FullCalendar from '@fullcalendar/vue3';
@@ -268,7 +269,7 @@ const tiempoHastaCitaProxima = computed(() => {
                         Editar perfil
                     </button>
                     <!-- Ver perfil público -->
-                    <Link :href="route('restauranteros.show', restaurantero.id)"
+                    <Link :href="route('proveedores.show', restaurantero.id)"
                         class="px-4 py-2 text-sm font-semibold bg-guinda-50 dark:bg-guinda-950/30 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 border border-guinda-200 dark:border-guinda-800 text-guinda-700 dark:text-guinda-400 rounded-xl transition-colors flex items-center gap-1.5">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
@@ -288,7 +289,18 @@ const tiempoHastaCitaProxima = computed(() => {
             </div>
         </template>
 
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <!-- Mobile sidebar (carrusel) -->
+        <div class="lg:hidden max-w-7xl mx-auto px-4 sm:px-6 pt-4">
+            <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+        </div>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="flex gap-6 items-start">
+
+        <!-- Sidebar desktop -->
+        <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+
+        <div class="flex-1 min-w-0 space-y-6">
 
             <!-- ── TABS PRINCIPALES ─────────────────────────────────── -->
             <div class="overflow-x-auto -mx-1 px-1">
@@ -625,7 +637,9 @@ const tiempoHastaCitaProxima = computed(() => {
             </div>
 
             </template><!-- /mainTab === 'panel' -->
-        </div>
+        </div><!-- /flex-1 -->
+        </div><!-- /flex -->
+        </div><!-- /max-w-7xl -->
 
         <!-- Modal Reagendar -->
         <Teleport to="body">

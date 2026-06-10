@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cita;
+use App\Models\EncuestaSatisfaccion;
 use App\Models\Evento;
 use App\Models\Restaurantero;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class EventoController extends Controller
@@ -28,6 +31,7 @@ class EventoController extends Controller
                     ->distinct('cliente_id')
                     ->count('cliente_id');
                 $evento->solicitudes_pendientes = $pendientesPorEvento[$evento->id] ?? 0;
+                $evento->imagen_url = $evento->imagen_url;
                 return $evento;
             });
 
@@ -37,10 +41,11 @@ class EventoController extends Controller
         ]);
     }
 
-    private function validationRules(): array
+    private function validationRules(bool $requireImagen = false): array
     {
         return [
             'nombre'                          => 'required|string|max:200',
+            'imagen'                          => ($requireImagen ? 'required' : 'nullable') . '|image|mimes:jpg,jpeg,png,webp|max:4096',
             'sector_economico'                => 'nullable|string|max:100',
             'descripcion'                     => 'nullable|string|max:1000',
             'fecha_hora_inicio'               => 'nullable|date',
@@ -82,10 +87,16 @@ class EventoController extends Controller
     {
         $request->validate($this->validationRules());
 
-        Evento::create(array_merge($this->eventoFields($request), [
+        $fields = array_merge($this->eventoFields($request), [
             'fecha_inicio' => $request->fecha_hora_inicio ?? now()->toDateString(),
             'activa'       => false,
-        ]));
+        ]);
+
+        if ($request->hasFile('imagen')) {
+            $fields['imagen'] = $request->file('imagen')->store('eventos', 'public');
+        }
+
+        Evento::create($fields);
 
         return back()->with('success', 'Evento creado. Actívalo cuando estés listo.');
     }
@@ -94,9 +105,52 @@ class EventoController extends Controller
     {
         $request->validate($this->validationRules());
 
-        $evento->update($this->eventoFields($request));
+        $fields = $this->eventoFields($request);
+
+        if ($request->hasFile('imagen')) {
+            if ($evento->imagen) {
+                Storage::disk('public')->delete($evento->imagen);
+            }
+            $fields['imagen'] = $request->file('imagen')->store('eventos', 'public');
+        }
+
+        $evento->update($fields);
 
         return back()->with('success', 'Evento actualizado correctamente.');
+    }
+
+    public function enviarEncuestas(Evento $evento)
+    {
+        $participantes = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('estado', 'aprobado')
+            ->get();
+
+        $enviados = 0;
+        foreach ($participantes as $p) {
+            $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
+                ->where('user_id', $p->user_id)
+                ->where('tipo', $p->tipo)
+                ->exists();
+
+            if (!$existe) {
+                $encuesta = EncuestaSatisfaccion::create([
+                    'evento_id' => $evento->id,
+                    'user_id'   => $p->user_id,
+                    'tipo'      => $p->tipo,
+                    'token'     => Str::random(40),
+                ]);
+
+                $user = \App\Models\User::find($p->user_id);
+                if ($user) {
+                    \Illuminate\Support\Facades\Mail::to($user->email)
+                        ->send(new \App\Mail\EncuestaSatisfaccionMail($encuesta->load(['evento', 'user'])));
+                    $enviados++;
+                }
+            }
+        }
+
+        return back()->with('success', "Encuestas enviadas a {$enviados} participante(s). Las ya existentes se omitieron.");
     }
 
     public function archivar(Evento $evento)

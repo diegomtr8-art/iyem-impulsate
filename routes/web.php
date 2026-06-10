@@ -20,6 +20,7 @@ use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\Auth\SeleccionarRolController;
 use App\Http\Controllers\Auth\SwitchRoleController;
 use App\Http\Controllers\CompletarPerfilController;
+use App\Http\Controllers\EncuestaController;
 use App\Http\Controllers\EventoRegistroController;
 use App\Http\Controllers\ProveedorPerfilController;
 use App\Http\Controllers\RestauranteroCitasController;
@@ -40,10 +41,17 @@ Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::cla
 Route::get('/tv/{token}',              [\App\Http\Controllers\Admin\PantallaTvController::class, 'index'])->name('tv.index');
 Route::get('/api/tv/{token}/publico',  [\App\Http\Controllers\Admin\PantallaTvController::class, 'datosPublicos'])->name('tv.publico');
 
+// Encuestas de satisfacción (sin autenticación — acceso por token)
+Route::get('/encuesta/{token}',  [EncuestaController::class, 'show'])->name('encuestas.responder');
+Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])->name('encuestas.responder.store');
+
 // Rutas públicas
 Route::get('/', [LandingController::class, 'index'])->name('home');
-Route::get('/restauranteros', [RestauranteroPublicoController::class, 'index'])->name('restauranteros.index');
-Route::get('/restauranteros/{restaurantero}', [RestauranteroPublicoController::class, 'show'])->name('restauranteros.show');
+Route::get('/proveedores', [RestauranteroPublicoController::class, 'index'])->name('proveedores.index');
+Route::get('/proveedores/{restaurantero}', [RestauranteroPublicoController::class, 'show'])->name('proveedores.show');
+// Redirecciones 301 de URLs antiguas
+Route::get('/restauranteros', fn() => redirect('/proveedores', 301));
+Route::get('/restauranteros/{id}', fn($id) => redirect('/proveedores/' . $id, 301));
 
 Route::middleware([
     'auth:sanctum',
@@ -132,9 +140,11 @@ Route::middleware([
         Route::prefix('eventos')->name('eventos.')->group(function () {
             Route::get('/', [EventoController::class, 'index'])->name('index');
             Route::post('/', [EventoController::class, 'store'])->name('store');
-            Route::patch('/{evento}', [EventoController::class, 'update'])->name('update');
+            Route::post('/{evento}', [EventoController::class, 'update'])->name('update');
+            Route::patch('/{evento}', [EventoController::class, 'update']);
             Route::post('/{evento}/archivar', [EventoController::class, 'archivar'])->name('archivar');
             Route::post('/{evento}/activar', [EventoController::class, 'activar'])->name('activar');
+            Route::post('/{evento}/enviar-encuestas', [EventoController::class, 'enviarEncuestas'])->name('enviar-encuestas');
             Route::delete('/{evento}', [EventoController::class, 'destroy'])->name('destroy');
 
             // Solicitudes de registro al evento
@@ -163,6 +173,10 @@ Route::middleware([
         Route::post('/torre/citas/{cita}/ausente',   [TorreControlController::class, 'ausente'])->name('torre.ausente');
         Route::post('/torre/citas/{cita}/retrasar',  [TorreControlController::class, 'retrasar'])->name('torre.retrasar');
         Route::post('/torre/citas/{cita}/mesa',      [TorreControlController::class, 'cambiarMesa'])->name('torre.mesa');
+
+        // Encuestas de satisfacción (admin)
+        Route::get('/encuestas',          [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'index'])->name('encuestas.index');
+        Route::get('/encuestas/exportar', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'exportar'])->name('encuestas.exportar');
 
         // Exportaciones Excel
         Route::get('/exportar',              [\App\Http\Controllers\Admin\ExportController::class, 'index'])->name('exportar.index');

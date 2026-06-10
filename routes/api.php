@@ -10,7 +10,12 @@ Route::get('/user', function (Request $request) {
 
 // Notificaciones
 Route::middleware('auth:sanctum')->group(function () {
-    Route::get('/notificaciones',                      [NotificacionController::class, 'index']);
-    Route::patch('/notificaciones/{notificacion}/leer',[NotificacionController::class, 'marcarLeida']);
-    Route::post('/notificaciones/leer-todas',          [NotificacionController::class, 'marcarTodasLeidas']);
+    Route::get('/notificaciones',                        [NotificacionController::class, 'index']);
+    Route::patch('/notificaciones/{notificacion}/leer',  [NotificacionController::class, 'marcarLeida']);
+    Route::post('/notificaciones/leer-todas',            [NotificacionController::class, 'marcarTodasLeidas']);
+    Route::delete('/notificaciones/{notificacion}',      [NotificacionController::class, 'eliminar']);
+    Route::delete('/notificaciones',                     [NotificacionController::class, 'eliminarTodas']);
 });
+
+// Formulario de contacto público
+Route::post('/contacto', [\App\Http\Controllers\ContactoController::class, 'enviar'])->middleware('throttle:5,1');

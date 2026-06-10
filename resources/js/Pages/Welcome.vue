@@ -1,6 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
+import axios from 'axios';
 import { usePage } from '@inertiajs/vue3';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import { Swiper, SwiperSlide } from 'swiper/vue';
@@ -43,6 +44,49 @@ const faqItems = [
         a: 'Con base en el perfil y necesidades de compradores y proveedores.',
     },
 ];
+
+// Formulario de contacto
+const contactoNombre  = ref('');
+const contactoCorreo  = ref('');
+const contactoAsunto  = ref('');
+const contactoMensaje = ref('');
+const contactoEstado  = ref('idle'); // idle | enviando | exito | error
+const contactoErrorMsg = ref('');
+
+function validarEmailContacto(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+async function enviarContacto() {
+    contactoErrorMsg.value = '';
+    if (!contactoNombre.value.trim() || !contactoCorreo.value.trim() || !contactoAsunto.value.trim() || !contactoMensaje.value.trim()) {
+        contactoEstado.value = 'error';
+        contactoErrorMsg.value = 'Por favor completa todos los campos.';
+        return;
+    }
+    if (!validarEmailContacto(contactoCorreo.value)) {
+        contactoEstado.value = 'error';
+        contactoErrorMsg.value = 'Ingresa un correo electrónico válido.';
+        return;
+    }
+    contactoEstado.value = 'enviando';
+    try {
+        await axios.post('/api/contacto', {
+            nombre:  contactoNombre.value,
+            correo:  contactoCorreo.value,
+            asunto:  contactoAsunto.value,
+            mensaje: contactoMensaje.value,
+        });
+        contactoEstado.value = 'exito';
+        contactoNombre.value = '';
+        contactoCorreo.value = '';
+        contactoAsunto.value = '';
+        contactoMensaje.value = '';
+    } catch (e) {
+        contactoEstado.value = 'error';
+        contactoErrorMsg.value = e?.response?.data?.message || 'Error al enviar, intenta de nuevo.';
+    }
+}
 
 let scrollHandler = null;
 
@@ -164,6 +208,9 @@ const eventos = [
     },
 ];
 
+// Swiper loop requires more slides than slidesPerView — triple the list to guarantee smooth loop at all breakpoints
+const eventosCarousel = [...eventos, ...eventos, ...eventos];
+
 const swiperModules = [Autoplay, Pagination];
 const swiperRef = ref(null);
 function onSwiper(sw) { swiperRef.value = sw; }
@@ -190,12 +237,24 @@ function scrollToEncuentros() {
                         <img src="/images/logo_impulsate.png" alt="Impulsate" class="h-9 w-auto" />
                     </Link>
 
-                    <div class="hidden md:flex items-center gap-6">
+                    <div class="hidden md:flex items-center gap-5">
+                        <a href="#proximos-encuentros"
+                           :class="['text-sm font-medium transition-colors',
+                               navSolido ? 'text-gray-600 dark:text-gray-300 hover:text-guinda-600 dark:hover:text-guinda-400'
+                                         : 'text-guinda-800 dark:text-white/80 hover:text-guinda-600 dark:hover:text-white']">
+                            Próximos Eventos
+                        </a>
                         <a href="#como-funciona"
                            :class="['text-sm font-medium transition-colors',
                                navSolido ? 'text-gray-600 dark:text-gray-300 hover:text-guinda-600 dark:hover:text-guinda-400'
                                          : 'text-guinda-800 dark:text-white/80 hover:text-guinda-600 dark:hover:text-white']">
                             Cómo funciona
+                        </a>
+                        <a href="#faq"
+                           :class="['text-sm font-medium transition-colors',
+                               navSolido ? 'text-gray-600 dark:text-gray-300 hover:text-guinda-600 dark:hover:text-guinda-400'
+                                         : 'text-guinda-800 dark:text-white/80 hover:text-guinda-600 dark:hover:text-white']">
+                            Preguntas
                         </a>
                         <a href="#ubicacion"
                            :class="['text-sm font-medium transition-colors',
@@ -243,7 +302,9 @@ function scrollToEncuentros() {
                 </div>
 
                 <div v-if="mobileMenuOpen" class="md:hidden bg-white dark:bg-gray-950 border-t border-gray-200 dark:border-gray-800 py-3 space-y-1">
+                    <a href="#proximos-encuentros" @click="mobileMenuOpen=false" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Próximos Eventos</a>
                     <a href="#como-funciona" @click="mobileMenuOpen=false" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Cómo funciona</a>
+                    <a href="#faq" @click="mobileMenuOpen=false" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Preguntas Frecuentes</a>
                     <a href="#ubicacion" @click="mobileMenuOpen=false" class="block text-sm font-medium text-gray-700 dark:text-gray-300 px-4 py-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">Contacto</a>
                     <div class="pt-3 px-4 flex flex-col gap-2 border-t border-gray-100 dark:border-gray-800 mt-2">
                         <Link v-if="!auth.user && canLogin" :href="route('login')"
@@ -401,7 +462,7 @@ function scrollToEncuentros() {
         </section>
 
         <!-- ═══════════════════════ PRÓXIMOS ENCUENTROS ════════════════════ -->
-        <section id="proximos-encuentros" class="py-20 relative" style="background:#0f1117; overflow:hidden;">
+        <section id="proximos-encuentros" class="py-20 relative overflow-hidden bg-gray-100 dark:bg-[#0f1117]">
             <!-- Halo decorativo -->
             <div class="absolute inset-0 pointer-events-none" aria-hidden="true">
                 <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[300px] opacity-[0.13]"
@@ -413,15 +474,15 @@ function scrollToEncuentros() {
             <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <!-- Header -->
                 <div class="text-center mb-12 fade-up">
-                    <span class="inline-flex items-center gap-2 bg-guinda-500/10 border border-guinda-500/25 text-guinda-400 text-[11px] font-bold px-4 py-1.5 rounded-full mb-5 tracking-widest uppercase">
-                        <span class="w-1.5 h-1.5 rounded-full bg-guinda-400 animate-pulse"></span>
+                    <span class="inline-flex items-center gap-2 bg-guinda-50 dark:bg-guinda-500/10 border border-guinda-200 dark:border-guinda-500/25 text-guinda-700 dark:text-guinda-400 text-[11px] font-bold px-4 py-1.5 rounded-full mb-5 tracking-widest uppercase">
+                        <span class="w-1.5 h-1.5 rounded-full bg-guinda-500 dark:bg-guinda-400 animate-pulse"></span>
                         Agenda 2026
                     </span>
-                    <h2 class="text-3xl sm:text-4xl font-black text-white mb-4">
+                    <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">
                         Próximos Encuentros
                         <span class="text-transparent bg-clip-text" style="background-image: linear-gradient(90deg, #f36178, #c8113b);"> de Negocios</span>
                     </h2>
-                    <p class="text-gray-400 max-w-xl mx-auto text-base leading-relaxed">
+                    <p class="text-gray-600 dark:text-gray-400 max-w-xl mx-auto text-base leading-relaxed">
                         Conecta con las empresas más importantes de la región.
                     </p>
                 </div>
@@ -444,7 +505,7 @@ function scrollToEncuentros() {
                         class="encuentros-swiper"
                         @swiper="onSwiper"
                     >
-                        <SwiperSlide v-for="ev in eventos" :key="ev.id" class="encuentros-slide">
+                        <SwiperSlide v-for="(ev, idx) in eventosCarousel" :key="`${ev.id}-${idx}`" class="encuentros-slide">
                             <div class="encuentros-card group">
                                 <!-- Imagen de fondo con zoom al hover -->
                                 <div class="encuentros-img" :style="{ backgroundImage: `url('${ev.img}')` }"></div>
@@ -763,63 +824,70 @@ function scrollToEncuentros() {
             </div>
         </section>
 
-        <!-- ═══════════════════════════ UBICACIÓN ═══════════════════════════ -->
+        <!-- ═══════════════════════════ CONTACTO ═══════════════════════════ -->
         <section id="ubicacion" class="py-24">
             <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-14 fade-up">
-                    <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">Nuestra Oficina</h2>
-                    <p class="text-gray-500 dark:text-gray-400 max-w-xl mx-auto">Todas las citas se realizan de forma presencial en nuestras instalaciones en Mérida, Yucatán.</p>
+                    <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">Contacto</h2>
+                    <p class="text-gray-500 dark:text-gray-400 max-w-xl mx-auto">¿Tienes preguntas sobre Impúlsate? Escríbenos y te respondemos a la brevedad.</p>
                 </div>
 
                 <div class="fade-up bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-3xl overflow-hidden shadow-sm">
                     <div class="grid grid-cols-1 lg:grid-cols-5">
-                        <!-- Panel de datos -->
-                        <div class="lg:col-span-2 p-8 lg:p-10 flex flex-col justify-center gap-6">
-                            <h3 class="font-black text-gray-900 dark:text-white text-lg">Encuentro de Negocios Impúlsate</h3>
-                            <div class="space-y-5">
-                                <div class="flex items-start gap-4">
-                                    <div class="w-9 h-9 rounded-xl bg-guinda-50 dark:bg-guinda-500/10 flex items-center justify-center shrink-0 mt-0.5">
-                                        <svg class="w-5 h-5 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <p class="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Dirección</p>
-                                        <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">Av. Industrias No Contaminantes Tab 13613<br />Col. Sodzil Norte, C.P. 97110<br />Mérida, Yucatán</p>
-                                    </div>
-                                </div>
-                                <div class="flex items-start gap-4">
-                                    <div class="w-9 h-9 rounded-xl bg-guinda-50 dark:bg-guinda-500/10 flex items-center justify-center shrink-0">
-                                        <svg class="w-5 h-5 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <p class="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Horario</p>
-                                        <p class="text-sm text-gray-600 dark:text-gray-400">Lunes a Viernes: 9:00 — 16:00 h</p>
-                                    </div>
-                                </div>
-                                <div class="flex items-start gap-4">
-                                    <div class="w-9 h-9 rounded-xl bg-guinda-50 dark:bg-guinda-500/10 flex items-center justify-center shrink-0">
-                                        <svg class="w-5 h-5 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <p class="text-[11px] font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1">Correo</p>
-                                        <p class="text-sm text-gray-600 dark:text-gray-400">impulsate@iyemyucatan.com</p>
-                                    </div>
-                                </div>
+                        <!-- Formulario de contacto -->
+                        <div class="lg:col-span-2 p-8 lg:p-10 flex flex-col gap-5">
+                            <div>
+                                <h3 class="font-black text-gray-900 dark:text-white text-lg mb-1">Envíanos un mensaje</h3>
+                                <p class="text-sm text-gray-500 dark:text-gray-400">Responderemos a tu correo electrónico.</p>
                             </div>
-                            <a href="https://maps.google.com/maps?q=Av+Industrias+No+Contaminantes+Tab+13613+Sodzil+Norte+Merida+Yucatan"
-                               target="_blank" rel="noopener noreferrer"
-                               class="inline-flex items-center gap-2 bg-guinda-700 hover:bg-guinda-600 text-white font-bold px-5 py-2.5 rounded-xl text-sm transition-all duration-200 hover:-translate-y-0.5 w-fit">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836 .88 1.38 1.628 1.006l3.869-1.934c.317-.159.69-.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />
-                                </svg>
-                                Cómo llegar
-                            </a>
-                            <p class="text-xs text-gray-400 dark:text-gray-600 -mt-2">Programa operado por el Gobierno del Estado de Yucatán.</p>
+
+                            <form @submit.prevent="enviarContacto" class="space-y-4">
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">Nombre</label>
+                                    <input v-model="contactoNombre" type="text" required placeholder="Tu nombre completo"
+                                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">Correo electrónico</label>
+                                    <input v-model="contactoCorreo" type="email" required placeholder="tu@correo.com"
+                                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">Asunto</label>
+                                    <input v-model="contactoAsunto" type="text" required placeholder="¿En qué podemos ayudarte?"
+                                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors" />
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider mb-1.5">Mensaje</label>
+                                    <textarea v-model="contactoMensaje" rows="4" required placeholder="Escribe tu mensaje aquí..."
+                                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors resize-none">
+                                    </textarea>
+                                </div>
+
+                                <!-- Estado error -->
+                                <div v-if="contactoEstado === 'error'"
+                                    class="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-xs rounded-xl px-3 py-2.5">
+                                    {{ contactoErrorMsg }}
+                                </div>
+
+                                <!-- Estado éxito -->
+                                <div v-if="contactoEstado === 'exito'"
+                                    class="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/40 text-green-700 dark:text-green-400 text-xs rounded-xl px-3 py-2.5 font-medium">
+                                    ✓ ¡Mensaje enviado! Te contactaremos pronto.
+                                </div>
+
+                                <button type="submit" :disabled="contactoEstado === 'enviando'"
+                                    class="w-full py-2.5 font-bold rounded-xl text-sm transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    :class="contactoEstado === 'exito'
+                                        ? 'bg-green-600 hover:bg-green-500 text-white'
+                                        : 'bg-guinda-700 hover:bg-guinda-600 text-white hover:-translate-y-0.5'">
+                                    <span v-if="contactoEstado === 'enviando'">Enviando...</span>
+                                    <span v-else-if="contactoEstado === 'exito'">¡Mensaje enviado!</span>
+                                    <span v-else>Enviar mensaje</span>
+                                </button>
+
+                                <p class="text-xs text-gray-400 dark:text-gray-600 text-center">🔒 Tu información es confidencial</p>
+                            </form>
                         </div>
 
                         <!-- Mapa -->
@@ -839,7 +907,7 @@ function scrollToEncuentros() {
         </section>
 
         <!-- ═══════════════════════════ FAQ ═══════════════════════════ -->
-        <section class="py-24 bg-white dark:bg-gray-950">
+        <section id="faq" class="py-24 bg-white dark:bg-gray-950">
             <div class="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-14 fade-up">
                     <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">Preguntas frecuentes</h2>
@@ -894,7 +962,7 @@ function scrollToEncuentros() {
                         <h4 class="font-bold text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wider mb-5">Navegación</h4>
                         <ul class="space-y-3">
                             <li><a href="#como-funciona" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Cómo funciona</a></li>
-                            <li><a href="#ubicacion" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Nuestra oficina</a></li>
+                            <li><a href="#ubicacion" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Contacto</a></li>
                             <li v-if="canRegister"><Link :href="route('register')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Registrarse gratis</Link></li>
                             <li v-if="canLogin"><Link :href="route('login')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Iniciar sesión</Link></li>
                         </ul>
@@ -1209,11 +1277,14 @@ function scrollToEncuentros() {
     width: 8px !important;
     height: 8px !important;
     border-radius: 100px !important;
-    background: rgba(255, 255, 255, 0.22) !important;
+    background: rgba(0, 0, 0, 0.18) !important;
     opacity: 1 !important;
     margin: 0 !important;
     transition: width 0.3s ease, background 0.3s ease !important;
     cursor: pointer;
+}
+.dark .encuentros-pagination .swiper-pagination-bullet {
+    background: rgba(255, 255, 255, 0.22) !important;
 }
 .encuentros-pagination .swiper-pagination-bullet-active {
     width: 26px !important;

@@ -73,6 +73,17 @@ class HandleInertiaRequests extends Middleware
                 'fecha_hora_inicio_compradores', 'fecha_hora_fin_compradores',
                 'tiempo_entre_citas_minutos',
             ]),
+            'eventosSidebar' => fn () => Evento::orderByDesc('activa')
+                ->orderByDesc('fecha_hora_inicio')
+                ->limit(6)
+                ->get()
+                ->map(fn ($e) => array_merge(
+                    $e->only([
+                        'id', 'nombre', 'sector_economico', 'activa',
+                        'fecha_hora_inicio', 'fecha_hora_fin',
+                    ]),
+                    ['imagen_url' => $e->imagen_url]
+                )),
             'registradoEnEvento' => function () use ($request) {
                 $evento = Evento::activo();
                 if (!$evento || !$request->user()) {

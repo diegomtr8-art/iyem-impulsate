@@ -100,6 +100,31 @@ function esPasado(date, time) {
     return d <= new Date();
 }
 
+// ── MODAL PRODUCTO ─────────────────────────────────────────────────────────
+const modalProducto = ref(false);
+const productoActivo = ref(null);
+
+function abrirProductoModal(prod) {
+    productoActivo.value = prod;
+    modalProducto.value = true;
+    document.body.style.overflow = 'hidden';
+}
+
+function cerrarProductoModal() {
+    modalProducto.value = false;
+    productoActivo.value = null;
+    document.body.style.overflow = '';
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            cerrarProductoModal();
+            cerrarModal();
+        }
+    });
+}
+
 // ── MODAL ──────────────────────────────────────────────────────────────────
 const slotSeleccionado = ref(null);
 const mostrarModal = ref(false);
@@ -131,6 +156,48 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
 
 <template>
     <Head :title="restaurantero.nombre_restaurante + ' — Impulsate'" />
+
+    <!-- MODAL PRODUCTO -->
+    <Teleport to="body">
+        <Transition name="producto-modal">
+            <div v-if="modalProducto && productoActivo" class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+                <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" @click="cerrarProductoModal"></div>
+                <div class="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                    <!-- Imagen -->
+                    <div v-if="productoActivo.foto_path" class="w-full h-64 sm:h-80 overflow-hidden bg-gray-100 dark:bg-gray-800 shrink-0 group">
+                        <img :src="'/storage/' + productoActivo.foto_path"
+                             :alt="typeof productoActivo === 'string' ? productoActivo : productoActivo.nombre"
+                             class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    </div>
+                    <div v-else class="w-full h-40 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center shrink-0">
+                        <svg class="w-14 h-14 text-guinda-300 dark:text-guinda-800" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909"/>
+                        </svg>
+                    </div>
+                    <!-- Contenido -->
+                    <div class="p-6 overflow-y-auto flex-1">
+                        <div class="flex items-start justify-between gap-4 mb-4">
+                            <h2 class="text-xl font-black text-gray-900 dark:text-white leading-tight">
+                                {{ typeof productoActivo === 'string' ? productoActivo : (productoActivo.nombre || '—') }}
+                            </h2>
+                            <button @click="cerrarProductoModal"
+                                class="shrink-0 p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <p v-if="productoActivo.descripcion" class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                            {{ productoActivo.descripcion }}
+                        </p>
+                        <p v-if="productoActivo.precio" class="mt-4 text-lg font-bold text-guinda-700 dark:text-guinda-400">
+                            {{ productoActivo.precio }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+    </Teleport>
 
     <!-- MODAL -->
     <Teleport to="body">
@@ -192,7 +259,7 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                 </Link>
 
                 <div class="flex items-center gap-3">
-                    <Link :href="route('restauranteros.index')"
+                    <Link :href="route('proveedores.index')"
                           class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-700 dark:hover:text-white transition-colors hidden sm:inline">
                         ← Proveedores
                     </Link>
@@ -220,7 +287,7 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
         <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
 
             <!-- Breadcrumb móvil -->
-            <Link :href="route('restauranteros.index')"
+            <Link :href="route('proveedores.index')"
                   class="sm:hidden inline-flex items-center gap-1.5 text-sm text-guinda-700 dark:text-guinda-400 hover:text-guinda-600 dark:hover:text-guinda-300 transition-colors">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
                 Volver a Proveedores
@@ -265,7 +332,8 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                             <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Productos / Servicios</h3>
                             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 <div v-for="(prod, i) in restaurantero.productos_top" :key="i"
-                                    class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm">
+                                    @click="abrirProductoModal(prod)"
+                                    class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm cursor-pointer hover:border-guinda-300 dark:hover:border-guinda-500/40 hover:shadow-md transition-all duration-200 group/prod">
                                     <div v-if="prod.foto_path" class="w-full h-28 overflow-hidden bg-gray-100 dark:bg-gray-800">
                                         <img :src="'/storage/' + prod.foto_path" class="w-full h-full object-cover"
                                              :alt="typeof prod === 'string' ? prod : prod.nombre" />
@@ -457,4 +525,13 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
 <style scoped>
 .modal-fade-enter-active, .modal-fade-leave-active { transition: opacity 0.2s ease; }
 .modal-fade-enter-from, .modal-fade-leave-to { opacity: 0; }
+
+.producto-modal-enter-active { transition: opacity 0.25s ease, transform 0.25s ease; }
+.producto-modal-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.producto-modal-enter-from  { opacity: 0; }
+.producto-modal-leave-to    { opacity: 0; }
+.producto-modal-enter-from .relative,
+.producto-modal-leave-to .relative { transform: scale(0.95); }
+.producto-modal-enter-active .relative,
+.producto-modal-leave-active .relative { transition: transform 0.25s ease; }
 </style>

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class Evento extends Model
 {
@@ -11,10 +12,13 @@ class Evento extends Model
 
     protected $table = 'eventos';
 
+    protected $appends = ['imagen_url'];
+
     protected $fillable = [
         'nombre',
         'sector_economico',
         'descripcion',
+        'imagen',
         'fecha_inicio',
         'fecha_corte',
         'activa',
@@ -30,6 +34,11 @@ class Evento extends Model
         'fecha_inicio_agenda',
         'fecha_fin_agenda',
     ];
+
+    public function getImagenUrlAttribute(): ?string
+    {
+        return $this->imagen ? Storage::disk('public')->url($this->imagen) : null;
+    }
 
     protected function casts(): array
     {

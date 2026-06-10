@@ -1,6 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TabEventos from '@/Components/TabEventos.vue';
+import EventosSidebar from '@/Components/EventosSidebar.vue';
 import { Link, router, usePage, useForm } from '@inertiajs/vue3';
 import { ref, computed, onMounted } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
@@ -259,7 +260,18 @@ const guardarNota = (citaId) => {
             <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">Bienvenido, {{ $page.props.auth.user?.name?.split(' ')[0] }}</p>
         </template>
 
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <!-- Mobile sidebar (carrusel) -->
+        <div class="lg:hidden max-w-5xl mx-auto px-4 sm:px-6 pt-4">
+            <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+        </div>
+
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="flex gap-6 items-start">
+
+        <!-- Sidebar desktop -->
+        <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+
+        <div class="flex-1 min-w-0 space-y-6">
 
             <!-- ── TABS PRINCIPALES ─────────────────────────────────── -->
             <div class="overflow-x-auto -mx-1 px-1">
@@ -393,7 +405,7 @@ const guardarNota = (citaId) => {
                     </div>
                     <div class="mt-4 flex items-center justify-between">
                         <span class="text-xs text-gray-500 dark:text-gray-400">{{ MAX_CITAS - citasCount }} citas disponibles</span>
-                        <Link v-if="citasCount < MAX_CITAS" :href="route('restauranteros.index')"
+                        <Link v-if="citasCount < MAX_CITAS" :href="route('proveedores.index')"
                             class="text-sm text-guinda-700 dark:text-guinda-400 hover:text-guinda-600 font-medium transition-colors flex items-center gap-1">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
@@ -544,7 +556,7 @@ const guardarNota = (citaId) => {
                         <span v-if="tieneKeywords" class="text-xs bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 px-2.5 py-1 rounded-full border border-guinda-200 dark:border-guinda-800 font-semibold hidden sm:inline-flex">
                             ✦ Ordenados por tus necesidades
                         </span>
-                        <Link :href="route('restauranteros.index')"
+                        <Link :href="route('proveedores.index')"
                             class="text-sm text-guinda-700 dark:text-guinda-400 hover:underline font-medium">
                             Ver todos →
                         </Link>
@@ -591,7 +603,7 @@ const guardarNota = (citaId) => {
                     style="scrollbar-width: thin; scrollbar-color: #e5e7eb transparent;">
                     <Link
                         v-for="p in proveedoresFiltrados" :key="p.id"
-                        :href="route('restauranteros.show', p.id)"
+                        :href="route('proveedores.show', p.id)"
                         class="snap-start shrink-0 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 hover:border-guinda-300 dark:hover:border-guinda-800 hover:shadow-md transition-all duration-200 group"
                     >
                         <!-- Logo / Iniciales -->
@@ -672,7 +684,7 @@ const guardarNota = (citaId) => {
                         </svg>
                         <p class="text-gray-600 dark:text-gray-400 font-medium text-lg mb-2">Todavía no tienes citas</p>
                         <p class="text-gray-400 dark:text-gray-600 text-sm mb-6">Explora los proveedores disponibles y agenda tu primera reunión.</p>
-                        <Link :href="route('restauranteros.index')"
+                        <Link :href="route('proveedores.index')"
                             class="inline-flex items-center gap-2 px-6 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white font-semibold rounded-xl transition-colors text-sm shadow-sm">
                             Ver proveedores
                         </Link>
@@ -741,7 +753,7 @@ const guardarNota = (citaId) => {
                                 </div>
 
                                 <div class="shrink-0 flex items-center gap-2 flex-wrap">
-                                    <Link :href="route('restauranteros.show', cita.restaurantero?.id)"
+                                    <Link :href="route('proveedores.show', cita.restaurantero?.id)"
                                         class="text-xs font-medium px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors">
                                         Ver proveedor
                                     </Link>
@@ -816,7 +828,9 @@ const guardarNota = (citaId) => {
             </div>
 
             </template><!-- /mainTab === 'citas' -->
-        </div>
+        </div><!-- /flex-1 -->
+        </div><!-- /flex -->
+        </div><!-- /max-w-7xl -->
 
         <!-- Modal Perfil Comprador -->
         <Teleport to="body">
