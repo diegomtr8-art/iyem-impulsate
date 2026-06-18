@@ -4,6 +4,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import Banner from '@/Components/Banner.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import NotificacionCampana from '@/Components/NotificacionCampana.vue';
+import PublicidadPopup from '@/Components/PublicidadPopup.vue';
 
 defineProps({ title: String });
 
@@ -32,6 +33,7 @@ const switchRole = () => {
     <div>
         <Head :title="title" />
         <Banner />
+        <PublicidadPopup />
 
         <div class="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-white transition-colors duration-300">
 

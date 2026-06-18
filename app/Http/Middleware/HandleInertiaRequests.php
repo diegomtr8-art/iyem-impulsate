@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Evento;
+use App\Models\Publicidad;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Middleware;
@@ -46,10 +47,12 @@ class HandleInertiaRequests extends Middleware
                         'municipio', 'nombre_empresa', 'sitio_web',
                         'active_role', 'rol_seleccionado', 'necesidades',
                         'perfil_completo', 'email_verified_at', 'profile_photo_url',
+                        'acepta_aviso_at', 'camara_asociacion', 'nombre_establecimiento',
                     ]),
                     [
                         'roles'           => $request->user()->getRoleNames(),
                         'is_admin'        => $request->user()->hasRole('admin'),
+                        'is_super_admin'  => $request->user()->hasRole('super-admin'),
                         'is_restaurantero'=> $request->user()->hasRole('restaurantero'),
                         'is_cliente'      => $request->user()->hasRole('cliente'),
                         'tiene_dual_rol'  => $request->user()->tieneDualRol(),
@@ -79,7 +82,7 @@ class HandleInertiaRequests extends Middleware
                 ->get()
                 ->map(fn ($e) => array_merge(
                     $e->only([
-                        'id', 'nombre', 'sector_economico', 'activa',
+                        'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
                         'fecha_hora_inicio', 'fecha_hora_fin',
                     ]),
                     ['imagen_url' => $e->imagen_url]
@@ -104,6 +107,21 @@ class HandleInertiaRequests extends Middleware
                         'estado'         => $registros['proveedor']->estado,
                         'motivo_rechazo' => $registros['proveedor']->motivo_rechazo,
                     ] : null,
+                ];
+            },
+            'publicidadActiva' => function () use ($request) {
+                $user = $request->user();
+                if (!$user) return null;
+                $esAdminOSuperAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+                if ($esAdminOSuperAdmin) return null;
+                $pub = Publicidad::vigente()->first();
+                if (!$pub) return null;
+                return [
+                    'id'                   => $pub->id,
+                    'titulo'               => $pub->titulo,
+                    'imagen_url'           => $pub->imagen_url,
+                    'enlace'               => $pub->enlace,
+                    'abre_en_nueva_pestana'=> $pub->abre_en_nueva_pestana,
                 ];
             },
             'registro_evento' => function () use ($request) {

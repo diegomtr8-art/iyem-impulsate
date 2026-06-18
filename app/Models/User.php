@@ -43,6 +43,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'necesidades',
         'perfil_completo',
         'sitio_web',
+        'acepta_aviso_at',
+        'camara_asociacion',
+        'nombre_establecimiento',
     ];
 
     public function restaurantero()
@@ -100,6 +103,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'acepta_aviso_at'   => 'datetime',
             'password' => 'hashed',
         ];
     }

@@ -25,10 +25,12 @@ class CitaPublicaController extends Controller
         }
 
         $request->validate([
-            'restaurantero_id' => 'required|exists:restauranteros,id',
-            'fecha'            => 'required|date|after_or_equal:today',
-            'hora'             => 'required|date_format:H:i',
-            'notas'            => 'nullable|string|max:1000',
+            'restaurantero_id'    => 'required|exists:restauranteros,id',
+            'fecha'               => 'required|date|after_or_equal:today',
+            'hora'                => 'required|date_format:H:i',
+            'notas'               => 'nullable|string|max:1000',
+            'productos_interes'   => 'nullable|array',
+            'productos_interes.*' => 'string|max:255',
         ]);
 
         $evento = Evento::activo();
@@ -138,14 +140,15 @@ class CitaPublicaController extends Controller
                 }
 
                 return Cita::create([
-                    'edicion_id'       => $evento->id,
-                    'restaurantero_id' => $request->restaurantero_id,
-                    'servicio_id'      => $servicio->id,
-                    'cliente_id'       => $request->user()->id,
-                    'inicio'           => $inicio,
-                    'fin'              => $fin,
-                    'estado'           => 'pendiente',
-                    'notas'            => $request->notas,
+                    'edicion_id'        => $evento->id,
+                    'restaurantero_id'  => $request->restaurantero_id,
+                    'servicio_id'       => $servicio->id,
+                    'cliente_id'        => $request->user()->id,
+                    'inicio'            => $inicio,
+                    'fin'               => $fin,
+                    'estado'            => 'pendiente',
+                    'notas'             => $request->notas,
+                    'productos_interes' => $request->productos_interes ?: null,
                 ]);
             });
         } catch (\RuntimeException $e) {

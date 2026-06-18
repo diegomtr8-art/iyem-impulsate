@@ -5,11 +5,13 @@ import InputError from '@/Components/InputError.vue';
 defineProps({ user: Object });
 
 const form = useForm({
-    telefono:       '',
-    curp:           '',
-    rfc:            '',
-    municipio:      '',
-    nombre_empresa: '',
+    telefono:               '',
+    curp:                   '',
+    rfc:                    '',
+    municipio:              '',
+    nombre_empresa:         '',
+    camara_asociacion:      '',
+    nombre_establecimiento: '',
 });
 
 const submit = () => {
@@ -83,6 +85,37 @@ const submit = () => {
                             placeholder="Mi Empresa S.A. de C.V." />
                         <InputError class="mt-1.5" :message="form.errors.nombre_empresa" />
                     </div>
+
+                    <!-- Cámara o asociación -->
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                            ¿Pertenece a alguna cámara o asociación? <span class="text-gray-400 font-normal">(opcional)</span>
+                        </label>
+                        <div class="flex flex-col sm:flex-row gap-3">
+                            <label v-for="opcion in ['CANIRAC', 'Ninguna']" :key="opcion"
+                                class="flex items-center gap-2.5 cursor-pointer px-4 py-3 rounded-xl border transition-all"
+                                :class="form.camara_asociacion === opcion
+                                    ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-500/10 dark:border-guinda-500'
+                                    : 'border-gray-200 dark:border-gray-700 hover:border-guinda-300 dark:hover:border-guinda-600'">
+                                <input type="radio" :value="opcion" v-model="form.camara_asociacion" class="accent-guinda-700" />
+                                <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ opcion }}</span>
+                            </label>
+                        </div>
+                        <InputError class="mt-1.5" :message="form.errors.camara_asociacion" />
+                    </div>
+
+                    <!-- Nombre del establecimiento (solo si CANIRAC) -->
+                    <Transition name="fade">
+                        <div v-if="form.camara_asociacion === 'CANIRAC'">
+                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                                Nombre del restaurante, cafetería o establecimiento <span class="text-red-500">*</span>
+                            </label>
+                            <input v-model="form.nombre_establecimiento" type="text"
+                                placeholder="Ej. Restaurante El Mesón de San Juan"
+                                class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-guinda-400 focus:border-transparent transition-colors text-sm" />
+                            <InputError class="mt-1.5" :message="form.errors.nombre_establecimiento" />
+                        </div>
+                    </Transition>
 
                     <button type="submit" :disabled="form.processing"
                         class="w-full py-3 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white font-bold rounded-xl transition-colors text-sm shadow-sm">

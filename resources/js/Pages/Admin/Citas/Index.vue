@@ -210,7 +210,15 @@ const cerrarModalNuevaCita = () => {
                             </Link>
                         </td>
                         <td class="px-6 py-4 text-gray-500 dark:text-gray-400 hidden lg:table-cell">{{ c.servicio?.nombre }}</td>
-                        <td class="px-6 py-4 text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs">{{ new Date(c.inicio).toLocaleString('es-MX') }}</td>
+                        <td class="px-6 py-4 text-gray-500 dark:text-gray-400 text-xs">
+                            <span class="whitespace-nowrap">{{ new Date(c.inicio).toLocaleString('es-MX') }}</span>
+                            <div v-if="c.productos_interes && c.productos_interes.length > 0" class="flex flex-wrap gap-1 mt-1.5">
+                                <span v-for="p in c.productos_interes" :key="p"
+                                      class="inline-block bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 font-medium px-2 py-0.5 rounded-full border border-guinda-200 dark:border-guinda-500/20">
+                                    {{ p }}
+                                </span>
+                            </div>
+                        </td>
                         <td class="px-6 py-4 text-center">
                             <span :class="estadoClases[c.estado]" class="text-xs font-semibold px-2.5 py-1 rounded-full border">
                                 {{ estadoLabels[c.estado] || c.estado }}

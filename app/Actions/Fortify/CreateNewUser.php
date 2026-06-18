@@ -28,21 +28,26 @@ class CreateNewUser implements CreatesNewUsers
         }
 
         Validator::make($input, [
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'telefono' => ['nullable', 'string', 'max:20'],
-            'curp'     => ['nullable', 'string', 'size:18'],
-            'password' => $this->passwordRules(),
-            'terms'    => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
+            'name'         => ['required', 'string', 'max:255'],
+            'email'        => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'telefono'     => ['nullable', 'string', 'max:20'],
+            'curp'         => ['nullable', 'string', 'size:18'],
+            'password'     => $this->passwordRules(),
+            'terms'        => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
+            'acepta_aviso' => ['required', 'accepted'],
+        ], [
+            'acepta_aviso.required' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
+            'acepta_aviso.accepted' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
         ])->validate();
 
         $user = User::create([
-            'name'        => $input['name'],
-            'email'       => $input['email'],
-            'password'    => Hash::make($input['password']),
-            'telefono'    => $input['telefono'] ?? null,
-            'curp'        => $input['curp'] ?? null,
-            'active_role' => 'comprador',
+            'name'           => $input['name'],
+            'email'          => $input['email'],
+            'password'       => Hash::make($input['password']),
+            'telefono'       => $input['telefono'] ?? null,
+            'curp'           => $input['curp'] ?? null,
+            'active_role'    => 'comprador',
+            'acepta_aviso_at'=> now(),
         ]);
 
         $user->assignRole('cliente');

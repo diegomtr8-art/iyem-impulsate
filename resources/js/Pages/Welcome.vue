@@ -136,6 +136,11 @@ const pasos = [
         path: 'M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10',
     },
     {
+        titulo: 'Selección de Evento',
+        descripcion: 'Únete al evento activo de networking. Cada evento reúne a proveedores y compradores del mismo sector para maximizar las oportunidades de negocio.',
+        path: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zm4.5-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z',
+    },
+    {
         titulo: 'Elige un proveedor',
         descripcion: 'Explora los perfiles de proveedores verificados de todo el Estado de Yucatán.',
         path: 'M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z',
@@ -706,10 +711,10 @@ function scrollToEncuentros() {
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-16 fade-up">
                     <h2 class="text-3xl sm:text-4xl font-black text-gray-900 dark:text-white mb-4">¿Cómo funciona?</h2>
-                    <p class="text-gray-500 dark:text-gray-400 max-w-lg mx-auto">Cuatro simples pasos para comenzar a hacer networking empresarial en Yucatán.</p>
+                    <p class="text-gray-500 dark:text-gray-400 max-w-lg mx-auto">Cinco simples pasos para comenzar a hacer networking empresarial en Yucatán.</p>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                     <div v-for="(paso, i) in pasos" :key="i"
                         class="fade-up relative bg-white dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-2xl p-7 hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-xl hover:shadow-guinda-500/5 transition-all duration-300 group"
                         :style="`transition-delay: ${i * 100}ms`">
@@ -723,7 +728,7 @@ function scrollToEncuentros() {
                         </div>
                         <h3 class="font-bold text-gray-900 dark:text-white mb-3 text-base">{{ paso.titulo }}</h3>
                         <p class="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">{{ paso.descripcion }}</p>
-                        <div v-if="i < 3" class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 z-10">
+                        <div v-if="i < 4" class="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 z-10">
                             <div class="w-6 h-6 rounded-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-guinda-500/30 flex items-center justify-center shadow-sm">
                                 <svg class="w-3 h-3 text-guinda-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
@@ -965,6 +970,7 @@ function scrollToEncuentros() {
                             <li><a href="#ubicacion" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Contacto</a></li>
                             <li v-if="canRegister"><Link :href="route('register')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Registrarse gratis</Link></li>
                             <li v-if="canLogin"><Link :href="route('login')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Iniciar sesión</Link></li>
+                            <li><Link :href="route('aviso.privacidad')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Aviso de Privacidad</Link></li>
                         </ul>
                     </div>
 
@@ -1025,9 +1031,11 @@ function scrollToEncuentros() {
                     <p class="text-xs text-gray-400 dark:text-gray-600 text-center">
                         © {{ new Date().getFullYear() }} Encuentro de Negocios Impúlsate — Instituto Yucateco de Emprendedores
                     </p>
-                    <p class="text-xs text-gray-400 dark:text-gray-500">
-                        Desarrollado por <span class="font-semibold text-guinda-700 dark:text-guinda-400">Diego Martínez</span>
-                    </p>
+                    <div class="flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+                        <span>Desarrollado por <span class="font-semibold text-guinda-700 dark:text-guinda-400">Diego Martínez</span></span>
+                        <span>·</span>
+                        <Link :href="route('aviso.privacidad')" class="hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Aviso de Privacidad</Link>
+                    </div>
                 </div>
             </div>
         </footer>

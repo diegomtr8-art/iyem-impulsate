@@ -11,6 +11,7 @@ const form = useForm({
     password: '',
     password_confirmation: '',
     terms: false,
+    acepta_aviso: false,
 });
 
 const submit = () => {
@@ -144,20 +145,22 @@ const submit = () => {
                         <InputError class="mt-1.5" :message="form.errors.password_confirmation" />
                     </div>
 
-                    <div v-if="$page.props.jetstream.hasTermsAndPrivacyPolicyFeature" class="pt-1">
+                    <div class="pt-1">
                         <label class="flex items-start gap-3 cursor-pointer">
-                            <Checkbox id="terms" v-model:checked="form.terms" name="terms" required class="mt-0.5" />
+                            <Checkbox id="acepta_aviso" v-model:checked="form.acepta_aviso" name="acepta_aviso" required class="mt-0.5" />
                             <span class="text-sm text-gray-500 dark:text-gray-400">
-                                Acepto los
-                                <a target="_blank" :href="route('terms.show')" class="text-guinda-700 dark:text-guinda-400 underline">Términos de Servicio</a>
-                                y la
-                                <a target="_blank" :href="route('policy.show')" class="text-guinda-700 dark:text-guinda-400 underline">Política de Privacidad</a>
+                                Al registrarme, acepto el
+                                <Link :href="route('aviso.privacidad')" target="_blank"
+                                    class="text-guinda-700 dark:text-guinda-400 underline">
+                                    Aviso de Privacidad
+                                </Link>
+                                del Instituto Yucateco de Emprendedores (IYEM).
                             </span>
                         </label>
-                        <InputError class="mt-1.5" :message="form.errors.terms" />
+                        <InputError class="mt-1.5" :message="form.errors.acepta_aviso" />
                     </div>
 
-                    <button type="submit" :disabled="form.processing"
+                    <button type="submit" :disabled="form.processing || !form.acepta_aviso"
                         class="w-full py-3 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-colors text-sm mt-2 shadow-sm shadow-guinda-900/20">
                         {{ form.processing ? 'Creando cuenta...' : 'Crear cuenta gratis' }}
                     </button>

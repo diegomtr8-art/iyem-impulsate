@@ -57,6 +57,11 @@ class SocialAuthController extends Controller
 
             Auth::login($user, true);
 
+            // Verificar aviso de privacidad primero
+            if (is_null($user->acepta_aviso_at)) {
+                return redirect()->route('aviso.aceptar');
+            }
+
             // Redirigir a selección de rol si no lo ha elegido todavía
             if (!$user->rol_seleccionado && !$user->isAdmin()) {
                 return redirect()->route('rol.seleccionar');

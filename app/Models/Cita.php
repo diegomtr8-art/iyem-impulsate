@@ -28,6 +28,7 @@ class Cita extends Model
         'hora_real_inicio',
         'hora_real_fin',
         'llamada_at',
+        'productos_interes',
     ];
 
     protected function casts(): array
@@ -42,6 +43,7 @@ class Cita extends Model
             'llamada_at'               => 'datetime',
             'recordatorio_24h_enviado' => 'boolean',
             'recordatorio_2h_enviado'  => 'boolean',
+            'productos_interes'        => 'array',
         ];
     }
 

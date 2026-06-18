@@ -137,12 +137,6 @@ function seleccionarSlot(date, time) {
     mostrarModal.value = true;
 }
 
-function cerrarModal() {
-    mostrarModal.value = false;
-    slotSeleccionado.value = null;
-    form.reset('notas');
-}
-
 const slotLegible = computed(() => {
     if (!slotSeleccionado.value) return '';
     const d = slotSeleccionado.value.date;
@@ -150,8 +144,37 @@ const slotLegible = computed(() => {
 });
 
 // ── FORMULARIO ────────────────────────────────────────────────────────────
-const form = useForm({ restaurantero_id: props.restaurantero.id, fecha: '', hora: '', notas: '' });
-const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarModal() });
+const form = useForm({ restaurantero_id: props.restaurantero.id, fecha: '', hora: '', notas: '', productos_interes: [] });
+
+function cerrarModal() {
+    mostrarModal.value = false;
+    slotSeleccionado.value = null;
+    form.reset('notas', 'productos_interes');
+}
+
+const submit = () => form.post(route('citas.store'), {
+    onSuccess: () => {
+        mostrarModal.value = false;
+        slotSeleccionado.value = null;
+        form.reset('notas', 'productos_interes');
+    },
+});
+
+// ── PRODUCTOS DE INTERÉS ──────────────────────────────────────────────────
+const nombreProducto = (p) => (typeof p === 'string' ? p : p.nombre);
+
+const toggleProducto = (nombre) => {
+    const idx = form.productos_interes.indexOf(nombre);
+    if (idx === -1) {
+        form.productos_interes.push(nombre);
+    } else {
+        form.productos_interes.splice(idx, 1);
+    }
+};
+
+const seleccionarTodosProductos = () => {
+    form.productos_interes = (props.restaurantero.productos_top || []).map(nombreProducto);
+};
 </script>
 
 <template>
@@ -204,8 +227,9 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
         <Transition name="modal-fade">
             <div v-if="mostrarModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
                 <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="cerrarModal"></div>
-                <div class="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
-                    <div class="flex items-center justify-between mb-5">
+                <div class="relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-md shadow-2xl max-h-[92vh] flex flex-col">
+                    <!-- Header fijo -->
+                    <div class="flex items-center justify-between px-6 pt-6 pb-0 shrink-0">
                         <div>
                             <h3 class="text-lg font-bold text-gray-900 dark:text-white">Mesa de Networking</h3>
                             <p class="text-xs text-guinda-600 dark:text-guinda-400 mt-0.5">{{ duracionTexto }}</p>
@@ -215,12 +239,48 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                         </button>
                     </div>
 
+                    <!-- Contenido scrollable -->
+                    <div class="overflow-y-auto flex-1 px-6 pt-4 pb-6">
                     <div class="bg-guinda-50 dark:bg-guinda-500/10 border border-guinda-200 dark:border-guinda-500/20 rounded-xl px-4 py-3 mb-5">
                         <p class="text-guinda-700 dark:text-guinda-400 font-semibold text-sm capitalize">📅 {{ slotLegible }}</p>
                         <p class="text-gray-500 dark:text-gray-400 text-xs mt-1">📍 Av. Industrias No Contaminantes Tab 13613, Col. Sodzil Norte, Mérida</p>
                     </div>
 
                     <form @submit.prevent="submit" class="space-y-4">
+                        <!-- Productos de interés -->
+                        <div v-if="restaurantero.productos_top && restaurantero.productos_top.length > 0">
+                            <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                                ¿En qué productos estás interesado?
+                                <span class="text-xs font-normal text-gray-400 ml-1">(Opcional — puedes seleccionar varios)</span>
+                            </label>
+                            <div class="flex flex-wrap gap-2">
+                                <button
+                                    v-for="producto in restaurantero.productos_top"
+                                    :key="nombreProducto(producto)"
+                                    type="button"
+                                    @click="toggleProducto(nombreProducto(producto))"
+                                    :class="[
+                                        'px-3 py-1.5 rounded-full text-sm font-medium border transition-all',
+                                        form.productos_interes.includes(nombreProducto(producto))
+                                            ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400 dark:hover:border-guinda-500'
+                                    ]"
+                                >
+                                    {{ nombreProducto(producto) }}
+                                </button>
+                            </div>
+                            <div v-if="restaurantero.productos_top.length > 2" class="mt-2 flex gap-3">
+                                <button type="button" @click="seleccionarTodosProductos"
+                                        class="text-xs text-guinda-600 dark:text-guinda-400 hover:underline">
+                                    Seleccionar todos
+                                </button>
+                                <button type="button" @click="form.productos_interes = []"
+                                        v-if="form.productos_interes.length > 0"
+                                        class="text-xs text-gray-400 dark:text-gray-500 hover:underline">
+                                    Limpiar selección
+                                </button>
+                            </div>
+                        </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">¿Qué buscas en esta reunión?</label>
                             <textarea v-model="form.notas" rows="3"
@@ -244,6 +304,7 @@ const submit = () => form.post(route('citas.store'), { onSuccess: () => cerrarMo
                             </button>
                         </div>
                     </form>
+                    </div><!-- /contenido scrollable -->
                 </div>
             </div>
         </Transition>

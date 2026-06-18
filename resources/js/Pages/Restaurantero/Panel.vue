@@ -37,9 +37,9 @@ const estadoConfig = {
 
 const calendarOptions = ref({
     plugins: [timeGridPlugin, dayGridPlugin],
-    initialView: 'timeGridWeek',
+    initialView: 'dayGridMonth',
     locale: esLocale,
-    headerToolbar: { left: 'prev,next today', center: 'title', right: 'timeGridWeek,dayGridMonth' },
+    headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
     slotMinTime: '09:00:00', slotMaxTime: '16:00:00',
     hiddenDays: [0, 6], slotDuration: '00:30:00', height: 380,
     events: '/restaurantero/panel/eventos', eventColor: '#8b1028',
@@ -278,7 +278,7 @@ const tiempoHastaCitaProxima = computed(() => {
                         Ver perfil
                     </Link>
                     <Link :href="route('restaurantero.citas.index')"
-                        class="text-sm text-guinda-700 dark:text-guinda-400 hover:underline font-medium">
+                        class="hidden sm:inline text-sm text-guinda-700 dark:text-guinda-400 hover:underline font-medium">
                         Historial completo →
                     </Link>
                     <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 text-xs font-bold rounded-full border border-guinda-200 dark:border-guinda-800">
@@ -298,7 +298,9 @@ const tiempoHastaCitaProxima = computed(() => {
         <div class="flex gap-6 items-start">
 
         <!-- Sidebar desktop -->
-        <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+        <div class="hidden lg:block">
+            <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+        </div>
 
         <div class="flex-1 min-w-0 space-y-6">
 

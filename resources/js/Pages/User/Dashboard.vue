@@ -97,14 +97,16 @@ const calendarOptions = computed(() => ({
 // ── Perfil del comprador ─────────────────────────────────────
 const showPerfilModal = ref(false);
 const formPerfil = useForm({
-    name:           page.props.auth.user?.name || '',
-    telefono:       page.props.auth.user?.telefono || '',
-    curp:           page.props.auth.user?.curp || '',
-    rfc:            page.props.auth.user?.rfc || '',
-    municipio:      page.props.auth.user?.municipio || '',
-    nombre_empresa: page.props.auth.user?.nombre_empresa || '',
-    sitio_web:      page.props.auth.user?.sitio_web || '',
-    necesidades:    page.props.auth.user?.necesidades || '',
+    name:                   page.props.auth.user?.name || '',
+    telefono:               page.props.auth.user?.telefono || '',
+    curp:                   page.props.auth.user?.curp || '',
+    rfc:                    page.props.auth.user?.rfc || '',
+    municipio:              page.props.auth.user?.municipio || '',
+    nombre_empresa:         page.props.auth.user?.nombre_empresa || '',
+    sitio_web:              page.props.auth.user?.sitio_web || '',
+    necesidades:            page.props.auth.user?.necesidades || '',
+    camara_asociacion:      page.props.auth.user?.camara_asociacion || '',
+    nombre_establecimiento: page.props.auth.user?.nombre_establecimiento || '',
 });
 const submitPerfil = () => {
     formPerfil.post(route('perfil.comprador.actualizar'), {
@@ -269,7 +271,9 @@ const guardarNota = (citaId) => {
         <div class="flex gap-6 items-start">
 
         <!-- Sidebar desktop -->
-        <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+        <div class="hidden lg:block">
+            <EventosSidebar :eventos="$page.props.eventosSidebar ?? []" />
+        </div>
 
         <div class="flex-1 min-w-0 space-y-6">
 
@@ -376,6 +380,24 @@ const guardarNota = (citaId) => {
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- ── BANNER CÁMARA/ASOCIACIÓN SIN RESPONDER ────────── -->
+            <div v-if="!$page.props.auth.user?.camara_asociacion"
+                class="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-3">
+                <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">Tenemos una pregunta nueva para ti</p>
+                    <p class="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                        ¿Perteneces a alguna cámara o asociación (CANIRAC u otra)?
+                        <button @click="showPerfilModal = true"
+                            class="ml-1 font-semibold underline hover:no-underline">
+                            Actualizar mi perfil →
+                        </button>
+                    </p>
                 </div>
             </div>
 
@@ -894,6 +916,37 @@ const guardarNota = (citaId) => {
                                 placeholder="Ej: busco proveedores de vasos plásticos, servicios de catering, tecnología para mi empresa..."
                                 class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 resize-none" />
                         </div>
+                        <!-- Cámara o asociación -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                ¿Pertenece a alguna cámara o asociación?
+                            </label>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <label v-for="opcion in ['CANIRAC', 'Ninguna']" :key="opcion"
+                                    class="flex items-center gap-2.5 cursor-pointer px-3 py-2.5 rounded-xl border transition-all text-sm"
+                                    :class="formPerfil.camara_asociacion === opcion
+                                        ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-500/10 dark:border-guinda-500'
+                                        : 'border-gray-200 dark:border-gray-700 hover:border-guinda-300 dark:hover:border-guinda-600'">
+                                    <input type="radio" :value="opcion" v-model="formPerfil.camara_asociacion" class="accent-guinda-700" />
+                                    <span class="font-medium text-gray-800 dark:text-gray-200">{{ opcion }}</span>
+                                </label>
+                            </div>
+                            <p v-if="formPerfil.errors.camara_asociacion" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.camara_asociacion }}</p>
+                        </div>
+
+                        <!-- Nombre del establecimiento (solo si CANIRAC) -->
+                        <Transition name="fade">
+                            <div v-if="formPerfil.camara_asociacion === 'CANIRAC'">
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                                    Nombre del restaurante / establecimiento <span class="text-red-500">*</span>
+                                </label>
+                                <input v-model="formPerfil.nombre_establecimiento" type="text"
+                                    placeholder="Ej. Restaurante El Mesón de San Juan"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                                <p v-if="formPerfil.errors.nombre_establecimiento" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.nombre_establecimiento }}</p>
+                            </div>
+                        </Transition>
+
                         <div class="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                             <button type="button" @click="showPerfilModal = false"
                                 class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl">

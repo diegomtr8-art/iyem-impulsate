@@ -17,6 +17,8 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             RolesAndPermissionsSeeder::class,
+            SuperAdminSeeder::class,
+            PlantillasCorreoSeeder::class,
         ]);
         // Para datos de demostración, ejecutar manualmente:
         // php artisan db:seed --class=LimpiarYResetearSeeder --force

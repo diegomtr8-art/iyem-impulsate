@@ -15,11 +15,16 @@ use App\Http\Controllers\Admin\CalendarioController;
 use App\Http\Controllers\Admin\EventoController;
 use App\Http\Controllers\Admin\EventoSolicitudesController;
 use App\Http\Controllers\Admin\TorreControlController;
+use App\Http\Controllers\Admin\SuperAdmin\UsuariosGestionController;
+use App\Http\Controllers\Admin\SuperAdmin\PlantillasCorreoController;
+use App\Http\Controllers\Admin\SuperAdmin\PublicidadController;
 use App\Http\Controllers\RestauranteroPanelController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\Auth\SeleccionarRolController;
 use App\Http\Controllers\Auth\SwitchRoleController;
 use App\Http\Controllers\CompletarPerfilController;
+use App\Http\Controllers\AvisoPrivacidadController;
+use App\Http\Controllers\AvisoAceptacionController;
 use App\Http\Controllers\EncuestaController;
 use App\Http\Controllers\EventoRegistroController;
 use App\Http\Controllers\ProveedorPerfilController;
@@ -45,8 +50,15 @@ Route::get('/api/tv/{token}/publico',  [\App\Http\Controllers\Admin\PantallaTvCo
 Route::get('/encuesta/{token}',  [EncuestaController::class, 'show'])->name('encuestas.responder');
 Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])->name('encuestas.responder.store');
 
+// Aceptación del Aviso de Privacidad (solo auth, sin aviso.aceptado para evitar loop)
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/aceptar-aviso',  [AvisoAceptacionController::class, 'show'])->name('aviso.aceptar');
+    Route::post('/aceptar-aviso', [AvisoAceptacionController::class, 'store'])->name('aviso.aceptar.post');
+});
+
 // Rutas públicas
 Route::get('/', [LandingController::class, 'index'])->name('home');
+Route::get('/aviso-de-privacidad', [AvisoPrivacidadController::class, 'index'])->name('aviso.privacidad');
 Route::get('/proveedores', [RestauranteroPublicoController::class, 'index'])->name('proveedores.index');
 Route::get('/proveedores/{restaurantero}', [RestauranteroPublicoController::class, 'show'])->name('proveedores.show');
 // Redirecciones 301 de URLs antiguas
@@ -177,6 +189,37 @@ Route::middleware([
         // Encuestas de satisfacción (admin)
         Route::get('/encuestas',          [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'index'])->name('encuestas.index');
         Route::get('/encuestas/exportar', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'exportar'])->name('encuestas.exportar');
+
+        // ── Módulos exclusivos del super-administrador ──────────────────────────
+        Route::middleware('super-admin')->group(function () {
+            Route::prefix('usuarios-gestion')->name('usuarios-gestion.')->group(function () {
+                Route::get('/',                             [UsuariosGestionController::class, 'index'])->name('index');
+                Route::get('/{user}/edit',                  [UsuariosGestionController::class, 'edit'])->name('edit');
+                Route::put('/{user}',                       [UsuariosGestionController::class, 'update'])->name('update');
+                Route::post('/{user}/password',             [UsuariosGestionController::class, 'updatePassword'])->name('password');
+                Route::post('/{user}/roles',                [UsuariosGestionController::class, 'updateRoles'])->name('roles');
+                Route::delete('/{user}',                    [UsuariosGestionController::class, 'destroy'])->name('destroy');
+            });
+
+            Route::prefix('plantillas-correo')->name('plantillas.')->group(function () {
+                Route::get('/',                             [PlantillasCorreoController::class, 'index'])->name('index');
+                Route::get('/{plantilla}/edit',             [PlantillasCorreoController::class, 'edit'])->name('edit');
+                Route::put('/{plantilla}',                  [PlantillasCorreoController::class, 'update'])->name('update');
+                Route::post('/{plantilla}/enviar',          [PlantillasCorreoController::class, 'enviar'])->name('enviar');
+                Route::patch('/{plantilla}/toggle',         [PlantillasCorreoController::class, 'toggle'])->name('toggle');
+                Route::post('/{plantilla}/restablecer',     [PlantillasCorreoController::class, 'restablecer'])->name('restablecer');
+            });
+
+            Route::prefix('publicidad')->name('publicidad.')->group(function () {
+                Route::get('/',                             [PublicidadController::class, 'index'])->name('index');
+                Route::get('/crear',                        [PublicidadController::class, 'create'])->name('create');
+                Route::post('/',                            [PublicidadController::class, 'store'])->name('store');
+                Route::get('/{publicidad}/edit',            [PublicidadController::class, 'edit'])->name('edit');
+                Route::post('/{publicidad}',                [PublicidadController::class, 'update'])->name('update');
+                Route::patch('/{publicidad}/toggle',        [PublicidadController::class, 'toggleActiva'])->name('toggle');
+                Route::delete('/{publicidad}',              [PublicidadController::class, 'destroy'])->name('destroy');
+            });
+        });
 
         // Exportaciones Excel
         Route::get('/exportar',              [\App\Http\Controllers\Admin\ExportController::class, 'index'])->name('exportar.index');

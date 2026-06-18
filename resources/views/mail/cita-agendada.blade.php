@@ -90,9 +90,21 @@
                             </tr>
                             @if($cita->notas)
                             <tr>
-                                <td style="padding:20px 24px;">
+                                <td style="padding:20px 24px;border-bottom:1px solid #e5e7eb;">
                                     <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Notas</p>
                                     <p style="margin:0;font-size:14px;color:#374151;font-style:italic;">"{{ $cita->notas }}"</p>
+                                </td>
+                            </tr>
+                            @endif
+                            @if(!empty($cita->productos_interes))
+                            <tr>
+                                <td style="padding:20px 24px;">
+                                    <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Productos de interés</p>
+                                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                        @foreach($cita->productos_interes as $producto)
+                                        <span style="display:inline-block;background:#fef2f4;border:1px solid #f5a8b5;color:#8b1028;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;">{{ $producto }}</span>
+                                        @endforeach
+                                    </div>
                                 </td>
                             </tr>
                             @endif

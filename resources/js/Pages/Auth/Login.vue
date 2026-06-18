@@ -169,6 +169,14 @@ const googleAuthUrl = computed(() => {
                             Regístrate gratis
                         </Link>
                     </p>
+
+                    <p class="text-xs text-center text-gray-400 dark:text-gray-600 mt-1">
+                        Al ingresar, aceptas nuestro
+                        <Link :href="route('aviso.privacidad')" target="_blank"
+                            class="text-guinda-600 dark:text-guinda-400 underline hover:text-guinda-700">
+                            Aviso de Privacidad
+                        </Link>.
+                    </p>
                 </form>
 
                 <div class="mt-10 text-center">

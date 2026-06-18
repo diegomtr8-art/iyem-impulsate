@@ -142,6 +142,12 @@ const fmt = (dt) => dt ? new Date(dt).toLocaleString('es-MX', { weekday:'short',
                         <p v-if="cita.propuesta_inicio" class="text-xs text-purple-600 dark:text-purple-400">
                             → Propuesta: {{ fmt(cita.propuesta_inicio) }}
                         </p>
+                        <div v-if="cita.productos_interes && cita.productos_interes.length > 0" class="flex flex-wrap gap-1">
+                            <span v-for="p in cita.productos_interes" :key="p"
+                                  class="inline-block bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 text-xs font-medium px-2 py-0.5 rounded-full border border-guinda-200 dark:border-guinda-500/20">
+                                {{ p }}
+                            </span>
+                        </div>
                         <div v-if="cita.estado === 'pendiente'" class="flex gap-2 pt-1">
                             <button @click="accion('aceptar', cita)" :disabled="procesando"
                                 class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors min-h-[44px]">
@@ -183,6 +189,12 @@ const fmt = (dt) => dt ? new Date(dt).toLocaleString('es-MX', { weekday:'short',
                                     <p v-if="cita.propuesta_inicio" class="text-xs text-purple-600 dark:text-purple-400 mt-0.5">
                                         → Propuesta: {{ fmt(cita.propuesta_inicio) }}
                                     </p>
+                                    <div v-if="cita.productos_interes && cita.productos_interes.length > 0" class="flex flex-wrap gap-1 mt-1.5">
+                                        <span v-for="p in cita.productos_interes" :key="p"
+                                              class="inline-block bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 text-xs font-medium px-2 py-0.5 rounded-full border border-guinda-200 dark:border-guinda-500/20">
+                                            {{ p }}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="py-3.5 px-5">
                                     <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border"
