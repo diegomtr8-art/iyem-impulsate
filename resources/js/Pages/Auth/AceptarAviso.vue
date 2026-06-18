@@ -36,8 +36,8 @@ const cerrarSesion = () => {
                     <div class="space-y-2 text-sm text-gray-600 dark:text-gray-400">
                         <p>
                             <strong class="text-gray-800 dark:text-gray-200">Responsable:</strong>
-                            Instituto Yucateco de Emprendedores (IYEM), Av. Principal Industrias No Contaminantes,
-                            Tablaje Catastral 13613, Col. Sodzil Norte, C.P. 97110, Mérida, Yucatán.
+                            Dr. Rodrigo Ignacio Ortiz Eljure, Director Jurídico,
+                            Dirección Jurídica del Instituto Yucateco de Emprendedores (IYEM).
                         </p>
                         <p>
                             <strong class="text-gray-800 dark:text-gray-200">Finalidad principal:</strong>

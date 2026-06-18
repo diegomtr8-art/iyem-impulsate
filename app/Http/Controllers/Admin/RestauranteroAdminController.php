@@ -13,6 +13,7 @@ use App\Models\Restaurantero;
 use App\Models\Servicio;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
@@ -106,10 +107,36 @@ class RestauranteroAdminController extends Controller
         $restaurantero->load(['user', 'servicios', 'horarios']);
         $categorias = Restaurantero::$categorias;
 
-        $citas = Cita::with(['servicio', 'cliente'])
+        $citas = Cita::with([
+            'servicio:id,nombre,duracion_minutos,precio',
+            'cliente:id,name,email,telefono',
+            'evento:id,nombre',
+        ])
             ->where('restaurantero_id', $restaurantero->id)
             ->orderByDesc('inicio')
             ->paginate(20);
+
+        $eventosParticipados = collect();
+        if ($restaurantero->user_id) {
+            $eventosParticipados = DB::table('evento_usuario')
+                ->join('eventos', 'evento_usuario.evento_id', '=', 'eventos.id')
+                ->where('evento_usuario.user_id', $restaurantero->user_id)
+                ->where('evento_usuario.tipo', 'proveedor')
+                ->select(
+                    'eventos.id',
+                    'eventos.nombre',
+                    'eventos.fecha_hora_inicio',
+                    'eventos.fecha_hora_fin',
+                    'eventos.activa',
+                    'evento_usuario.estado',
+                )
+                ->orderByDesc('eventos.fecha_hora_inicio')
+                ->get();
+        }
+
+        $totalCitas = Cita::where('restaurantero_id', $restaurantero->id)->count();
+        $citasAcept = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'confirmada')->count();
+        $citasPend  = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'pendiente')->count();
 
         $citasCalendario = Cita::where('restaurantero_id', $restaurantero->id)
             ->with(['servicio', 'cliente'])
@@ -135,10 +162,16 @@ class RestauranteroAdminController extends Controller
             });
 
         return Inertia::render('Admin/Restauranteros/Show', [
-            'restaurantero'   => $restaurantero,
-            'citas'           => $citas,
-            'citasCalendario' => $citasCalendario,
-            'categorias'      => $categorias,
+            'restaurantero'       => $restaurantero,
+            'citas'               => $citas,
+            'citasCalendario'     => $citasCalendario,
+            'categorias'          => $categorias,
+            'eventosParticipados' => $eventosParticipados,
+            'stats'               => [
+                'total'     => $totalCitas,
+                'aceptadas' => $citasAcept,
+                'pendientes'=> $citasPend,
+            ],
         ]);
     }
 

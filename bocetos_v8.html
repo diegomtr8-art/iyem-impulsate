@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="es" class="">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Boceto V8 — Perfiles Admin Completos</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        guinda: {
+          50:  '#fdf2f4', 100: '#fce7ea', 200: '#f9c5cd',
+          300: '#f3939f', 400: '#eb5a6c', 500: '#de2a3d',
+          600: '#c01327', 700: '#9e1122', 800: '#8b1028',
+          900: '#7a1028', 950: '#43050f',
+        }
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .badge { display:inline-flex;align-items:center;padding:2px 10px;border-radius:9999px;font-size:0.7rem;font-weight:600; }
+  .tab-btn { cursor:pointer;padding:8px 18px;border-radius:999px;font-size:0.82rem;font-weight:600;border:none;transition:all .2s; }
+  .tab-btn.active { background:#8b1028;color:#fff; }
+  .tab-btn:not(.active) { background:#f3f4f6;color:#374151; }
+  .dark .tab-btn:not(.active) { background:#1f2937;color:#d1d5db; }
+  .section { display:none; }
+  .section.active { display:block; }
+  .chip { display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:0.72rem;font-weight:600;border:1px solid; }
+  @media(max-width:767px){
+    .grid-main{ grid-template-columns:1fr!important; }
+    .hide-mobile{ display:none!important; }
+  }
+</style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-950 transition-colors duration-300">
+
+<!-- TOOLBAR -->
+<div class="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 shadow-sm px-4 py-3 flex flex-wrap gap-3 items-center justify-between">
+  <div class="flex gap-2 flex-wrap">
+    <button class="tab-btn active" onclick="showSection('comprador')">Perfil Comprador</button>
+    <button class="tab-btn" onclick="showSection('proveedor')">Perfil Proveedor</button>
+  </div>
+  <div class="flex items-center gap-3">
+    <span class="text-xs text-gray-400 dark:text-gray-500 font-mono">bocetos_v8.html — V8</span>
+    <button onclick="toggleDark()" class="text-xs px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 font-medium">
+      <span class="dark:hidden">🌙 Modo oscuro</span>
+      <span class="hidden dark:inline">☀️ Modo claro</span>
+    </button>
+  </div>
+</div>
+
+<!-- =============================================
+     SECCIÓN 1: PERFIL COMPRADOR
+     ============================================= -->
+<div id="sec-comprador" class="section active p-4 md:p-6 max-w-7xl mx-auto">
+
+  <!-- Encabezado breadcrumb -->
+  <div class="flex items-center gap-2 mb-5">
+    <a href="#" class="text-guinda-700 dark:text-guinda-400 text-sm font-medium">Compradores</a>
+    <span class="text-gray-300 dark:text-gray-600">/</span>
+    <span class="text-sm text-gray-500 dark:text-gray-400">Detalle de comprador</span>
+  </div>
+
+  <div class="grid gap-6" style="grid-template-columns: 1fr 2fr" id="main-grid-comprador">
+
+    <!-- ── COLUMNA IZQUIERDA: tarjeta de identidad ── -->
+    <div class="space-y-4">
+
+      <!-- Card principal -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-6">
+        <!-- Avatar -->
+        <div class="flex flex-col items-center text-center mb-5">
+          <div class="w-20 h-20 rounded-full bg-guinda-100 dark:bg-guinda-500/15 text-guinda-800 dark:text-guinda-300 font-black text-2xl flex items-center justify-center mb-3">
+            AM
+          </div>
+          <h2 class="text-xl font-bold text-gray-900 dark:text-white">Ana Martínez López</h2>
+          <p class="text-sm text-gray-400 dark:text-gray-500 mb-2">ana.martinez@restaurantecasa.com</p>
+          <div class="flex gap-2 flex-wrap justify-center">
+            <span class="badge bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400">Comprador</span>
+            <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Perfil completo</span>
+          </div>
+        </div>
+
+        <!-- Fecha registro -->
+        <div class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-4">
+          <svg class="w-4 h-4 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Registrado: 12 mar. 2026
+        </div>
+
+        <hr class="border-gray-100 dark:border-gray-800 mb-4"/>
+
+        <!-- DATOS DE CONTACTO -->
+        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Contacto</p>
+        <div class="space-y-2.5 text-sm mb-4">
+          <div class="flex items-center gap-2.5 text-gray-600 dark:text-gray-300">
+            <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+            ana.martinez@restaurantecasa.com
+          </div>
+          <div class="flex items-center gap-2.5 text-gray-600 dark:text-gray-300">
+            <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+            999 234 5678
+          </div>
+        </div>
+
+        <hr class="border-gray-100 dark:border-gray-800 mb-4"/>
+
+        <!-- DATOS DE PERFIL -->
+        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Datos de perfil</p>
+        <div class="space-y-2.5 text-sm">
+          <div class="flex justify-between">
+            <span class="text-gray-400 dark:text-gray-500">Empresa</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200 text-right max-w-[160px]">Restaurante Casa Vieja</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400 dark:text-gray-500">Municipio</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200">Mérida</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400 dark:text-gray-500">RFC</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">MALÁ920315AB1</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400 dark:text-gray-500">CURP</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">MALÁ920315MYNCNR07</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400 dark:text-gray-500">Página web</span>
+            <a href="#" class="text-guinda-700 dark:text-guinda-400 underline text-xs">restaurantecasavieja.com</a>
+          </div>
+          <div class="flex justify-between items-center">
+            <span class="text-gray-400 dark:text-gray-500">Cámara/Asoc.</span>
+            <span class="badge bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400">CANIRAC</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-gray-400 dark:text-gray-500">Establecimiento</span>
+            <span class="font-medium text-gray-800 dark:text-gray-200 text-right max-w-[150px]">Restaurante Casa Vieja</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats chips -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-4">
+        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Estadísticas</p>
+        <div class="flex flex-wrap gap-2">
+          <span class="chip bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700">
+            <svg class="w-3.5 h-3.5 text-guinda-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            8 citas totales
+          </span>
+          <span class="chip bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            5 confirmadas
+          </span>
+          <span class="chip bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            2 pendientes
+          </span>
+        </div>
+      </div>
+
+      <!-- Acciones -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-4">
+        <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Acciones</p>
+        <button class="w-full py-2.5 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Eliminar usuario
+        </button>
+      </div>
+    </div>
+
+    <!-- ── COLUMNA DERECHA ── -->
+    <div class="space-y-5">
+
+      <!-- EVENTOS ASISTIDOS -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 class="font-bold text-gray-800 dark:text-white text-base">Participación en Eventos</h2>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Eventos en los que ha participado</p>
+          </div>
+          <span class="badge bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400">2 eventos</span>
+        </div>
+        <div class="divide-y divide-gray-100 dark:divide-gray-800 p-4 space-y-3">
+
+          <!-- Evento 1 -->
+          <div class="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 flex flex-wrap gap-3 items-start justify-between">
+            <div>
+              <p class="font-semibold text-gray-900 dark:text-white text-sm mb-1">Impulsate Yucatán — Edición Verano 2026</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                15 jun. 2026 — 16 jun. 2026
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span class="badge bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400">Comprador</span>
+              <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Aprobado</span>
+              <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Activo</span>
+            </div>
+          </div>
+
+          <!-- Evento 2 -->
+          <div class="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 flex flex-wrap gap-3 items-start justify-between pt-3">
+            <div>
+              <p class="font-semibold text-gray-900 dark:text-white text-sm mb-1">Impulsate Yucatán — Primavera 2026</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                <svg class="w-3.5 h-3.5 inline mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                3 abr. 2026 — 4 abr. 2026
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <span class="badge bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400">Comprador</span>
+              <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Aprobado</span>
+              <span class="badge bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">Finalizado</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- HISTORIAL DE CITAS -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 class="font-bold text-gray-800 dark:text-white text-base">Historial de Citas</h2>
+            <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">8 citas registradas</p>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
+                <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">Proveedor</th>
+                <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider hide-mobile">Evento</th>
+                <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">Fecha</th>
+                <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider hide-mobile">Horario</th>
+                <th class="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">Estado</th>
+                <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider hide-mobile">Notas</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100 dark:divide-gray-800/40">
+              <!-- Fila 1 -->
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                <td class="px-4 py-3.5">
+                  <p class="font-medium text-gray-800 dark:text-gray-200">Agropecuaria Los Altos</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">Alimentos y Bebidas</p>
+                </td>
+                <td class="px-4 py-3.5 hide-mobile">
+                  <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">Verano 2026</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">15 jun. 2026</td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">10:00 – 10:30</td>
+                <td class="px-4 py-3.5 text-center">
+                  <span class="badge bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Confirmada</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 text-xs hide-mobile italic max-w-[150px] truncate">Interés en productos lácteos</td>
+              </tr>
+              <!-- Fila 2 -->
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                <td class="px-4 py-3.5">
+                  <p class="font-medium text-gray-800 dark:text-gray-200">Tech Yucatán Solutions</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">Tecnología</p>
+                </td>
+                <td class="px-4 py-3.5 hide-mobile">
+                  <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">Verano 2026</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">15 jun. 2026</td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">11:00 – 11:30</td>
+                <td class="px-4 py-3.5 text-center">
+                  <span class="badge bg-amber-500/10 text-amber-700 dark:text-amber-400">Pendiente</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 text-xs hide-mobile italic">—</td>
+              </tr>
+              <!-- Fila 3 -->
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                <td class="px-4 py-3.5">
+                  <p class="font-medium text-gray-800 dark:text-gray-200">Distribuidora Mérida SA</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">Comercio</p>
+                </td>
+                <td class="px-4 py-3.5 hide-mobile">
+                  <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">4 abr. 2026</td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">09:00 – 09:30</td>
+                <td class="px-4 py-3.5 text-center">
+                  <span class="badge bg-gray-500/10 text-gray-500 dark:text-gray-400">Cancelada</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 text-xs hide-mobile italic">Cliente no asistió</td>
+              </tr>
+              <!-- Fila 4 -->
+              <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+                <td class="px-4 py-3.5">
+                  <p class="font-medium text-gray-800 dark:text-gray-200">Agropecuaria Los Altos</p>
+                  <p class="text-xs text-gray-400 dark:text-gray-500">Alimentos y Bebidas</p>
+                </td>
+                <td class="px-4 py-3.5 hide-mobile">
+                  <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">Primavera 2026</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">4 abr. 2026</td>
+                <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">10:30 – 11:00</td>
+                <td class="px-4 py-3.5 text-center">
+                  <span class="badge bg-indigo-500/10 text-indigo-700 dark:text-indigo-400">Completada</span>
+                </td>
+                <td class="px-4 py-3.5 text-gray-400 dark:text-gray-500 text-xs hide-mobile italic">Pedido de muestras realizado</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- =============================================
+     SECCIÓN 2: PERFIL PROVEEDOR
+     ============================================= -->
+<div id="sec-proveedor" class="section p-4 md:p-6 max-w-7xl mx-auto">
+
+  <!-- Encabezado breadcrumb -->
+  <div class="flex items-center gap-2 mb-5">
+    <a href="#" class="text-guinda-700 dark:text-guinda-400 text-sm font-medium">Proveedores</a>
+    <span class="text-gray-300 dark:text-gray-600">/</span>
+    <span class="text-sm text-gray-500 dark:text-gray-400">Agropecuaria Los Altos S.A. de C.V.</span>
+  </div>
+
+  <!-- Header proveedor con stats inline -->
+  <div class="flex flex-wrap items-start gap-4 mb-5">
+    <div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <h1 class="text-xl font-bold text-gray-900 dark:text-white">Agropecuaria Los Altos</h1>
+        <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">Activo</span>
+        <span class="badge bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20">Aprobado</span>
+      </div>
+      <p class="text-sm text-gray-400 dark:text-gray-500 mt-1">Alimentos y Bebidas · Mérida, Yucatán</p>
+    </div>
+    <!-- Stats inline -->
+    <div class="flex flex-wrap gap-2 ml-auto">
+      <span class="chip bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-200 dark:border-gray-700">
+        <svg class="w-3.5 h-3.5 text-guinda-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+        24 citas totales
+      </span>
+      <span class="chip bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        18 confirmadas
+      </span>
+      <span class="chip bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        3 pendientes
+      </span>
+    </div>
+  </div>
+
+  <div class="space-y-5">
+
+    <!-- Info general + servicios + horarios (existentes) -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+        <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-3">Información general</h2>
+        <div class="text-sm space-y-2">
+          <div><span class="text-gray-400 dark:text-gray-500">Propietario:</span> <span class="font-medium text-gray-800 dark:text-gray-200">Carlos Ramírez Soto</span></div>
+          <div><span class="text-gray-400 dark:text-gray-500">Email:</span> <span class="text-gray-700 dark:text-gray-300">carlos@agropecuarialosaltos.com</span></div>
+          <div><span class="text-gray-400 dark:text-gray-500">Teléfono:</span> <span class="text-gray-700 dark:text-gray-300">999 876 5432</span></div>
+          <div><span class="text-gray-400 dark:text-gray-500">Municipio:</span> <span class="text-gray-700 dark:text-gray-300">Mérida</span></div>
+          <div><span class="text-gray-400 dark:text-gray-500">Registrado:</span> <span class="text-gray-700 dark:text-gray-300">10 ene. 2026</span></div>
+        </div>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+        <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-3">Servicios</h2>
+        <ul class="text-sm space-y-2">
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300">Mesa de Networking</span><span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">30 min</span></li>
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300">Degustación de productos</span><span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">45 min</span></li>
+        </ul>
+      </div>
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+        <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-3">Horarios</h2>
+        <ul class="text-sm space-y-2">
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300 font-medium">Lunes</span><span class="text-gray-400">09:00 – 16:00</span></li>
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300 font-medium">Martes</span><span class="text-gray-400">09:00 – 16:00</span></li>
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300 font-medium">Miércoles</span><span class="text-gray-400">09:00 – 16:00</span></li>
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300 font-medium">Jueves</span><span class="text-gray-400">09:00 – 16:00</span></li>
+          <li class="flex justify-between"><span class="text-gray-700 dark:text-gray-300 font-medium">Viernes</span><span class="text-gray-400">09:00 – 16:00</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ── NUEVA: Datos del Representante y Empresa ── -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-4">Datos del Representante y Empresa</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Razón social</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">Agropecuaria Los Altos S.A. de C.V.</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Nombre del representante</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">Carlos Javier Ramírez Soto</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">CURP del representante</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">RASC810312HYNMTL09</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">RFC</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">ALA810312HA1</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Fecha de inicio de operaciones</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">15 marzo 2015</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Número de empleados</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">48 empleados</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Domicilio en Yucatán</span>
+          <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 self-start">Sí</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Sitio web</span>
+          <a href="#" class="text-guinda-700 dark:text-guinda-400 underline text-sm">agropecuarialosaltos.com.mx</a>
+        </div>
+        <div class="flex flex-col sm:col-span-2">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Redes sociales</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">@agropecuaria_losaltos (Instagram), /agropecuarialosaltos (Facebook)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── NUEVA: Características del Producto/Servicio ── -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-4">Características del Producto / Servicio</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Mercado meta</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">Restaurantes, hoteles y supermercados en Yucatán y Sureste</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Tiempo de vida en anaquel</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">15 a 30 días con refrigeración</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requisitos alimentarios</span>
+          <span class="font-medium text-gray-800 dark:text-gray-200">NOM-251-SSA1-2009, NOM-213-SSA1-2002</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Apoyo en trámites de requisitos</span>
+          <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 self-start">Sí</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requiere refrigeración</span>
+          <span class="badge bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 self-start">Sí</span>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requiere congelación</span>
+          <span class="badge bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 self-start">No</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── NUEVA: Productos ── -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
+      <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-4">Productos destacados</h2>
+      <div class="flex flex-wrap gap-2">
+        <span class="chip bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border-guinda-200 dark:border-guinda-500/20">🧀 Queso fresco artesanal</span>
+        <span class="chip bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border-guinda-200 dark:border-guinda-500/20">🥛 Leche pasteurizada premium</span>
+        <span class="chip bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border-guinda-200 dark:border-guinda-500/20">🧈 Mantequilla sin sal</span>
+        <span class="chip bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border-guinda-200 dark:border-guinda-500/20">🍶 Crema ácida regional</span>
+        <span class="chip bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border-guinda-200 dark:border-guinda-500/20">🐄 Yogurt natural sin azúcar</span>
+      </div>
+    </div>
+
+    <!-- ── NUEVA: Participación en Eventos ── -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+        <div>
+          <h2 class="font-bold text-gray-800 dark:text-white text-base">Participación en Eventos</h2>
+          <p class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Eventos como proveedor</p>
+        </div>
+        <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">2 eventos</span>
+      </div>
+      <div class="p-4 space-y-3">
+        <div class="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 flex flex-wrap gap-3 items-start justify-between">
+          <div>
+            <p class="font-semibold text-gray-900 dark:text-white text-sm mb-1">Impulsate Yucatán — Edición Verano 2026</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">15 jun. 2026 — 16 jun. 2026</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Proveedor</span>
+            <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Aprobado</span>
+            <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">Activo</span>
+          </div>
+        </div>
+        <div class="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 flex flex-wrap gap-3 items-start justify-between">
+          <div>
+            <p class="font-semibold text-gray-900 dark:text-white text-sm mb-1">Impulsate Yucatán — Primavera 2026</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">3 abr. 2026 — 4 abr. 2026</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Proveedor</span>
+            <span class="badge bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Aprobado</span>
+            <span class="badge bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">Finalizado</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── AMPLIADA: Tabla de citas con columna Evento y Comprador ── -->
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
+        <h2 class="font-semibold text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider">Historial de citas (ampliado)</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
+              <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">Comprador</th>
+              <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider hide-mobile">Servicio</th>
+              <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider hide-mobile">Evento</th>
+              <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">Inicio</th>
+              <th class="text-left px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider hide-mobile">Fin</th>
+              <th class="text-center px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">Estado</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 dark:divide-gray-800/40">
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+              <td class="px-4 py-3.5">
+                <p class="font-medium text-gray-800 dark:text-gray-200">Ana Martínez López</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">ana.martinez@restaurantecasa.com</p>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 hide-mobile">Mesa de Networking</td>
+              <td class="px-4 py-3.5 hide-mobile">
+                <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">Verano 2026</span>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">15/06/2026, 10:00</td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">15/06/2026, 10:30</td>
+              <td class="px-4 py-3.5 text-center">
+                <span class="badge bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">Confirmada</span>
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+              <td class="px-4 py-3.5">
+                <p class="font-medium text-gray-800 dark:text-gray-200">Roberto Dzib Chan</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">roberto.dzib@proveedores.mx</p>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 hide-mobile">Degustación de productos</td>
+              <td class="px-4 py-3.5 hide-mobile">
+                <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">Verano 2026</span>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">15/06/2026, 11:30</td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">15/06/2026, 12:15</td>
+              <td class="px-4 py-3.5 text-center">
+                <span class="badge bg-amber-500/10 text-amber-700 dark:text-amber-400">Pendiente</span>
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+              <td class="px-4 py-3.5">
+                <p class="font-medium text-gray-800 dark:text-gray-200">Sofía Hernández Pérez</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">sofia.hernandez@gastronomia.yuc</p>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 hide-mobile">Mesa de Networking</td>
+              <td class="px-4 py-3.5 hide-mobile">
+                <span class="text-xs text-gray-400 dark:text-gray-500">—</span>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">04/04/2026, 09:00</td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">04/04/2026, 09:30</td>
+              <td class="px-4 py-3.5 text-center">
+                <span class="badge bg-indigo-500/10 text-indigo-700 dark:text-indigo-400">Completada</span>
+              </td>
+            </tr>
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/20 transition-colors">
+              <td class="px-4 py-3.5">
+                <p class="font-medium text-gray-800 dark:text-gray-200">Luis Manuel Uc Pech</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500">luis.uc@cocinatradicional.mx</p>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 hide-mobile">Mesa de Networking</td>
+              <td class="px-4 py-3.5 hide-mobile">
+                <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">Primavera 2026</span>
+              </td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">04/04/2026, 10:30</td>
+              <td class="px-4 py-3.5 text-gray-500 dark:text-gray-400 text-xs hide-mobile whitespace-nowrap">04/04/2026, 11:00</td>
+              <td class="px-4 py-3.5 text-center">
+                <span class="badge bg-gray-500/10 text-gray-500 dark:text-gray-400">Cancelada</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <!-- Paginación mock -->
+      <div class="px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
+        <span class="px-3 py-1.5 text-xs rounded-lg bg-guinda-800 text-white font-semibold">1</span>
+        <span class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">2</span>
+        <span class="px-3 py-1.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">›</span>
+      </div>
+    </div>
+
+    <!-- Nota sobre secciones existentes que se conservan -->
+    <div class="border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-2xl p-5 bg-amber-50 dark:bg-amber-950/20">
+      <p class="text-sm font-semibold text-amber-800 dark:text-amber-400 mb-1">Secciones existentes que se conservan sin cambios</p>
+      <p class="text-xs text-amber-700 dark:text-amber-500">Las siguientes secciones ya existen en la vista actual y NO se eliminan — solo se agregan las nuevas arriba:<br/>
+        <strong>Productos/Servicios destacados</strong> (con fotos) · <strong>Categoría del proveedor</strong> (select editable) · <strong>Editar perfil</strong> (form con logo, nombre, descripción, teléfono, municipio) · <strong>Calendario FullCalendar</strong>
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('sec-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function toggleDark() {
+  document.documentElement.classList.toggle('dark');
+}
+
+// Layout responsivo para la vista de comprador
+function applyLayout() {
+  const grid = document.getElementById('main-grid-comprador');
+  if (!grid) return;
+  if (window.innerWidth < 768) {
+    grid.style.gridTemplateColumns = '1fr';
+  } else {
+    grid.style.gridTemplateColumns = '1fr 2fr';
+  }
+}
+window.addEventListener('resize', applyLayout);
+applyLayout();
+</script>
+</body>
+</html>

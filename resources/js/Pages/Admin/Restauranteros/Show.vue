@@ -13,6 +13,8 @@ const props = defineProps({
     citas: Object,
     citasCalendario: Array,
     categorias: Array,
+    eventosParticipados: { type: Array, default: () => [] },
+    stats: { type: Object, default: () => ({ total: 0, aceptadas: 0, pendientes: 0 }) },
 });
 
 const municipios = [
@@ -66,6 +68,25 @@ const submitPerfil = () => {
 
 const diasSemana = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
+const estadoEventoClases = {
+    aprobado:  'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
+    pendiente: 'bg-amber-500/15 text-amber-700 dark:text-amber-400',
+    rechazado: 'bg-red-500/15 text-red-600 dark:text-red-400',
+};
+
+const estadoEventoLabel = { aprobado: 'Aprobado', pendiente: 'Pendiente', rechazado: 'Rechazado' };
+
+const formatFechaEvento = (fecha) => {
+    if (!fecha) return '—';
+    return new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+};
+
+const esEventoActivo = (ev) => {
+    if (!ev.activa) return false;
+    const fin = ev.fecha_hora_fin ? new Date(ev.fecha_hora_fin) : null;
+    return fin ? fin >= new Date() : true;
+};
+
 const estadoClases = {
     pendiente:  'bg-guinda-500/15 text-guinda-600 dark:text-guinda-400 border-guinda-500/20',
     confirmada: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
@@ -109,6 +130,17 @@ const calendarOptions = ref({
                     class="text-xs font-semibold px-2.5 py-1 rounded-full border">
                     {{ restaurantero.activo ? 'Activo' : 'Inactivo' }}
                 </span>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700">
+                        {{ stats.total }} citas
+                    </span>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20">
+                        {{ stats.aceptadas }} confirmadas
+                    </span>
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20">
+                        {{ stats.pendientes }} pendientes
+                    </span>
+                </div>
             </div>
         </template>
 
@@ -146,6 +178,163 @@ const calendarOptions = ref({
                         </li>
                         <li v-if="!restaurantero.horarios?.length" class="text-gray-400 dark:text-gray-600">Sin horarios.</li>
                     </ul>
+                </div>
+            </div>
+
+            <!-- Datos del Representante y Empresa -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none transition-colors animate-fadeInUp" style="animation-delay:0.28s">
+                <h2 class="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider mb-4">Datos del Representante y Empresa</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Razón social</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.razon_social || '—' }}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Nombre del representante</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.nombre_representante || '—' }}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">CURP del representante</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">{{ restaurantero.curp_representante || '—' }}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">RFC</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">{{ restaurantero.rfc || '—' }}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Fecha de inicio de operaciones</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">
+                            {{ restaurantero.fecha_inicio_operaciones
+                                ? new Date(restaurantero.fecha_inicio_operaciones).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' })
+                                : '—' }}
+                        </span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Número de empleados</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.num_empleados != null ? restaurantero.num_empleados + ' empleados' : '—' }}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Domicilio en Yucatán</span>
+                        <span v-if="restaurantero.domicilio_en_yucatan != null"
+                            :class="restaurantero.domicilio_en_yucatan
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.domicilio_en_yucatan ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Sitio web</span>
+                        <a v-if="restaurantero.sitio_web" :href="restaurantero.sitio_web" target="_blank"
+                            class="text-guinda-700 dark:text-guinda-400 underline text-xs truncate">
+                            {{ restaurantero.sitio_web.replace(/^https?:\/\//, '') }}
+                        </a>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <div class="flex flex-col sm:col-span-2">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Redes sociales</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">
+                            {{ restaurantero.redes_sociales?.length ? restaurantero.redes_sociales.join(', ') : '—' }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Características del Producto/Servicio -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none transition-colors animate-fadeInUp" style="animation-delay:0.3s">
+                <h2 class="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider mb-4">Características del Producto / Servicio</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Mercado meta</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.mercado_meta || '—' }}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Tiempo de vida en anaquel</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.tiempo_vida_anaquel || '—' }}</span>
+                    </div>
+                    <div class="flex flex-col sm:col-span-2">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requisitos alimentarios</span>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">
+                            {{ restaurantero.requisitos_alimentos?.length ? restaurantero.requisitos_alimentos.join(', ') : '—' }}
+                        </span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Apoyo en trámites de requisitos</span>
+                        <span v-if="restaurantero.apoyo_requisitos != null"
+                            :class="restaurantero.apoyo_requisitos?.length
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.apoyo_requisitos?.length ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requiere refrigeración</span>
+                        <span v-if="restaurantero.requiere_refrigeracion != null"
+                            :class="restaurantero.requiere_refrigeracion
+                                ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.requiere_refrigeracion ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requiere congelación</span>
+                        <span v-if="restaurantero.requiere_congelacion != null"
+                            :class="restaurantero.requiere_congelacion
+                                ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.requiere_congelacion ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Participación en Eventos -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none transition-colors animate-fadeInUp" style="animation-delay:0.32s">
+                <div class="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                    <h2 class="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider">Participación en Eventos</h2>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                        {{ eventosParticipados.length }} eventos
+                    </span>
+                </div>
+                <div v-if="eventosParticipados.length > 0" class="p-4 space-y-3">
+                    <div v-for="ev in eventosParticipados" :key="ev.id"
+                        class="bg-gray-50 dark:bg-gray-800/40 rounded-xl p-4 flex flex-wrap gap-3 items-start justify-between">
+                        <div>
+                            <p class="font-semibold text-gray-900 dark:text-white text-sm mb-1">{{ ev.nombre }}</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ formatFechaEvento(ev.fecha_hora_inicio) }}
+                                <span v-if="ev.fecha_hora_fin"> — {{ formatFechaEvento(ev.fecha_hora_fin) }}</span>
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                                Proveedor
+                            </span>
+                            <span :class="estadoEventoClases[ev.estado] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-500'"
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                                {{ estadoEventoLabel[ev.estado] ?? ev.estado }}
+                            </span>
+                            <span :class="esEventoActivo(ev)
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                                {{ esEventoActivo(ev) ? 'Activo' : 'Finalizado' }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div v-else class="px-6 py-10 text-center text-gray-400 dark:text-gray-600">
+                    <svg class="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z"/>
+                    </svg>
+                    <p class="text-sm">No ha participado en ningún evento</p>
                 </div>
             </div>
 
@@ -286,31 +475,36 @@ const calendarOptions = ref({
                 <table class="w-full text-sm">
                     <thead>
                         <tr class="border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50">
-                            <th class="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Cliente</th>
-                            <th class="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider hidden md:table-cell">Servicio</th>
-                            <th class="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Inicio</th>
-                            <th class="text-left px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider hidden lg:table-cell">Fin</th>
-                            <th class="text-center px-6 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Estado</th>
+                            <th class="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Comprador</th>
+                            <th class="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider hidden md:table-cell">Servicio</th>
+                            <th class="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider hidden lg:table-cell">Evento</th>
+                            <th class="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Inicio</th>
+                            <th class="text-left px-5 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider hidden xl:table-cell">Fin</th>
+                            <th class="text-center px-5 py-3 text-xs text-gray-500 dark:text-gray-500 font-semibold uppercase tracking-wider">Estado</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr v-for="c in citas.data" :key="c.id"
                             class="border-b border-gray-100 dark:border-gray-800/40 hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors duration-150">
-                            <td class="px-6 py-4">
+                            <td class="px-5 py-4">
                                 <div class="font-medium text-gray-900 dark:text-gray-200">{{ c.cliente?.name }}</div>
                                 <div class="text-xs text-gray-500 dark:text-gray-500">{{ c.cliente?.email }}</div>
                             </td>
-                            <td class="px-6 py-4 text-gray-500 dark:text-gray-400 hidden md:table-cell">{{ c.servicio?.nombre }}</td>
-                            <td class="px-6 py-4 text-gray-500 dark:text-gray-400 text-xs">{{ new Date(c.inicio).toLocaleString('es-MX') }}</td>
-                            <td class="px-6 py-4 text-gray-500 dark:text-gray-400 hidden lg:table-cell text-xs">{{ new Date(c.fin).toLocaleString('es-MX') }}</td>
-                            <td class="px-6 py-4 text-center">
+                            <td class="px-5 py-4 text-gray-500 dark:text-gray-400 hidden md:table-cell text-sm">{{ c.servicio?.nombre }}</td>
+                            <td class="px-5 py-4 hidden lg:table-cell">
+                                <span v-if="c.evento" class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">{{ c.evento.nombre }}</span>
+                                <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                            </td>
+                            <td class="px-5 py-4 text-gray-500 dark:text-gray-400 text-xs whitespace-nowrap">{{ new Date(c.inicio).toLocaleString('es-MX') }}</td>
+                            <td class="px-5 py-4 text-gray-500 dark:text-gray-400 hidden xl:table-cell text-xs whitespace-nowrap">{{ new Date(c.fin).toLocaleString('es-MX') }}</td>
+                            <td class="px-5 py-4 text-center">
                                 <span :class="estadoClases[c.estado]" class="text-xs font-semibold px-2.5 py-1 rounded-full border capitalize">
                                     {{ c.estado }}
                                 </span>
                             </td>
                         </tr>
                         <tr v-if="!citas.data.length">
-                            <td colspan="5" class="px-6 py-16 text-center text-gray-400 dark:text-gray-600">Sin citas registradas.</td>
+                            <td colspan="6" class="px-6 py-16 text-center text-gray-400 dark:text-gray-600">Sin citas registradas.</td>
                         </tr>
                     </tbody>
                 </table>

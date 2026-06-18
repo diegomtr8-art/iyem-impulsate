@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -38,16 +39,42 @@ class UserAdminController extends Controller
 
     public function show(User $user): Response
     {
-        $user->loadCount('citasComoCliente as citas_como_cliente_count');
         $user->load([
             'citasComoCliente' => function ($q) {
-                $q->with(['restaurantero' => fn($r) => $r->select('id', 'nombre_restaurante')])
-                  ->orderByDesc('inicio');
+                $q->with([
+                    'restaurantero:id,nombre_restaurante',
+                    'evento:id,nombre',
+                ])->orderByDesc('inicio');
             },
         ]);
 
+        $eventosAsistidos = DB::table('evento_usuario')
+            ->join('eventos', 'evento_usuario.evento_id', '=', 'eventos.id')
+            ->where('evento_usuario.user_id', $user->id)
+            ->select(
+                'eventos.id',
+                'eventos.nombre',
+                'eventos.fecha_hora_inicio',
+                'eventos.fecha_hora_fin',
+                'eventos.activa',
+                'evento_usuario.tipo',
+                'evento_usuario.estado',
+            )
+            ->orderByDesc('eventos.fecha_hora_inicio')
+            ->get();
+
+        $totalCitas = $user->citasComoCliente()->count();
+        $citasAcept = $user->citasComoCliente()->where('estado', 'confirmada')->count();
+        $citasPend  = $user->citasComoCliente()->where('estado', 'pendiente')->count();
+
         return Inertia::render('Admin/Clientes/Show', [
-            'cliente' => $user,
+            'cliente'          => $user,
+            'eventosAsistidos' => $eventosAsistidos,
+            'stats'            => [
+                'total'     => $totalCitas,
+                'aceptadas' => $citasAcept,
+                'pendientes'=> $citasPend,
+            ],
         ]);
     }
 

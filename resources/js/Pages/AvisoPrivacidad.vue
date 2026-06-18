@@ -60,8 +60,9 @@ const darkMode = ref(document.documentElement.classList.contains('dark'));
             <!-- Responsable -->
             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 sm:p-8 mb-6">
                 <h2 class="text-lg font-bold text-guinda-700 dark:text-guinda-400 mb-3">Responsable del tratamiento de datos</h2>
-                <p class="text-gray-600 dark:text-gray-400 leading-relaxed">
-                    El <strong class="text-gray-900 dark:text-white">Instituto Yucateco de Emprendedores (IYEM)</strong>, con domicilio en Avenida Principal
+                <p class="text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                    El <strong class="text-gray-900 dark:text-white">Dr. Rodrigo Ignacio Ortiz Eljure</strong>, en su carácter de
+                    Director Jurídico de la Dirección Jurídica del Instituto Yucateco de Emprendedores (IYEM), con domicilio en Avenida Principal
                     Industrias No Contaminantes, Tablaje Catastral 13613, Colonia Sodzil Norte, C.P. 97110, Mérida, Yucatán, México,
                     es responsable del tratamiento de los datos personales proporcionados por las personas físicas y representantes legales
                     de personas morales que soliciten participar en los bazares, ferias y exposiciones para artesanos y emprendedores que
@@ -69,6 +70,17 @@ const darkMode = ref(document.documentElement.classList.contains('dark'));
                     en Posesión de Sujetos Obligados, los Lineamientos Generales del Sistema Nacional de Transparencia y demás disposiciones
                     jurídicas aplicables.
                 </p>
+                <div class="bg-guinda-50 dark:bg-guinda-500/10 border border-guinda-100 dark:border-guinda-500/20 rounded-xl p-4 text-sm">
+                    <p class="font-semibold text-guinda-800 dark:text-guinda-300 mb-2">Datos de contacto del Responsable</p>
+                    <div class="space-y-1 text-gray-600 dark:text-gray-400">
+                        <p><strong class="text-gray-800 dark:text-gray-200">Nombre:</strong> Dr. Rodrigo Ignacio Ortiz Eljure</p>
+                        <p><strong class="text-gray-800 dark:text-gray-200">Cargo:</strong> Director Jurídico</p>
+                        <p><strong class="text-gray-800 dark:text-gray-200">Área:</strong> Dirección Jurídica del Instituto Yucateco de Emprendedores</p>
+                        <p><strong class="text-gray-800 dark:text-gray-200">Teléfono:</strong> 999 461 5676 ext. 29125</p>
+                        <p><strong class="text-gray-800 dark:text-gray-200">Correo:</strong> rodrigo.ortiz@yucatan.gob.mx</p>
+                        <p><strong class="text-gray-800 dark:text-gray-200">Horario de atención:</strong> lunes a viernes de 9:00 a.m. a 3:00 p.m.</p>
+                    </div>
+                </div>
             </div>
 
             <!-- Sección 1: Datos y fines -->
@@ -178,7 +190,12 @@ const darkMode = ref(document.documentElement.classList.contains('dark'));
                         <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <span><strong class="text-gray-800 dark:text-gray-200">Unidad de Transparencia:</strong> Mismas oficinas del IYEM, lunes a viernes 9:00 a 15:00 horas.</span>
+                        <span>
+                            <strong class="text-gray-800 dark:text-gray-200">Titular de la Unidad de Transparencia:</strong>
+                            Dr. Rodrigo Ignacio Ortiz Eljure — Mismas oficinas del IYEM, lunes a viernes 9:00 a.m. a 3:00 p.m.
+                            · Tel. 999 461 5676 ext. 29125
+                            · <a href="mailto:rodrigo.ortiz@yucatan.gob.mx" class="text-guinda-600 dark:text-guinda-400 hover:underline">rodrigo.ortiz@yucatan.gob.mx</a>
+                        </span>
                     </div>
                     <div class="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
                         <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -211,22 +228,57 @@ const darkMode = ref(document.documentElement.classList.contains('dark'));
                 </div>
             </div>
 
-            <!-- Sección 5: Domicilio -->
+            <!-- Sección 5: Titular y Domicilio -->
             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 sm:p-8 mb-6">
-                <h2 class="text-lg font-bold text-guinda-700 dark:text-guinda-400 mb-3">Domicilio de la Unidad de Transparencia</h2>
-                <div class="flex items-start gap-3 text-gray-600 dark:text-gray-400">
-                    <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-                    </svg>
-                    <div class="space-y-1 text-sm">
-                        <p>Avenida Principal Industrias No Contaminantes, Tablaje Catastral 13613</p>
-                        <p>Colonia Sodzil Norte, C.P. 97110, Mérida, Yucatán, México</p>
-                        <p>Lunes a viernes 9:00 a 15:00 horas</p>
-                        <p>Teléfono: 9994615676 ext 29266</p>
-                        <p>Correo: solicitudes.iyem@transparenciayucatan.org.mx</p>
+                <h2 class="text-lg font-bold text-guinda-700 dark:text-guinda-400 mb-4">Titular de la Unidad de Transparencia</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                    <div class="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                        <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                        </svg>
+                        <div>
+                            <p class="font-semibold text-gray-800 dark:text-gray-200">Dr. Rodrigo Ignacio Ortiz Eljure</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Director Jurídico</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">Dirección Jurídica del IYEM</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                        <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                        </svg>
+                        <div>
+                            <p>999 461 5676 ext. 29125</p>
+                            <a href="mailto:rodrigo.ortiz@yucatan.gob.mx"
+                               class="text-guinda-600 dark:text-guinda-400 hover:underline text-xs">
+                                rodrigo.ortiz@yucatan.gob.mx
+                            </a>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                        <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Lunes a viernes de 9:00 a.m. a 3:00 p.m.</span>
+                    </div>
+                    <div class="flex items-start gap-3 text-sm text-gray-600 dark:text-gray-400">
+                        <svg class="w-4 h-4 text-guinda-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                        </svg>
+                        <div class="text-sm">
+                            <p>Av. Principal Industrias No Contaminantes, Tablaje Catastral 13613</p>
+                            <p>Col. Sodzil Norte, C.P. 97110, Mérida, Yucatán, México</p>
+                        </div>
                     </div>
                 </div>
+                <hr class="border-gray-100 dark:border-gray-800 mb-4"/>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    <strong class="text-gray-700 dark:text-gray-300">Solicitudes ARCO por correo institucional:</strong>
+                    <a href="mailto:solicitudes.iyem@transparenciayucatan.org.mx"
+                       class="text-guinda-600 dark:text-guinda-400 hover:underline ml-1">
+                        solicitudes.iyem@transparenciayucatan.org.mx
+                    </a>
+                </p>
             </div>
 
             <!-- Sección 6: Cambios -->
