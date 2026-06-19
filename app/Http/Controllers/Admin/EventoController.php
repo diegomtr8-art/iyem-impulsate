@@ -54,6 +54,8 @@ class EventoController extends Controller
             'fecha_hora_fin_proveedores'      => 'nullable|date|after_or_equal:fecha_hora_inicio_proveedores',
             'fecha_hora_inicio_compradores'   => 'nullable|date|after_or_equal:fecha_hora_inicio_proveedores',
             'fecha_hora_fin_compradores'      => 'nullable|date|after_or_equal:fecha_hora_inicio_compradores',
+            'convocatoria_url'                => 'required|url|max:500',
+            'imagen_carrusel'                 => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
             'max_citas_por_comprador'         => 'nullable|integer|min:1|max:50',
             'tiempo_entre_citas_minutos'      => [
                 'nullable', 'integer', 'min:5', 'max:120',
@@ -72,6 +74,7 @@ class EventoController extends Controller
             'nombre'                         => $request->nombre,
             'sector_economico'               => $request->sector_economico,
             'descripcion'                    => $request->descripcion,
+            'convocatoria_url'               => $request->convocatoria_url,
             'fecha_hora_inicio'              => $request->fecha_hora_inicio,
             'fecha_hora_fin'                 => $request->fecha_hora_fin,
             'fecha_hora_inicio_proveedores'  => $request->fecha_hora_inicio_proveedores,
@@ -96,6 +99,10 @@ class EventoController extends Controller
             $fields['imagen'] = $request->file('imagen')->store('eventos', 'public');
         }
 
+        if ($request->hasFile('imagen_carrusel')) {
+            $fields['imagen_carrusel'] = $request->file('imagen_carrusel')->store('eventos', 'public');
+        }
+
         Evento::create($fields);
 
         return back()->with('success', 'Evento creado. Actívalo cuando estés listo.');
@@ -112,6 +119,13 @@ class EventoController extends Controller
                 Storage::disk('public')->delete($evento->imagen);
             }
             $fields['imagen'] = $request->file('imagen')->store('eventos', 'public');
+        }
+
+        if ($request->hasFile('imagen_carrusel')) {
+            if ($evento->imagen_carrusel) {
+                Storage::disk('public')->delete($evento->imagen_carrusel);
+            }
+            $fields['imagen_carrusel'] = $request->file('imagen_carrusel')->store('eventos', 'public');
         }
 
         $evento->update($fields);

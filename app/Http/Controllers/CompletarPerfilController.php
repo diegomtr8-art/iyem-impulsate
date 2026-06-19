@@ -26,8 +26,8 @@ class CompletarPerfilController extends Controller
             'curp'                  => ['nullable', 'string', 'max:18'],
             'rfc'                   => ['nullable', 'string', 'max:13'],
             'municipio'             => ['nullable', 'string', 'max:100'],
-            'nombre_empresa'        => ['nullable', 'string', 'max:200'],
-            'camara_asociacion'     => ['nullable', 'string', 'in:CANIRAC,Ninguna'],
+            'nombre_empresa'        => ['required', 'string', 'max:200'],
+            'camara_asociacion'     => ['required', 'string', 'in:CANIRAC,Ninguna'],
             'nombre_establecimiento'=> [
                 'nullable', 'string', 'max:255',
                 Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),
@@ -59,10 +59,10 @@ class CompletarPerfilController extends Controller
             'curp'                  => ['nullable', 'string', 'max:18'],
             'rfc'                   => ['nullable', 'string', 'max:13'],
             'municipio'             => ['nullable', 'string', 'max:100'],
-            'nombre_empresa'        => ['nullable', 'string', 'max:200'],
+            'nombre_empresa'        => ['required', 'string', 'max:200'],
             'sitio_web'             => ['nullable', 'url', 'max:200'],
             'necesidades'           => ['nullable', 'string', 'max:2000'],
-            'camara_asociacion'     => ['nullable', 'string', 'in:CANIRAC,Ninguna'],
+            'camara_asociacion'     => ['required', 'string', 'in:CANIRAC,Ninguna'],
             'nombre_establecimiento'=> [
                 'nullable', 'string', 'max:255',
                 Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),

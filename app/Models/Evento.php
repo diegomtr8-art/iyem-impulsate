@@ -13,13 +13,15 @@ class Evento extends Model
 
     protected $table = 'eventos';
 
-    protected $appends = ['imagen_url'];
+    protected $appends = ['imagen_url', 'imagen_carrusel_url'];
 
     protected $fillable = [
         'nombre',
         'sector_economico',
         'descripcion',
+        'convocatoria_url',
         'imagen',
+        'imagen_carrusel',
         'fecha_inicio',
         'fecha_corte',
         'activa',
@@ -39,6 +41,11 @@ class Evento extends Model
     public function getImagenUrlAttribute(): ?string
     {
         return $this->imagen ? Storage::disk('public')->url($this->imagen) : null;
+    }
+
+    public function getImagenCarruselUrlAttribute(): ?string
+    {
+        return $this->imagen_carrusel ? Storage::disk('public')->url($this->imagen_carrusel) : null;
     }
 
     protected function casts(): array

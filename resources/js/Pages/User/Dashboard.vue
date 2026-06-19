@@ -885,8 +885,8 @@ const guardarNota = (citaId) => {
                                     class="w-full text-sm bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-400 rounded-xl px-3 py-2.5 cursor-not-allowed" />
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Empresa <span class="text-gray-400 font-normal">(opcional)</span></label>
-                                <input v-model="formPerfil.nombre_empresa" type="text" maxlength="200" placeholder="Mi Empresa S.A. de C.V."
+                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Empresa <span class="text-red-500">*</span></label>
+                                <input v-model="formPerfil.nombre_empresa" type="text" maxlength="200" required placeholder="Mi Empresa S.A. de C.V."
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
                             </div>
                             <div>
@@ -919,7 +919,7 @@ const guardarNota = (citaId) => {
                         <!-- Cámara o asociación -->
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                ¿Pertenece a alguna cámara o asociación?
+                                ¿Pertenece a alguna cámara o asociación? <span class="text-red-500">*</span>
                             </label>
                             <div class="flex flex-col sm:flex-row gap-3">
                                 <label v-for="opcion in ['CANIRAC', 'Ninguna']" :key="opcion"

@@ -12,6 +12,7 @@ import 'swiper/css/pagination';
 const props = defineProps({
     canLogin: Boolean,
     canRegister: Boolean,
+    eventosCarrusel: { type: Array, default: () => [] },
 });
 
 const page = usePage();
@@ -189,7 +190,7 @@ const queEsCards = [
     },
 ];
 
-const eventos = [
+const eventosFallback = [
     {
         id: 1,
         nombre: 'CANIRAC Yucatán',
@@ -213,8 +214,9 @@ const eventos = [
     },
 ];
 
+const eventos = computed(() => props.eventosCarrusel?.length ? props.eventosCarrusel : eventosFallback);
 // Swiper loop requires more slides than slidesPerView — triple the list to guarantee smooth loop at all breakpoints
-const eventosCarousel = [...eventos, ...eventos, ...eventos];
+const eventosCarousel = computed(() => [...eventos.value, ...eventos.value, ...eventos.value]);
 
 const swiperModules = [Autoplay, Pagination];
 const swiperRef = ref(null);

@@ -317,6 +317,7 @@ class CitaPublicaController extends Controller
                     'nombre'                        => $ev->nombre,
                     'sector_economico'              => $ev->sector_economico,
                     'activa'                        => $ev->activa,
+                    'convocatoria_url'              => $ev->convocatoria_url,
                     'fecha_hora_inicio'             => $ev->fecha_hora_inicio?->toISOString(),
                     'fecha_hora_fin'                => $ev->fecha_hora_fin?->toISOString(),
                     'fecha_hora_inicio_proveedores' => $ev->fecha_hora_inicio_proveedores?->toISOString(),

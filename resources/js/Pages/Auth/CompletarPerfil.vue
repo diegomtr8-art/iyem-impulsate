@@ -78,9 +78,9 @@ const submit = () => {
 
                     <div>
                         <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                            Nombre de empresa <span class="text-gray-400 font-normal">(opcional)</span>
+                            Nombre de empresa <span class="text-red-500">*</span>
                         </label>
-                        <input v-model="form.nombre_empresa" type="text" maxlength="200"
+                        <input v-model="form.nombre_empresa" type="text" maxlength="200" required
                             class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-guinda-500 transition-colors"
                             placeholder="Mi Empresa S.A. de C.V." />
                         <InputError class="mt-1.5" :message="form.errors.nombre_empresa" />
@@ -89,7 +89,7 @@ const submit = () => {
                     <!-- Cámara o asociación -->
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                            ¿Pertenece a alguna cámara o asociación? <span class="text-gray-400 font-normal">(opcional)</span>
+                            ¿Pertenece a alguna cámara o asociación? <span class="text-red-500">*</span>
                         </label>
                         <div class="flex flex-col sm:flex-row gap-3">
                             <label v-for="opcion in ['CANIRAC', 'Ninguna']" :key="opcion"

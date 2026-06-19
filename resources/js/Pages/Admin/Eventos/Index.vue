@@ -11,12 +11,16 @@ const props = defineProps({
 const mostrarForm = ref(false);
 const previewNuevo = ref(null);
 const previewEditar = ref(null);
+const previewCarruselNuevo = ref(null);
+const previewCarruselEditar = ref(null);
 
 const form = useForm({
     nombre: '',
     sector_economico: '',
     descripcion: '',
+    convocatoria_url: '',
     imagen: null,
+    imagen_carrusel: null,
     fecha_hora_inicio: '',
     fecha_hora_fin: '',
     fecha_hora_inicio_proveedores: '',
@@ -33,13 +37,21 @@ const onImagenNuevo = (e) => {
     previewNuevo.value = f ? URL.createObjectURL(f) : null;
 };
 
+const onImagenCarruselNuevo = (e) => {
+    const f = e.target.files[0];
+    form.imagen_carrusel = f ?? null;
+    previewCarruselNuevo.value = f ? URL.createObjectURL(f) : null;
+};
+
 const modalEditar = ref(false);
 const eventoEditando = ref(null);
 const formEditar = useForm({
     nombre: '',
     sector_economico: '',
     descripcion: '',
+    convocatoria_url: '',
     imagen: null,
+    imagen_carrusel: null,
     _method: 'PATCH',
     fecha_hora_inicio: '',
     fecha_hora_fin: '',
@@ -55,6 +67,12 @@ const onImagenEditar = (e) => {
     const f = e.target.files[0];
     formEditar.imagen = f ?? null;
     previewEditar.value = f ? URL.createObjectURL(f) : null;
+};
+
+const onImagenCarruselEditar = (e) => {
+    const f = e.target.files[0];
+    formEditar.imagen_carrusel = f ?? null;
+    previewCarruselEditar.value = f ? URL.createObjectURL(f) : null;
 };
 
 const abrirEditar = (evento) => {
@@ -79,6 +97,9 @@ const abrirEditar = (evento) => {
     formEditar.fecha_hora_fin_compradores    = toLocal(evento.fecha_hora_fin_compradores);
     formEditar.max_citas_por_comprador       = evento.max_citas_por_comprador || 3;
     formEditar.tiempo_entre_citas_minutos    = evento.tiempo_entre_citas_minutos || 30;
+    formEditar.convocatoria_url              = evento.convocatoria_url || '';
+    formEditar.imagen_carrusel               = null;
+    previewCarruselEditar.value              = evento.imagen_carrusel_url ?? null;
     modalEditar.value = true;
 };
 
@@ -193,12 +214,32 @@ const secuenciaValidaEditar = computed(() =>
                             class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                     </div>
                     <div class="sm:col-span-2">
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB)</span></label>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×675px, horizontal 16:9)</span></label>
                         <input type="file" accept="image/*" @change="onImagenNuevo"
                             class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                         <div v-if="previewNuevo" class="mt-2">
                             <img :src="previewNuevo" alt="Preview" class="h-28 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
                         </div>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            Liga de la convocatoria <span class="text-red-500">*</span>
+                        </label>
+                        <input v-model="form.convocatoria_url" type="url" placeholder="https://..."
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        <p class="text-[11px] text-gray-400 mt-1">Esta liga se mostrará en el aviso emergente que verán los usuarios antes de registrarse como proveedor o comprador a este evento.</p>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            Imagen para el carrusel de la página principal
+                            <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×1500px vertical/cuadrada)</span>
+                        </label>
+                        <input type="file" accept="image/*" @change="onImagenCarruselNuevo"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                        <div v-if="previewCarruselNuevo" class="mt-2">
+                            <img :src="previewCarruselNuevo" alt="Preview carrusel" class="h-28 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                        </div>
+                        <p class="text-[11px] text-gray-400 mt-1">Si se sube, esta imagen aparecerá en el carrusel de "Próximos Encuentros" de la página de inicio.</p>
                     </div>
                 </div>
 
@@ -503,11 +544,29 @@ const secuenciaValidaEditar = computed(() =>
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                             </div>
                             <div class="sm:col-span-2">
-                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional — deja vacío para conservar la actual)</span></label>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional — deja vacío para conservar la actual, recomendado 1200×675px)</span></label>
                                 <input type="file" accept="image/*" @change="onImagenEditar"
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                                 <div v-if="previewEditar" class="mt-2">
                                     <img :src="previewEditar" alt="Preview" class="h-24 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+                                </div>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                    Liga de la convocatoria <span class="text-red-500">*</span>
+                                </label>
+                                <input v-model="formEditar.convocatoria_url" type="url" placeholder="https://..."
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                                <p class="text-[11px] text-gray-400 mt-1">Esta liga se mostrará en el aviso emergente que verán los usuarios antes de registrarse.</p>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                    Imagen para el carrusel <span class="text-gray-400">(opcional — deja vacío para conservar la actual, recomendado 1200×1500px)</span>
+                                </label>
+                                <input type="file" accept="image/*" @change="onImagenCarruselEditar"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+                                <div v-if="previewCarruselEditar" class="mt-2">
+                                    <img :src="previewCarruselEditar" alt="Preview carrusel" class="h-24 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
                                 </div>
                             </div>
                         </div>

@@ -47,13 +47,15 @@ SESSION_DRIVER=database
 CACHE_STORE=database
 QUEUE_CONNECTION=database
 
-# SMTP (configura con tu proveedor de correo)
+# SMTP — Gmail / Google Workspace (impulsate@iyemyucatan.com)
+# Requiere 2FA activa y Contraseña de Aplicación de 16 chars generada en
+# https://myaccount.google.com/apppasswords (NO usar la contraseña normal de la cuenta)
 MAIL_MAILER=smtp
-MAIL_HOST=smtp.hostinger.com
-MAIL_PORT=465
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
 MAIL_USERNAME=impulsate@iyemyucatan.com
-MAIL_PASSWORD=tu_password_correo
-MAIL_ENCRYPTION=ssl
+MAIL_PASSWORD=tu_app_password_16_chars
+MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS="impulsate@iyemyucatan.com"
 MAIL_FROM_NAME="Encuentro de Negocios Impulsate"
 

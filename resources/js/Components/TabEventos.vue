@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import CuentaRegresiva from '@/Components/CuentaRegresiva.vue';
 
@@ -48,12 +48,27 @@ const faseActual = (evento) => {
     return 0;
 };
 
-const registrarProveedor = (evento) => {
-    router.post(route('evento.registrar-proveedor', evento.id), {}, { preserveScroll: true });
+const modalConvocatoria = ref(false);
+const eventoParaRegistro = ref(null);
+const tipoParaRegistro = ref(null);
+const heLeidoConvocatoria = ref(false);
+
+const abrirModalRegistro = (evento, tipo) => {
+    eventoParaRegistro.value = evento;
+    tipoParaRegistro.value = tipo;
+    heLeidoConvocatoria.value = false;
+    modalConvocatoria.value = true;
 };
 
-const registrarComprador = (evento) => {
-    router.post(route('evento.registrar-comprador', evento.id), {}, { preserveScroll: true });
+const confirmarRegistro = () => {
+    if (!heLeidoConvocatoria.value) return;
+    const ruta = tipoParaRegistro.value === 'proveedor'
+        ? 'evento.registrar-proveedor'
+        : 'evento.registrar-comprador';
+    router.post(route(ruta, eventoParaRegistro.value.id), {}, {
+        preserveScroll: true,
+        onSuccess: () => { modalConvocatoria.value = false; },
+    });
 };
 
 const estadoBadgeClass = (estado) => {
@@ -165,7 +180,7 @@ const fases = [
 
                         <!-- Ventana abierta y no registrado -->
                         <div v-else-if="eventoActivo.registro_proveedor_abierto && !eventoActivo.mi_registro?.proveedor">
-                            <button @click="registrarProveedor(eventoActivo)"
+                            <button @click="abrirModalRegistro(eventoActivo, 'proveedor')"
                                 class="w-full sm:w-auto px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
                                 Solicitar registro como Proveedor
                             </button>
@@ -202,7 +217,7 @@ const fases = [
 
                         <!-- Ventana abierta y no registrado -->
                         <div v-else-if="eventoActivo.registro_comprador_abierto && !eventoActivo.mi_registro?.comprador">
-                            <button @click="registrarComprador(eventoActivo)"
+                            <button @click="abrirModalRegistro(eventoActivo, 'comprador')"
                                 class="w-full sm:w-auto px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
                                 Solicitar registro como Comprador
                             </button>
@@ -235,7 +250,7 @@ const fases = [
                                     label="El registro de proveedores abre en:"
                                     label-cero="¡El registro de proveedores ya está abierto!" />
                                 <button v-else-if="eventoActivo.registro_proveedor_abierto"
-                                    @click="registrarProveedor(eventoActivo)"
+                                    @click="abrirModalRegistro(eventoActivo, 'proveedor')"
                                     class="w-full sm:w-auto px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
                                     Registrarme como Proveedor
                                 </button>
@@ -259,7 +274,7 @@ const fases = [
                                     label="El agendado de compradores abre en:"
                                     label-cero="¡Ya puedes registrarte como comprador!" />
                                 <button v-else-if="eventoActivo.registro_comprador_abierto"
-                                    @click="registrarComprador(eventoActivo)"
+                                    @click="abrirModalRegistro(eventoActivo, 'comprador')"
                                     class="w-full sm:w-auto px-5 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white text-sm font-semibold rounded-xl transition-colors">
                                     Registrarme como Comprador
                                 </button>
@@ -297,7 +312,7 @@ const fases = [
                         <p class="font-semibold text-gray-900 dark:text-white text-sm truncate">{{ ev.nombre }}</p>
                         <p class="text-xs text-gray-500 dark:text-gray-400">{{ formatFechaCorta(ev.fecha_hora_inicio) }}</p>
                     </div>
-                    <span class="shrink-0 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2.5 py-1 rounded-full font-semibold">
+                    <span class="shrink-0 text-xs bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400 px-2.5 py-1 rounded-full font-semibold">
                         Próximamente
                     </span>
                 </div>
@@ -322,4 +337,35 @@ const fases = [
         </div>
 
     </div>
+
+    <!-- Modal de confirmación de convocatoria -->
+    <Teleport to="body">
+        <div v-if="modalConvocatoria" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+            <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-800">
+                <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">Antes de continuar</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Para registrarte como <strong>{{ tipoParaRegistro === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>
+                    en <strong>{{ eventoParaRegistro?.nombre }}</strong> debes haber leído la convocatoria oficial del evento.
+                </p>
+                <a v-if="eventoParaRegistro?.convocatoria_url" :href="eventoParaRegistro.convocatoria_url" target="_blank"
+                    class="block text-center w-full mb-4 px-4 py-2 border border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-400 text-sm font-semibold rounded-xl hover:bg-guinda-50 dark:hover:bg-guinda-950/20 transition-colors">
+                    Leer la convocatoria
+                </a>
+                <label class="flex items-start gap-2 mb-5 cursor-pointer">
+                    <input type="checkbox" v-model="heLeidoConvocatoria" class="mt-0.5 accent-guinda-700" />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">He leído la convocatoria del evento.</span>
+                </label>
+                <div class="flex gap-3">
+                    <button @click="modalConvocatoria = false"
+                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                        Cancelar
+                    </button>
+                    <button @click="confirmarRegistro" :disabled="!heLeidoConvocatoria"
+                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors">
+                        Confirmar registro
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Teleport>
 </template>
