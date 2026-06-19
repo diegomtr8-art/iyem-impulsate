@@ -135,7 +135,7 @@ class CompletarPerfilController extends Controller
                     'aprobado'                 => false,
                     'solicitado_aprobacion_at' => now(),
                 ]);
-                Evento::registrarProveedorEnEventoActivo($user->id);
+                // NO auto-registrar: el proveedor elige el evento desde su dashboard.
                 if (!$restaurantero->servicios()->exists()) {
                     Servicio::create([
                         'restaurantero_id' => $restaurantero->id,

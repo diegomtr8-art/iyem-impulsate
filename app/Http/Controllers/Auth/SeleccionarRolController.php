@@ -68,7 +68,8 @@ class SeleccionarRolController extends Controller
             'solicitado_aprobacion_at' => now(),
         ]);
 
-        Evento::registrarProveedorEnEventoActivo($user->id);
+        // NO auto-registrar al evento: el proveedor debe elegirlo
+        // desde la pestaña Eventos de su dashboard (con el modal de convocatoria).
 
         if (!$restaurantero->servicios()->exists()) {
             Servicio::create([

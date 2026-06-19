@@ -43,7 +43,7 @@ class RegistroProveedorController extends Controller
                     'aprobado'                 => false,
                     'solicitado_aprobacion_at' => now(),
                 ]);
-                \App\Models\Evento::registrarProveedorEnEventoActivo($existing->id);
+                // NO auto-registrar: el proveedor elige el evento desde su dashboard.
                 $this->crearServicioYHorarios($r);
             } else {
                 $this->crearServicioYHorarios($existing->restaurantero);
@@ -80,7 +80,7 @@ class RegistroProveedorController extends Controller
             'solicitado_aprobacion_at' => now(),
         ]);
 
-        \App\Models\Evento::registrarProveedorEnEventoActivo($user->id);
+        // NO auto-registrar: el proveedor elige el evento desde su dashboard.
         $this->crearServicioYHorarios($restaurantero);
 
         Auth::login($user);
