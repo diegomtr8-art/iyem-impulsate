@@ -52,22 +52,35 @@ const modalConvocatoria = ref(false);
 const eventoParaRegistro = ref(null);
 const tipoParaRegistro = ref(null);
 const heLeidoConvocatoria = ref(false);
+const errorModal = ref('');
+const cargandoRegistro = ref(false);
 
 const abrirModalRegistro = (evento, tipo) => {
     eventoParaRegistro.value = evento;
     tipoParaRegistro.value = tipo;
     heLeidoConvocatoria.value = false;
+    errorModal.value = '';
     modalConvocatoria.value = true;
 };
 
 const confirmarRegistro = () => {
-    if (!heLeidoConvocatoria.value) return;
+    if (!heLeidoConvocatoria.value || cargandoRegistro.value) return;
     const ruta = tipoParaRegistro.value === 'proveedor'
         ? 'evento.registrar-proveedor'
         : 'evento.registrar-comprador';
+    cargandoRegistro.value = true;
+    errorModal.value = '';
     router.post(route(ruta, eventoParaRegistro.value.id), {}, {
         preserveScroll: true,
-        onSuccess: () => { modalConvocatoria.value = false; },
+        onSuccess: () => {
+            modalConvocatoria.value = false;
+        },
+        onError: (errors) => {
+            errorModal.value = errors.error || Object.values(errors)[0] || 'Ocurrió un error. Intenta de nuevo.';
+        },
+        onFinish: () => {
+            cargandoRegistro.value = false;
+        },
     });
 };
 
@@ -351,18 +364,23 @@ const fases = [
                     class="block text-center w-full mb-4 px-4 py-2 border border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-400 text-sm font-semibold rounded-xl hover:bg-guinda-50 dark:hover:bg-guinda-950/20 transition-colors">
                     Leer la convocatoria
                 </a>
-                <label class="flex items-start gap-2 mb-5 cursor-pointer">
+                <label class="flex items-start gap-2 mb-4 cursor-pointer">
                     <input type="checkbox" v-model="heLeidoConvocatoria" class="mt-0.5 accent-guinda-700" />
                     <span class="text-sm text-gray-700 dark:text-gray-300">He leído la convocatoria del evento.</span>
                 </label>
+                <!-- Error del servidor -->
+                <div v-if="errorModal" class="mb-4 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
+                    {{ errorModal }}
+                </div>
                 <div class="flex gap-3">
-                    <button @click="modalConvocatoria = false"
-                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    <button @click="modalConvocatoria = false" :disabled="cargandoRegistro"
+                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors">
                         Cancelar
                     </button>
-                    <button @click="confirmarRegistro" :disabled="!heLeidoConvocatoria"
+                    <button @click="confirmarRegistro" :disabled="!heLeidoConvocatoria || cargandoRegistro"
                         class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors">
-                        Confirmar registro
+                        <span v-if="cargandoRegistro">Enviando...</span>
+                        <span v-else>Confirmar registro</span>
                     </button>
                 </div>
             </div>

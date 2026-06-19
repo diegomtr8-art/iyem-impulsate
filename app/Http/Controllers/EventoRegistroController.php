@@ -7,6 +7,7 @@ use App\Models\Notificacion;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class EventoRegistroController extends Controller
 {
@@ -15,16 +16,16 @@ class EventoRegistroController extends Controller
         $user = $request->user();
 
         if (!$user->hasRole('cliente')) {
-            return back()->withErrors(['error' => 'Necesitas el rol de comprador para registrarte.']);
+            throw ValidationException::withMessages(['error' => 'Necesitas el rol de comprador para registrarte.']);
         }
 
         if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
-            return back()->withErrors(['error' => 'Este evento ya ha finalizado.']);
+            throw ValidationException::withMessages(['error' => 'Este evento ya ha finalizado.']);
         }
 
         $finCompradores = $evento->fecha_hora_fin_compradores ?? $evento->fecha_hora_fin;
         if ($finCompradores && now()->gt($finCompradores)) {
-            return back()->withErrors(['error' => 'El período de registro de compradores ya cerró.']);
+            throw ValidationException::withMessages(['error' => 'El período de registro de compradores ya cerró.']);
         }
 
         $registro = DB::table('evento_usuario')
@@ -74,20 +75,20 @@ class EventoRegistroController extends Controller
         $user = $request->user();
 
         if (!$user->hasRole('restaurantero')) {
-            return back()->withErrors(['error' => 'Necesitas el rol de proveedor para registrarte.']);
+            throw ValidationException::withMessages(['error' => 'Necesitas el rol de proveedor para registrarte.']);
         }
 
         $restaurantero = $user->restaurantero;
-        if (!$restaurantero || !$restaurantero->aprobado) {
-            return back()->withErrors(['error' => 'Tu perfil de proveedor aún no ha sido aprobado por el administrador. Espera la aprobación antes de registrarte al evento.']);
+        if (!$restaurantero) {
+            throw ValidationException::withMessages(['error' => 'Primero debes completar tu perfil de proveedor.']);
         }
 
         if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
-            return back()->withErrors(['error' => 'Este evento ya ha finalizado.']);
+            throw ValidationException::withMessages(['error' => 'Este evento ya ha finalizado.']);
         }
 
         if ($evento->fecha_hora_fin_proveedores && now()->gt($evento->fecha_hora_fin_proveedores)) {
-            return back()->withErrors(['error' =>
+            throw ValidationException::withMessages(['error' =>
                 'El período de registro de proveedores ya cerró el ' .
                 $evento->fecha_hora_fin_proveedores->format('d/m/Y H:i') . '.']);
         }
