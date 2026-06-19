@@ -80,6 +80,8 @@ class RestauranteroAdminController extends Controller
             'activo'             => true,
         ]);
 
+        Evento::registrarProveedorEnEventoActivo($user->id, true);
+
         Servicio::create([
             'restaurantero_id' => $restaurantero->id,
             'nombre'           => 'Mesa de Networking',

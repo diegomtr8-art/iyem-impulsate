@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 
 class Evento extends Model
@@ -125,5 +126,29 @@ class Evento extends Model
         return $this->belongsToMany(User::class, 'evento_usuario')
                     ->wherePivot('tipo', 'proveedor')
                     ->withTimestamps();
+    }
+
+    public static function registrarProveedorEnEventoActivo(int $userId, bool $aprobadoAutomatico = false): void
+    {
+        $evento = self::activo();
+        if (!$evento) return;
+
+        $existe = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $userId)
+            ->where('tipo', 'proveedor')
+            ->exists();
+
+        if ($existe) return;
+
+        DB::table('evento_usuario')->insert([
+            'evento_id'     => $evento->id,
+            'user_id'       => $userId,
+            'tipo'          => 'proveedor',
+            'estado'        => $aprobadoAutomatico ? 'aprobado' : 'pendiente',
+            'respondido_at' => $aprobadoAutomatico ? now() : null,
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
     }
 }

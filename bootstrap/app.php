@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
             \App\Http\Middleware\EnsureRolSeleccionado::class,
             \App\Http\Middleware\EnsureAvisoAceptado::class,
+            \App\Http\Middleware\EnsureProfileComplete::class,
         ]);
 
         $middleware->alias([
@@ -27,7 +28,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'role'            => \Spatie\Permission\Middleware\RoleMiddleware::class,
             'permission'      => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            'profile.complete'=> \App\Http\Middleware\EnsureProfileComplete::class,
             'aviso.aceptado'  => \App\Http\Middleware\EnsureAvisoAceptado::class,
         ]);
     })

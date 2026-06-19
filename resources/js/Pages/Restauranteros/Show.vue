@@ -64,8 +64,7 @@ const timeSlots = computed(() => {
 });
 
 const duracionTexto = computed(() => {
-    const min = props.evento?.tiempo_entre_citas_minutos ?? 30;
-    return `${min} minutos · Sin costo · Gobierno de Yucatán`;
+    return 'Sin costo · Gobierno de Yucatán';
 });
 
 const diasNombre = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];

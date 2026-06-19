@@ -16,18 +16,28 @@ class EnsureProfileComplete
             return $next($request);
         }
 
-        // Admins y proveedores activos no requieren este flujo
-        if ($user->hasRole('admin')) {
+        if ($user->hasRole('admin') || $user->hasRole('super-admin')) {
             return $next($request);
         }
 
-        // Solo si perfil_completo = false
+        // Esperar a que el usuario haya pasado por aviso de privacidad y selección de rol
+        // antes de exigir el perfil completo, para no generar otro loop de redirecciones.
+        if (is_null($user->acepta_aviso_at) || !$user->rol_seleccionado) {
+            return $next($request);
+        }
+
         if ($user->perfil_completo) {
             return $next($request);
         }
 
-        // No redirigir si ya está en la página de completar perfil
-        if ($request->routeIs('perfil.completar', 'perfil.completar.store')) {
+        if ($request->routeIs(
+            'perfil.completar',
+            'perfil.completar.store',
+            'perfil.necesidades',
+            'logout',
+            'verification.*',
+            'password.*'
+        )) {
             return $next($request);
         }
 

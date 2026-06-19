@@ -68,6 +68,8 @@ class SeleccionarRolController extends Controller
             'solicitado_aprobacion_at' => now(),
         ]);
 
+        Evento::registrarProveedorEnEventoActivo($user->id);
+
         if (!$restaurantero->servicios()->exists()) {
             Servicio::create([
                 'restaurantero_id' => $restaurantero->id,
