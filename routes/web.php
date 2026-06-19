@@ -56,6 +56,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/aceptar-aviso', [AvisoAceptacionController::class, 'store'])->name('aviso.aceptar.post');
 });
 
+// Demo Zona Comercial Yucatán 200 (sin auth, sin BD)
+Route::get('/demo-prueba/layout', fn() => Inertia::render('Demo/Layout'))->name('demo.layout');
+Route::get('/demo-prueba/paid',   fn() => Inertia::render('Demo/Paid'))->name('demo.paid');
+
 // Rutas públicas
 Route::get('/', [LandingController::class, 'index'])->name('home');
 Route::get('/aviso-de-privacidad', [AvisoPrivacidadController::class, 'index'])->name('aviso.privacidad');
