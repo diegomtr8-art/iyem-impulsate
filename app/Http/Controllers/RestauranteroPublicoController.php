@@ -13,12 +13,22 @@ class RestauranteroPublicoController extends Controller
     {
         $evento = Evento::activo();
 
+        $proveedoresPlataforma = Restaurantero::query()
+            ->where('activo', true)
+            ->where('aprobado', true)
+            ->whereHas('user', fn ($q) => $q->where('perfil_completo', true))
+            ->withCount('citas')
+            ->orderByDesc('created_at')
+            ->paginate(8, ['*'], 'plataforma_page')
+            ->withQueryString();
+
         if (!$evento) {
             return Inertia::render('Restauranteros/Index', [
-                'restauranteros' => [],
-                'sin_evento'     => true,
-                'filters'        => $request->only(['search', 'categoria']),
-                'categorias'     => [],
+                'restauranteros'        => [],
+                'sin_evento'            => true,
+                'filters'               => $request->only(['search', 'categoria']),
+                'categorias'            => [],
+                'proveedoresPlataforma' => $proveedoresPlataforma,
             ]);
         }
 
@@ -69,10 +79,11 @@ class RestauranteroPublicoController extends Controller
         $restauranteros = $query->paginate(12)->withQueryString();
 
         return Inertia::render('Restauranteros/Index', [
-            'restauranteros' => $restauranteros,
-            'sin_evento'     => false,
-            'filters'        => $request->only(['search', 'categoria']),
-            'categorias'     => $categorias,
+            'restauranteros'        => $restauranteros,
+            'sin_evento'            => false,
+            'filters'               => $request->only(['search', 'categoria']),
+            'categorias'            => $categorias,
+            'proveedoresPlataforma' => $proveedoresPlataforma,
         ]);
     }
 

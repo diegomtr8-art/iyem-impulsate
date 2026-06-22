@@ -130,6 +130,12 @@ const calendarOptions = ref({
                     class="text-xs font-semibold px-2.5 py-1 rounded-full border">
                     {{ restaurantero.activo ? 'Activo' : 'Inactivo' }}
                 </span>
+                <span :class="restaurantero.user?.perfil_completo
+                        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+                        : 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'"
+                    class="text-xs font-semibold px-2.5 py-1 rounded-full border">
+                    {{ restaurantero.user?.perfil_completo ? 'Perfil completo' : 'Perfil incompleto' }}
+                </span>
                 <div class="flex flex-wrap gap-2 mt-1">
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700">
                         {{ stats.total }} citas
@@ -145,6 +151,13 @@ const calendarOptions = ref({
         </template>
 
         <div class="space-y-6">
+            <!-- Aviso perfil incompleto -->
+            <div v-if="!restaurantero.user?.perfil_completo"
+                class="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm rounded-xl px-4 py-3">
+                Este proveedor todavía no ha completado su perfil (nombre de empresa, cámara/asociación, etc.).
+                No aparecerá en la sección pública "Explora los proveedores de la plataforma" hasta que lo complete.
+            </div>
+
             <!-- Info cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 space-y-3 shadow-sm dark:shadow-none transition-colors animate-fadeInUp">
