@@ -26,6 +26,15 @@ class UsuariosGestionController extends Controller
             ->when($request->rol, fn ($q, $r) =>
                 $q->whereHas('roles', fn ($q2) => $q2->where('name', $r))
             )
+            ->when($request->canirac === 'si', fn ($q) =>
+                $q->where('camara_asociacion', 'CANIRAC')
+            )
+            ->when($request->canirac === 'no', fn ($q) =>
+                $q->where(fn ($q2) =>
+                    $q2->whereNull('camara_asociacion')
+                       ->orWhere('camara_asociacion', '!=', 'CANIRAC')
+                )
+            )
             ->orderBy('created_at', 'desc');
 
         $paginados = $query->paginate(20)->withQueryString();
@@ -37,7 +46,7 @@ class UsuariosGestionController extends Controller
         return Inertia::render('Admin/SuperAdmin/Usuarios/Index', [
             'usuarios'  => $paginados,
             'roles'     => Role::orderBy('name')->pluck('name'),
-            'filters'   => $request->only(['search', 'rol']),
+            'filters'   => $request->only(['search', 'rol', 'canirac']),
         ]);
     }
 

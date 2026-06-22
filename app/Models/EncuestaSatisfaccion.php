@@ -14,12 +14,16 @@ class EncuestaSatisfaccion extends Model
         'tipo',
         'token',
         'completada_at',
+        'encuesta_plantilla_id',
+        'es_prueba',
+        'email_prueba',
     ];
 
     protected function casts(): array
     {
         return [
             'completada_at' => 'datetime',
+            'es_prueba'     => 'boolean',
         ];
     }
 
@@ -31,6 +35,11 @@ class EncuestaSatisfaccion extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function plantilla()
+    {
+        return $this->belongsTo(EncuestaPlantilla::class, 'encuesta_plantilla_id');
     }
 
     public function respuestas()

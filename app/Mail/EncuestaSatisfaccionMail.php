@@ -13,12 +13,15 @@ class EncuestaSatisfaccionMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(public EncuestaSatisfaccion $encuesta) {}
+    public function __construct(
+        public EncuestaSatisfaccion $encuesta,
+        public bool $esPrueba = false,
+    ) {}
 
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Tu opinión importa — Encuesta de satisfacción Impúlsate'
+            subject: ($this->esPrueba ? '[PRUEBA] ' : '') . 'Tu opinión importa — Encuesta de satisfacción Impúlsate'
         );
     }
 

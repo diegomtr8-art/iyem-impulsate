@@ -11,6 +11,7 @@ class EncuestaRespuesta extends Model
     protected $fillable = [
         'encuesta_satisfaccion_id',
         'pregunta',
+        'tipo',
         'respuesta',
     ];
 

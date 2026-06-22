@@ -9,21 +9,23 @@ const props = defineProps({
     filters: Object,
 });
 
-const search = ref(props.filters?.search ?? '');
-const rolFiltro = ref(props.filters?.rol ?? '');
+const search     = ref(props.filters?.search ?? '');
+const rolFiltro  = ref(props.filters?.rol ?? '');
+const caniracFiltro = ref(props.filters?.canirac ?? '');
 
 let debounceTimer = null;
 const applyFilter = () => {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
         router.get(route('admin.usuarios-gestion.index'), {
-            search: search.value || undefined,
-            rol: rolFiltro.value || undefined,
+            search:  search.value || undefined,
+            rol:     rolFiltro.value || undefined,
+            canirac: caniracFiltro.value || undefined,
         }, { preserveState: true, replace: true });
     }, 350);
 };
 
-watch([search, rolFiltro], applyFilter);
+watch([search, rolFiltro, caniracFiltro], applyFilter);
 
 const formatFecha = (d) => d ? new Date(d).toLocaleDateString('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
@@ -85,6 +87,12 @@ const rolLabel = (rol) => {
                     <option value="admin">Admin</option>
                     <option value="super-admin">Super Admin</option>
                 </select>
+                <select v-model="caniracFiltro"
+                    class="px-4 py-2.5 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-guinda-400 transition-colors">
+                    <option value="">CANIRAC: todos</option>
+                    <option value="si">Solo CANIRAC</option>
+                    <option value="no">No CANIRAC</option>
+                </select>
             </div>
 
             <!-- Tabla -->
@@ -107,8 +115,12 @@ const rolLabel = (rol) => {
                                     <div class="font-medium text-gray-900 dark:text-white">{{ u.name }}</div>
                                     <div class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{{ u.email }}</div>
                                 </td>
-                                <td class="px-5 py-4 hidden md:table-cell text-gray-600 dark:text-gray-400">
-                                    {{ u.nombre_empresa || '—' }}
+                                <td class="px-5 py-4 hidden md:table-cell">
+                                    <div class="text-gray-600 dark:text-gray-400">{{ u.nombre_empresa || '—' }}</div>
+                                    <span v-if="u.camara_asociacion === 'CANIRAC'"
+                                        class="mt-0.5 inline-block text-xs font-semibold px-2 py-0.5 rounded-full bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400">
+                                        CANIRAC
+                                    </span>
                                 </td>
                                 <td class="px-5 py-4">
                                     <div class="flex flex-wrap gap-1">

@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Cita;
-use App\Models\EncuestaSatisfaccion;
 use App\Models\Evento;
 use App\Models\Restaurantero;
 use Illuminate\Http\Request;
@@ -135,34 +134,7 @@ class EventoController extends Controller
 
     public function enviarEncuestas(Evento $evento)
     {
-        $participantes = DB::table('evento_usuario')
-            ->where('evento_id', $evento->id)
-            ->where('estado', 'aprobado')
-            ->get();
-
-        $enviados = 0;
-        foreach ($participantes as $p) {
-            $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
-                ->where('user_id', $p->user_id)
-                ->where('tipo', $p->tipo)
-                ->exists();
-
-            if (!$existe) {
-                $encuesta = EncuestaSatisfaccion::create([
-                    'evento_id' => $evento->id,
-                    'user_id'   => $p->user_id,
-                    'tipo'      => $p->tipo,
-                    'token'     => Str::random(40),
-                ]);
-
-                $user = \App\Models\User::find($p->user_id);
-                if ($user) {
-                    \Illuminate\Support\Facades\Mail::to($user->email)
-                        ->send(new \App\Mail\EncuestaSatisfaccionMail($encuesta->load(['evento', 'user'])));
-                    $enviados++;
-                }
-            }
-        }
+        $enviados = app(\App\Services\EncuestaEnvioService::class)->enviarParaEvento($evento);
 
         return back()->with('success', "Encuestas enviadas a {$enviados} participante(s). Las ya existentes se omitieron.");
     }
