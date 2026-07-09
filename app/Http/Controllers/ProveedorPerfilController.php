@@ -10,6 +10,7 @@ use App\Models\Servicio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class ProveedorPerfilController extends Controller
@@ -20,7 +21,7 @@ class ProveedorPerfilController extends Controller
 
         return Inertia::render('Restaurantero/CompletarPerfil', [
             'restaurantero' => $restaurantero,
-            'categorias'    => \App\Models\Restaurantero::$categorias,
+            'categorias'    => \App\Models\Restaurantero::categoriasActivas(),
         ]);
     }
 
@@ -56,12 +57,33 @@ class ProveedorPerfilController extends Controller
             'direccion'               => ['nullable', 'string', 'max:300'],
             'municipio'               => ['nullable', 'string', 'max:100'],
             'rfc'                     => ['nullable', 'string', 'max:13'],
-            'sitio_web'               => ['nullable', 'url', 'max:200'],
+            'sitio_web'               => ['nullable', 'string', 'max:200'],
             'foto'                    => ['nullable', 'image', 'max:4096'],
             'productos'               => ['nullable', 'array', 'max:5'],
             'productos.*.nombre'      => ['nullable', 'string', 'max:200'],
             'productos.*.descripcion' => ['nullable', 'string', 'max:500'],
             'categorias_json'         => ['nullable', 'array'],
+            'acepta_credito'          => ['nullable', 'boolean'],
+            'credito_monto_maximo'    => ['nullable', 'numeric', 'min:0'],
+            'credito_tiempo_cantidad' => ['nullable', 'integer', 'min:1'],
+            'credito_tiempo_unidad'   => ['nullable', 'string', Rule::in(['dias', 'semanas', 'meses'])],
+            'credito_a_negociar'      => ['nullable', 'boolean'],
+            'pago_contraentrega'      => ['nullable', 'boolean'],
+            'factura'                 => ['nullable', 'boolean'],
+            'regimen_fiscal'          => ['nullable', 'string', 'max:100'],
+            'entrega_domicilio'       => ['nullable', 'boolean'],
+            'cobertura_entrega'       => [
+                'nullable', 'string',
+                Rule::in(['local', 'regional', 'nacional']),
+                Rule::requiredIf((bool) $request->boolean('entrega_domicilio')),
+            ],
+            'forma_entrega'           => [
+                'nullable', 'string',
+                Rule::in(['programada', 'flexible']),
+                Rule::requiredIf((bool) $request->boolean('entrega_domicilio')),
+            ],
+            'productos.*.capacidad_cantidad' => ['nullable', 'numeric', 'min:0'],
+            'productos.*.capacidad_unidad'   => ['nullable', 'string', Rule::in(['piezas', 'cajas', 'litros', 'kilogramos'])],
         ]);
 
         $data = $request->only([
@@ -69,7 +91,12 @@ class ProveedorPerfilController extends Controller
             'curp_representante', 'fecha_inicio_operaciones', 'num_empleados',
             'mercado_meta', 'tiempo_vida_anaquel',
             'descripcion', 'telefono', 'direccion', 'municipio', 'rfc', 'sitio_web',
+            'credito_tiempo_unidad', 'regimen_fiscal',
         ]);
+
+        if (!empty($data['sitio_web']) && !preg_match('/^https?:\/\//', $data['sitio_web'])) {
+            $data['sitio_web'] = 'https://' . $data['sitio_web'];
+        }
 
         $data['domicilio_en_yucatan']   = filter_var($request->domicilio_en_yucatan, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $data['requiere_refrigeracion'] = filter_var($request->requiere_refrigeracion, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -77,7 +104,42 @@ class ProveedorPerfilController extends Controller
         $data['requisitos_alimentos']   = $request->requisitos_alimentos ?? [];
         $data['apoyo_requisitos']       = $request->apoyo_requisitos ?? [];
 
+        $data['acepta_credito']     = filter_var($request->acepta_credito, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+        $data['credito_a_negociar'] = filter_var($request->credito_a_negociar, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+        $data['pago_contraentrega'] = filter_var($request->pago_contraentrega, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+        $data['factura']            = filter_var($request->factura, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+
+        if (!$data['acepta_credito']) {
+            $data['credito_monto_maximo']    = null;
+            $data['credito_tiempo_cantidad'] = null;
+            $data['credito_tiempo_unidad']   = null;
+            $data['credito_a_negociar']      = false;
+        } else {
+            $data['credito_monto_maximo']    = $request->credito_monto_maximo ?: null;
+            $data['credito_tiempo_cantidad'] = $request->credito_tiempo_cantidad ?: null;
+            $data['credito_tiempo_unidad']   = $request->credito_tiempo_unidad ?: null;
+        }
+        $data['regimen_fiscal']          = $data['factura'] ? $request->regimen_fiscal : null;
+
+        $data['entrega_domicilio'] = filter_var(
+            $request->entrega_domicilio,
+            FILTER_VALIDATE_BOOLEAN,
+            FILTER_NULL_ON_FAILURE
+        );
+        if (is_null($data['entrega_domicilio'])) {
+            $data['entrega_domicilio'] = false;
+        }
+        $data['cobertura_entrega'] = $data['entrega_domicilio']
+            ? $request->cobertura_entrega
+            : null;
+        $data['forma_entrega'] = $data['entrega_domicilio']
+            ? $request->forma_entrega
+            : null;
+
         if ($request->hasFile('foto')) {
+            if (!$request->file('foto')->isValid()) {
+                return back()->withErrors(['foto' => 'El archivo de foto no pudo subirse. Intenta con una imagen más pequeña (máx. 4MB).']);
+            }
             if ($restaurantero->logo_path) {
                 Storage::disk('public')->delete($restaurantero->logo_path);
             }
@@ -90,9 +152,12 @@ class ProveedorPerfilController extends Controller
         foreach ($request->productos ?? [] as $i => $prod) {
             if (empty($prod['nombre'])) continue;
             $item = [
-                'nombre'      => $prod['nombre'],
-                'descripcion' => $prod['descripcion'] ?? '',
-                'foto_path'   => $productosExistentes[$i]['foto_path'] ?? null,
+                'nombre'             => $prod['nombre'],
+                'descripcion'        => $prod['descripcion'] ?? '',
+                'foto_path'          => $productosExistentes[$i]['foto_path'] ?? null,
+                'capacidad_cantidad' => isset($prod['capacidad_cantidad']) && $prod['capacidad_cantidad'] !== ''
+                                        ? (float) $prod['capacidad_cantidad'] : null,
+                'capacidad_unidad'   => $prod['capacidad_unidad'] ?? null,
             ];
             // Subir foto si viene
             $fotoKey = "producto_foto_{$i}";

@@ -7,6 +7,14 @@ const props = defineProps({
     eventos: { type: Array, default: () => [] },
 });
 
+const emit = defineEmits(['open-perfil-modal']);
+
+const repostularse = (evento, tipo) => {
+    if (!confirm(`¿Deseas volver a postularte al evento "${evento.nombre}"?`)) return;
+    const ruta = tipo === 'proveedor' ? 'evento.registrar-proveedor' : 'evento.registrar-comprador';
+    router.post(route(ruta, evento.id), {}, { preserveScroll: true });
+};
+
 const page = usePage();
 const authUser = computed(() => page.props.auth?.user);
 const esProveedor = computed(() => authUser.value?.is_restaurantero ?? false);
@@ -206,12 +214,44 @@ const fases = [
                         </div>
 
                         <!-- Ya registrado -->
-                        <div v-else-if="eventoActivo.mi_registro?.proveedor" class="flex items-center gap-2">
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Tu registro como proveedor:</span>
-                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
-                                :class="estadoBadgeClass(eventoActivo.mi_registro.proveedor.estado)">
-                                {{ estadoLabel(eventoActivo.mi_registro.proveedor.estado) }}
-                            </span>
+                        <div v-else-if="eventoActivo.mi_registro?.proveedor">
+                            <div v-if="eventoActivo.mi_registro.proveedor.estado === 'rechazado'"
+                                 class="border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20 rounded-xl p-4 space-y-3">
+                                <div>
+                                    <p class="text-sm font-bold text-red-700 dark:text-red-400 mb-1">
+                                        ❌ Tu solicitud al evento fue rechazada
+                                    </p>
+                                    <p v-if="eventoActivo.mi_registro.proveedor.motivo_rechazo"
+                                       class="text-xs text-red-600 dark:text-red-400/80 leading-relaxed">
+                                        <span class="font-semibold">Motivo:</span>
+                                        {{ eventoActivo.mi_registro.proveedor.motivo_rechazo }}
+                                    </p>
+                                </div>
+                                <div class="border-t border-red-200 dark:border-red-800/30 pt-3">
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                        Actualiza tu perfil con lo indicado y vuelve a postularte:
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button @click="emit('open-perfil-modal')"
+                                            class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                                                   text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
+                                            Actualizar mi perfil
+                                        </button>
+                                        <button @click="repostularse(eventoActivo, 'proveedor')"
+                                            class="px-4 py-2 bg-guinda-700 hover:bg-guinda-600 text-white
+                                                   text-xs font-bold rounded-xl transition-colors">
+                                            Volver a postularme →
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="flex items-center gap-2">
+                                <span class="text-sm text-gray-600 dark:text-gray-400">Tu registro como proveedor:</span>
+                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                                    :class="estadoBadgeClass(eventoActivo.mi_registro.proveedor.estado)">
+                                    {{ estadoLabel(eventoActivo.mi_registro.proveedor.estado) }}
+                                </span>
+                            </div>
                         </div>
                     </template>
 
@@ -243,12 +283,44 @@ const fases = [
                         </div>
 
                         <!-- Ya registrado -->
-                        <div v-else-if="eventoActivo.mi_registro?.comprador" class="flex items-center gap-2 flex-wrap">
-                            <span class="text-sm text-gray-600 dark:text-gray-400">Tu registro como comprador:</span>
-                            <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
-                                :class="estadoBadgeClass(eventoActivo.mi_registro.comprador.estado)">
-                                {{ estadoLabel(eventoActivo.mi_registro.comprador.estado) }}
-                            </span>
+                        <div v-else-if="eventoActivo.mi_registro?.comprador">
+                            <div v-if="eventoActivo.mi_registro.comprador.estado === 'rechazado'"
+                                 class="border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20 rounded-xl p-4 space-y-3">
+                                <div>
+                                    <p class="text-sm font-bold text-red-700 dark:text-red-400 mb-1">
+                                        ❌ Tu solicitud al evento fue rechazada
+                                    </p>
+                                    <p v-if="eventoActivo.mi_registro.comprador.motivo_rechazo"
+                                       class="text-xs text-red-600 dark:text-red-400/80 leading-relaxed">
+                                        <span class="font-semibold">Motivo:</span>
+                                        {{ eventoActivo.mi_registro.comprador.motivo_rechazo }}
+                                    </p>
+                                </div>
+                                <div class="border-t border-red-200 dark:border-red-800/30 pt-3">
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                                        Actualiza tu perfil con lo indicado y vuelve a postularte:
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button @click="emit('open-perfil-modal')"
+                                            class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                                                   text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
+                                            Actualizar mi perfil
+                                        </button>
+                                        <button @click="repostularse(eventoActivo, 'comprador')"
+                                            class="px-4 py-2 bg-guinda-700 hover:bg-guinda-600 text-white
+                                                   text-xs font-bold rounded-xl transition-colors">
+                                            Volver a postularme →
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="flex items-center gap-2 flex-wrap">
+                                <span class="text-sm text-gray-600 dark:text-gray-400">Tu registro como comprador:</span>
+                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                                    :class="estadoBadgeClass(eventoActivo.mi_registro.comprador.estado)">
+                                    {{ estadoLabel(eventoActivo.mi_registro.comprador.estado) }}
+                                </span>
+                            </div>
                         </div>
                     </template>
 
@@ -271,12 +343,34 @@ const fases = [
                                     El período de registro de proveedores ha cerrado.
                                 </p>
                             </div>
-                            <div v-else class="flex items-center gap-2 flex-wrap">
-                                <span class="text-sm text-gray-600 dark:text-gray-400">Proveedor:</span>
-                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
-                                    :class="estadoBadgeClass(eventoActivo.mi_registro.proveedor.estado)">
-                                    {{ estadoLabel(eventoActivo.mi_registro.proveedor.estado) }}
-                                </span>
+                            <div v-else>
+                                <div v-if="eventoActivo.mi_registro.proveedor.estado === 'rechazado'"
+                                     class="border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20 rounded-xl p-3 space-y-2">
+                                    <p class="text-xs font-bold text-red-700 dark:text-red-400">
+                                        ❌ Solicitud proveedor rechazada
+                                        <span v-if="eventoActivo.mi_registro.proveedor.motivo_rechazo" class="font-normal">
+                                            — {{ eventoActivo.mi_registro.proveedor.motivo_rechazo }}
+                                        </span>
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button @click="emit('open-perfil-modal')"
+                                            class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                                                   text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
+                                            Actualizar perfil
+                                        </button>
+                                        <button @click="repostularse(eventoActivo, 'proveedor')"
+                                            class="px-3 py-1.5 bg-guinda-700 hover:bg-guinda-600 text-white text-xs font-bold rounded-xl transition-colors">
+                                            Volver a postularme →
+                                        </button>
+                                    </div>
+                                </div>
+                                <div v-else class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm text-gray-600 dark:text-gray-400">Proveedor:</span>
+                                    <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                                        :class="estadoBadgeClass(eventoActivo.mi_registro.proveedor.estado)">
+                                        {{ estadoLabel(eventoActivo.mi_registro.proveedor.estado) }}
+                                    </span>
+                                </div>
                             </div>
 
                             <!-- Botón Comprador -->
@@ -295,12 +389,34 @@ const fases = [
                                     El período de registro de compradores ha cerrado.
                                 </p>
                             </div>
-                            <div v-else class="flex items-center gap-2 flex-wrap">
-                                <span class="text-sm text-gray-600 dark:text-gray-400">Comprador:</span>
-                                <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
-                                    :class="estadoBadgeClass(eventoActivo.mi_registro.comprador.estado)">
-                                    {{ estadoLabel(eventoActivo.mi_registro.comprador.estado) }}
-                                </span>
+                            <div v-else>
+                                <div v-if="eventoActivo.mi_registro.comprador.estado === 'rechazado'"
+                                     class="border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20 rounded-xl p-3 space-y-2">
+                                    <p class="text-xs font-bold text-red-700 dark:text-red-400">
+                                        ❌ Solicitud comprador rechazada
+                                        <span v-if="eventoActivo.mi_registro.comprador.motivo_rechazo" class="font-normal">
+                                            — {{ eventoActivo.mi_registro.comprador.motivo_rechazo }}
+                                        </span>
+                                    </p>
+                                    <div class="flex flex-wrap gap-2">
+                                        <button @click="emit('open-perfil-modal')"
+                                            class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                                                   text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
+                                            Actualizar perfil
+                                        </button>
+                                        <button @click="repostularse(eventoActivo, 'comprador')"
+                                            class="px-3 py-1.5 bg-guinda-700 hover:bg-guinda-600 text-white text-xs font-bold rounded-xl transition-colors">
+                                            Volver a postularme →
+                                        </button>
+                                    </div>
+                                </div>
+                                <div v-else class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm text-gray-600 dark:text-gray-400">Comprador:</span>
+                                    <span class="px-2.5 py-1 text-xs font-semibold rounded-full"
+                                        :class="estadoBadgeClass(eventoActivo.mi_registro.comprador.estado)">
+                                        {{ estadoLabel(eventoActivo.mi_registro.comprador.estado) }}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </template>

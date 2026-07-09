@@ -14,11 +14,11 @@
         <h2 style="color:#111827;font-size:22px;font-weight:800;margin:0 0 12px;">¡Perfil aprobado!</h2>
         <p style="color:#6b7280;font-size:15px;margin:0 0 24px;">
             Hola, <strong>{{ $restaurantero->nombre_restaurante }}</strong>.<br>
-            Tu perfil de proveedor ha sido <strong style="color:#15803d;">aprobado</strong> y ya está visible para los compradores.
+            Tu perfil de proveedor ha sido <strong style="color:#15803d;">aprobado</strong> en la plataforma. Completa la información de tu negocio y podrás registrarte a los eventos disponibles.
         </p>
-        <a href="{{ url('/restaurantero/panel') }}"
+        <a href="{{ url('/') }}"
            style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
-            Ir a mi panel
+            Ir a la plataforma
         </a>
     </td></tr>
     <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">

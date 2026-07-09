@@ -90,6 +90,22 @@ class PlantillasCorreoSeeder extends Seeder
                 'es_sistema'         => true,
                 'contenido'          => $this->tplEncuestaSatisfaccion(),
             ],
+            [
+                'clave'              => 'evento_solicitud_aprobada',
+                'nombre'             => 'Solicitud al Evento Aprobada',
+                'asunto'             => '🎉 ¡Fuiste aprobado al evento {{nombre_evento}}! — Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplEventoSolicitudAprobada(),
+            ],
+            [
+                'clave'              => 'evento_solicitud_rechazada',
+                'nombre'             => 'Solicitud al Evento Rechazada',
+                'asunto'             => 'Resultado de tu solicitud — {{nombre_evento}} · Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplEventoSolicitudRechazada(),
+            ],
         ];
 
         foreach ($plantillas as $data) {
@@ -208,8 +224,8 @@ HTML;
     {
         $cuerpo = <<<HTML
 <p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
-<p style="margin:0 0 16px;font-size:15px;color:#374151;">¡Felicidades! Tu perfil como proveedor de <strong>{{nombre_empresa}}</strong> ha sido revisado y aprobado por nuestro equipo.</p>
-<p style="margin:0 0 16px;font-size:14px;color:#6b7280;">A partir de ahora los compradores podrán ver tu perfil y agendar citas de networking contigo. Asegúrate de tener tu agenda disponible.</p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">¡Felicidades! Tu perfil como proveedor de <strong>{{nombre_empresa}}</strong> ha sido revisado y aprobado en la plataforma.</p>
+<p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Completa la información de tu negocio y podrás registrarte a los eventos disponibles. ¡Te esperamos!</p>
 HTML;
         return $this->wrap('Proveedor Aprobado', '🎉 ¡Tu perfil fue aprobado!', $cuerpo);
     }
@@ -255,5 +271,46 @@ HTML;
 </div>
 HTML;
         return $this->wrap('Encuesta de Satisfacción', '📋 Cuéntanos tu experiencia', $cuerpo);
+    }
+
+    private function tplEventoSolicitudAprobada(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">¡Excelentes noticias! Tu solicitud para participar en <strong>{{nombre_evento}}</strong> ha sido <strong style="color:#16a34a;">aprobada</strong>.</p>
+<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#16a34a;">¿Qué sigue?</p>
+  <ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">
+    <li>Revisa la información del evento en tu panel</li>
+    <li>Prepara tu presentación y material de apoyo</li>
+    <li>Confirma tu asistencia si aún no lo has hecho</li>
+  </ul>
+</div>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="https://impulsate.iyemyucatan.com" style="display:inline-block;background:linear-gradient(135deg,#8b1028,#45060f);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi panel
+  </a>
+</div>
+HTML;
+        return $this->wrap('Solicitud Aprobada', '🎉 ¡Tu solicitud fue aprobada!', $cuerpo);
+    }
+
+    private function tplEventoSolicitudRechazada(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">Hemos revisado tu solicitud para participar en <strong>{{nombre_evento}}</strong> y lamentablemente no fue aprobada en esta ocasión.</p>
+<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Motivo</p>
+  <p style="margin:0;font-size:15px;color:#374151;">{{motivo_rechazo}}</p>
+</div>
+<p style="margin:0 0 24px;font-size:14px;color:#6b7280;">Si consideras que hay información adicional que pueda cambiar esta decisión, puedes actualizar tu perfil y volver a postularte desde tu panel.</p>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="https://impulsate.iyemyucatan.com" style="display:inline-block;background:linear-gradient(135deg,#8b1028,#45060f);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi panel
+  </a>
+</div>
+HTML;
+        return $this->wrap('Solicitud Revisada', '⚠️ Resultado de tu solicitud', $cuerpo);
     }
 }

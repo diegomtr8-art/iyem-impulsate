@@ -18,13 +18,65 @@ const page = usePage();
 const auth = computed(() => page.props.auth);
 const isAdmin = computed(() => auth.value.user?.is_admin ?? false);
 const maxCitas = computed(() => props.evento?.max_citas_por_comprador ?? 3);
+
+// Redirige al panel correcto según el rol activo del usuario
+const panelRoute = computed(() => {
+    const user = auth.value.user;
+    if (!user) return route('login');
+    if (user.is_admin) return route('admin.dashboard');
+    if (user.active_role === 'proveedor' || (user.is_restaurantero && !user.is_cliente)) {
+        return route('restaurantero.panel');
+    }
+    return route('user.dashboard');
+});
 const limiteAlcanzado = computed(() => auth.value.user && props.citasCount >= maxCitas.value);
 
+// ── DÍAS DEL EVENTO PRESENCIAL ─────────────────────────────────────────────
+const diasEvento = computed(() => {
+    if (!props.evento?.fecha_hora_inicio) return [];
+    // Si el evento dura más de un día, listar todos los días del rango
+    const inicio = new Date(props.evento.fecha_hora_inicio);
+    inicio.setHours(0, 0, 0, 0);
+    const fin = props.evento.fecha_hora_fin
+        ? new Date(props.evento.fecha_hora_fin)
+        : new Date(inicio);
+    fin.setHours(23, 59, 59, 999);
+
+    const dias = [];
+    const cursor = new Date(inicio);
+    while (cursor <= fin) {
+        dias.push(new Date(cursor));
+        cursor.setDate(cursor.getDate() + 1);
+    }
+    return dias;
+});
+
 // ── RANGO DE FECHAS DEL EVENTO ──────────────────────────────────────────────
-const edicionInicioAgenda = computed(() => props.evento?.fecha_inicio_agenda ? new Date(props.evento.fecha_inicio_agenda + 'T00:00:00') : null);
-const edicionFinAgenda    = computed(() => props.evento?.fecha_fin_agenda    ? new Date(props.evento.fecha_fin_agenda    + 'T23:59:59') : null);
+const edicionInicioAgenda = computed(() => {
+    if (props.evento?.fecha_hora_inicio) {
+        const d = new Date(props.evento.fecha_hora_inicio);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+    return props.evento?.fecha_inicio_agenda
+        ? new Date(props.evento.fecha_inicio_agenda + 'T00:00:00') : null;
+});
+const edicionFinAgenda = computed(() => {
+    if (props.evento?.fecha_hora_fin) {
+        const d = new Date(props.evento.fecha_hora_fin);
+        return d;
+    }
+    return props.evento?.fecha_fin_agenda
+        ? new Date(props.evento.fecha_fin_agenda + 'T23:59:59') : null;
+});
 
 function esFueraDeRangoEdicion(date) {
+    if (diasEvento.value.length > 0) {
+        // Solo permitir los días exactos del evento
+        const dKey = formatFechaKey(date);
+        return !diasEvento.value.some(d => formatFechaKey(d) === dKey);
+    }
+    // Fallback original
     const d = new Date(date); d.setHours(0, 0, 0, 0);
     if (edicionInicioAgenda.value && d < edicionInicioAgenda.value) return true;
     if (edicionFinAgenda.value    && d > edicionFinAgenda.value)    return true;
@@ -52,10 +104,25 @@ const intervalo = computed(() => {
 
 const timeSlots = computed(() => {
     const slots = [];
-    const inicio = 9 * 60;
-    const fin    = 16 * 60;
-    const paso   = intervalo.value;
-    for (let min = inicio; min < fin; min += paso) {
+    // Usar horas del evento presencial si están disponibles
+    let inicioMin = 9 * 60;  // fallback: 09:00
+    let finMin    = 16 * 60; // fallback: 16:00
+    if (props.evento?.fecha_hora_inicio) {
+        const partes = props.evento.fecha_hora_inicio.split(' ');
+        if (partes[1]) {
+            const [h, m] = partes[1].split(':').map(Number);
+            inicioMin = h * 60 + (m || 0);
+        }
+    }
+    if (props.evento?.fecha_hora_fin) {
+        const partes = props.evento.fecha_hora_fin.split(' ');
+        if (partes[1]) {
+            const [h, m] = partes[1].split(':').map(Number);
+            finMin = h * 60 + (m || 0);
+        }
+    }
+    const paso = intervalo.value;
+    for (let min = inicioMin; min < finMin; min += paso) {
         const hh = String(Math.floor(min / 60)).padStart(2, '0');
         const mm = String(min % 60).padStart(2, '0');
         slots.push(`${hh}:${mm}`);
@@ -68,23 +135,35 @@ const duracionTexto = computed(() => {
 });
 
 const diasNombre = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+function nombreDia(d) {
+    return d.toLocaleDateString('es-MX', { weekday: 'short' }).replace(/^./, c => c.toUpperCase());
+}
 
 function padZero(n) { return String(n).padStart(2, '0'); }
 function formatFechaKey(d) { return `${d.getFullYear()}-${padZero(d.getMonth()+1)}-${padZero(d.getDate())}`; }
 
 const semana = computed(() => {
+    // Si hay días de evento definidos, mostrar solo esos días
+    if (diasEvento.value.length > 0) return diasEvento.value;
+    // Fallback: semana actual
     const hoy = new Date();
     const dow = hoy.getDay();
     const monday = new Date(hoy);
     monday.setDate(hoy.getDate() + (dow === 0 ? -6 : 1 - dow) + weekOffset.value * 7);
     monday.setHours(0, 0, 0, 0);
-    return Array.from({length: 5}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+    return Array.from({length: 5}, (_, i) => {
+        const d = new Date(monday); d.setDate(monday.getDate() + i); return d;
+    });
 });
 
 const semanaLabel = computed(() => {
+    if (diasEvento.value.length === 1) {
+        const d = diasEvento.value[0];
+        return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
     if (!semana.value.length) return '';
     const ini = semana.value[0];
-    const fin = semana.value[4];
+    const fin = semana.value[semana.value.length - 1];
     return `${ini.toLocaleDateString('es-MX', {day:'numeric',month:'short'})} — ${fin.toLocaleDateString('es-MX', {day:'numeric',month:'short',year:'numeric'})}`;
 });
 
@@ -212,6 +291,16 @@ const seleccionarTodosProductos = () => {
                         <p v-if="productoActivo.descripcion" class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">
                             {{ productoActivo.descripcion }}
                         </p>
+                        <div v-if="productoActivo.capacidad_cantidad"
+                             class="mt-4 inline-flex items-center gap-1.5
+                                    bg-guinda-50 dark:bg-guinda-500/10
+                                    border border-guinda-200 dark:border-guinda-500/20
+                                    text-guinda-700 dark:text-guinda-400
+                                    text-xs font-semibold px-3 py-1.5 rounded-full">
+                            📦 Capacidad producción:
+                            {{ Number(productoActivo.capacidad_cantidad).toLocaleString('es-MX') }}
+                            {{ productoActivo.capacidad_unidad }}/mes
+                        </div>
                         <p v-if="productoActivo.precio" class="mt-4 text-lg font-bold text-guinda-700 dark:text-guinda-400">
                             {{ productoActivo.precio }}
                         </p>
@@ -325,7 +414,7 @@ const seleccionarTodosProductos = () => {
                     </Link>
                     <ThemeToggle />
                     <template v-if="auth.user">
-                        <Link :href="route('user.dashboard')"
+                        <Link :href="panelRoute"
                               class="text-sm bg-guinda-800 hover:bg-guinda-700 text-white px-4 py-1.5 rounded-lg transition-colors font-semibold shadow-sm">
                             Mi Panel
                         </Link>
@@ -377,6 +466,10 @@ const seleccionarTodosProductos = () => {
                                   class="inline-flex items-center gap-1 text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-500/20 px-3 py-1 rounded-full">
                                 📍 {{ restaurantero.municipio }}, Yucatán
                             </span>
+                            <span v-if="restaurantero.categoria"
+                                  class="inline-flex items-center gap-1 text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full">
+                                {{ restaurantero.categoria }}
+                            </span>
                         </div>
 
                         <h1 class="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white mb-3">
@@ -408,8 +501,67 @@ const seleccionarTodosProductos = () => {
                                             {{ typeof prod === 'string' ? prod : (prod.nombre || '—') }}
                                         </p>
                                         <p v-if="prod.descripcion" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{{ prod.descripcion }}</p>
+                                        <p v-if="prod.capacidad_cantidad"
+                                           class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold mt-1">
+                                            📦 {{ Number(prod.capacidad_cantidad).toLocaleString('es-MX') }} {{ prod.capacidad_unidad }}/mes
+                                        </p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Condiciones comerciales -->
+                        <div v-if="restaurantero.acepta_credito || restaurantero.pago_contraentrega || restaurantero.factura" class="mb-5">
+                            <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Condiciones comerciales</h3>
+                            <div class="flex flex-wrap gap-2">
+                                <span v-if="restaurantero.acepta_credito"
+                                    class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                                    ✓ Acepta crédito
+                                    <template v-if="restaurantero.credito_a_negociar">
+                                        <span class="opacity-70 ml-0.5">· A negociar</span>
+                                    </template>
+                                    <template v-else>
+                                        <span v-if="restaurantero.credito_monto_maximo" class="opacity-70 ml-0.5">· máx. ${{ Number(restaurantero.credito_monto_maximo).toLocaleString('es-MX') }}</span>
+                                        <span v-if="restaurantero.credito_tiempo_cantidad && restaurantero.credito_tiempo_unidad" class="opacity-70">· {{ restaurantero.credito_tiempo_cantidad }} {{ restaurantero.credito_tiempo_unidad }}</span>
+                                    </template>
+                                </span>
+                                <span v-if="restaurantero.pago_contraentrega"
+                                    class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                                    ✓ Pago contraentrega
+                                </span>
+                                <span v-if="restaurantero.factura"
+                                    class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                                    ✓ Emite factura
+                                    <span v-if="restaurantero.regimen_fiscal" class="opacity-70 ml-0.5">· {{ restaurantero.regimen_fiscal }}</span>
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Logística y Distribución -->
+                        <div v-if="restaurantero.entrega_domicilio !== null && restaurantero.entrega_domicilio !== undefined"
+                             class="border-t border-gray-100 dark:border-gray-800 pt-4 mb-5">
+                            <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                                Logística y Distribución
+                            </h3>
+                            <div class="flex flex-wrap gap-2">
+                                <span v-if="restaurantero.entrega_domicilio"
+                                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+                                           bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                                           border border-emerald-200 dark:border-emerald-500/20">
+                                    🚚 Entrega a domicilio
+                                    <span v-if="restaurantero.cobertura_entrega" class="opacity-70 capitalize">
+                                        · {{ restaurantero.cobertura_entrega }}
+                                    </span>
+                                    <span v-if="restaurantero.forma_entrega" class="opacity-70 capitalize">
+                                        · {{ restaurantero.forma_entrega }}
+                                    </span>
+                                </span>
+                                <span v-else
+                                    class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+                                           bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400
+                                           border border-gray-200 dark:border-gray-700">
+                                    📦 Sin entrega a domicilio
+                                </span>
                             </div>
                         </div>
 
@@ -417,6 +569,117 @@ const seleccionarTodosProductos = () => {
                             <div v-if="restaurantero.user?.email" class="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
                                 <svg class="w-4 h-4 text-guinda-500 dark:text-guinda-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                                 {{ restaurantero.user.email }}
+                            </div>
+                            <div v-if="restaurantero.telefono" class="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
+                                <svg class="w-4 h-4 text-guinda-500 dark:text-guinda-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-.282.376-.769.542-1.21.38a12.035 12.035 0 01-7.143-7.143c-.162-.441.004-.928.38-1.21l1.293-.97c.363-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" /></svg>
+                                {{ restaurantero.telefono }}
+                            </div>
+                            <div v-if="restaurantero.rfc" class="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
+                                <svg class="w-4 h-4 text-guinda-500 dark:text-guinda-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>
+                                <span>RFC: <span class="font-mono text-xs text-gray-700 dark:text-gray-200">{{ restaurantero.rfc }}</span></span>
+                            </div>
+                            <a v-if="restaurantero.sitio_web" :href="restaurantero.sitio_web" target="_blank" rel="noopener"
+                               class="flex items-center gap-2.5 text-guinda-700 dark:text-guinda-400 hover:text-guinda-600 dark:hover:text-guinda-300 transition-colors">
+                                <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>
+                                <span class="text-xs truncate">{{ restaurantero.sitio_web.replace(/^https?:\/\//, '') }}</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Datos del Representante y Empresa -->
+                    <div v-if="restaurantero.razon_social || restaurantero.nombre_representante || restaurantero.curp_representante || restaurantero.rfc || restaurantero.fecha_inicio_operaciones || restaurantero.num_empleados != null || restaurantero.domicilio_en_yucatan != null || restaurantero.redes_sociales?.length"
+                         class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none">
+                        <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+                            Datos del Representante y Empresa
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                            <div v-if="restaurantero.razon_social" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Razón social</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.razon_social }}</span>
+                            </div>
+                            <div v-if="restaurantero.nombre_representante" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Nombre del representante</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.nombre_representante }}</span>
+                            </div>
+                            <div v-if="restaurantero.curp_representante" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">CURP del representante</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">{{ restaurantero.curp_representante }}</span>
+                            </div>
+                            <div v-if="restaurantero.rfc" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">RFC</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200 font-mono text-xs">{{ restaurantero.rfc }}</span>
+                            </div>
+                            <div v-if="restaurantero.fecha_inicio_operaciones" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Fecha de inicio de operaciones</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">
+                                    {{ new Date(restaurantero.fecha_inicio_operaciones).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' }) }}
+                                </span>
+                            </div>
+                            <div v-if="restaurantero.num_empleados != null" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Número de empleados</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.num_empleados }} empleados</span>
+                            </div>
+                            <div v-if="restaurantero.domicilio_en_yucatan != null" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Domicilio en Yucatán</span>
+                                <span :class="restaurantero.domicilio_en_yucatan
+                                        ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                        : 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400'"
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                                    {{ restaurantero.domicilio_en_yucatan ? 'Sí' : 'No' }}
+                                </span>
+                            </div>
+                            <div v-if="restaurantero.redes_sociales?.length" class="flex flex-col sm:col-span-2">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Redes sociales</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.redes_sociales.join(', ') }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Características del Producto / Servicio -->
+                    <div v-if="restaurantero.mercado_meta || restaurantero.tiempo_vida_anaquel || restaurantero.requisitos_alimentos?.length || restaurantero.apoyo_requisitos != null || restaurantero.requiere_refrigeracion != null || restaurantero.requiere_congelacion != null"
+                         class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none">
+                        <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+                            Características del Producto / Servicio
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
+                            <div v-if="restaurantero.mercado_meta" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Mercado meta</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.mercado_meta }}</span>
+                            </div>
+                            <div v-if="restaurantero.tiempo_vida_anaquel" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Tiempo de vida en anaquel</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.tiempo_vida_anaquel }}</span>
+                            </div>
+                            <div v-if="restaurantero.requisitos_alimentos?.length" class="flex flex-col sm:col-span-2">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requisitos alimentarios</span>
+                                <span class="font-medium text-gray-800 dark:text-gray-200">{{ restaurantero.requisitos_alimentos.join(', ') }}</span>
+                            </div>
+                            <div v-if="restaurantero.apoyo_requisitos != null" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Apoyo en trámites de requisitos</span>
+                                <span :class="restaurantero.apoyo_requisitos?.length
+                                        ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                                    {{ restaurantero.apoyo_requisitos?.length ? 'Sí' : 'No' }}
+                                </span>
+                            </div>
+                            <div v-if="restaurantero.requiere_refrigeracion != null" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requiere refrigeración</span>
+                                <span :class="restaurantero.requiere_refrigeracion
+                                        ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                                    {{ restaurantero.requiere_refrigeracion ? 'Sí' : 'No' }}
+                                </span>
+                            </div>
+                            <div v-if="restaurantero.requiere_congelacion != null" class="flex flex-col">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 mb-0.5">Requiere congelación</span>
+                                <span :class="restaurantero.requiere_congelacion
+                                        ? 'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400'
+                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                                      class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                                    {{ restaurantero.requiere_congelacion ? 'Sí' : 'No' }}
+                                </span>
                             </div>
                         </div>
                     </div>
@@ -480,7 +743,7 @@ const seleccionarTodosProductos = () => {
                         <h2 class="text-xl font-bold text-gray-900 dark:text-white">Agenda tu cita</h2>
                         <p class="text-gray-500 dark:text-gray-400 text-sm mt-0.5 capitalize">{{ semanaLabel }}</p>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div v-if="!diasEvento.length" class="flex items-center gap-2">
                         <button @click="puedeRetrocederSemana && weekOffset--"
                                 :disabled="!puedeRetrocederSemana"
                                 class="p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
@@ -544,7 +807,7 @@ const seleccionarTodosProductos = () => {
                             <tr>
                                 <th class="w-14 text-right pr-3 pb-3 text-gray-400 dark:text-gray-600 font-normal"></th>
                                 <th v-for="(dia, i) in semana" :key="i" class="pb-3 text-center">
-                                    <span class="block text-gray-400 dark:text-gray-500 font-medium">{{ diasNombre[i] }}</span>
+                                    <span class="block text-gray-400 dark:text-gray-500 font-medium">{{ diasEvento.length ? nombreDia(dia) : diasNombre[i] }}</span>
                                     <span class="block text-gray-900 dark:text-white text-base font-bold mt-0.5">{{ dia.getDate() }}</span>
                                 </th>
                             </tr>

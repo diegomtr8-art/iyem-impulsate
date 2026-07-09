@@ -167,9 +167,8 @@ const rolLabel = (rol) => {
                         Mostrando {{ usuarios.from }}–{{ usuarios.to }} de {{ usuarios.total }}
                     </p>
                     <div class="flex gap-2">
-                        <Link v-for="link in usuarios.links" :key="link.label"
+                        <Link v-for="(link, idx) in usuarios.links" :key="link.label"
                             :href="link.url ?? '#'"
-                            v-html="link.label"
                             :class="[
                                 'px-3 py-1.5 text-sm rounded-lg border transition-colors',
                                 link.active
@@ -177,7 +176,11 @@ const rolLabel = (rol) => {
                                     : link.url
                                         ? 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-guinda-400 hover:text-guinda-700'
                                         : 'border-gray-100 dark:border-gray-800 text-gray-300 dark:text-gray-700 cursor-not-allowed'
-                            ]" />
+                            ]">
+                            <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                            <svg v-else-if="idx === usuarios.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            <span v-else v-html="link.label" />
+                        </Link>
                     </div>
                 </div>
             </div>

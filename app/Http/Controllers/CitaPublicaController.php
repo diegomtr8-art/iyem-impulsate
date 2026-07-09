@@ -73,8 +73,11 @@ class CitaPublicaController extends Controller
             return back()->withErrors(['fecha' => 'El período de agendado ya cerró (fin: ' . $evento->fecha_hora_fin->format('d/m/Y H:i') . ').']);
         }
 
-        // Validar que la fecha esté dentro del rango del evento
+        // Validar que la fecha esté dentro del rango del evento presencial
         $fechaCita = \Carbon\Carbon::parse($request->fecha);
+        if ($evento->fecha_hora_inicio && $fechaCita->lt($evento->fecha_hora_inicio->startOfDay())) {
+            return back()->withErrors(['fecha' => 'Solo puedes agendar citas para el día del evento (' . $evento->fecha_hora_inicio->format('d/m/Y') . ').']);
+        }
         if ($evento->fecha_hora_fin && $fechaCita->gt($evento->fecha_hora_fin)) {
             return back()->withErrors(['fecha' => 'La fecha excede el período del evento (hasta ' . $evento->fecha_hora_fin->format('d/m/Y') . ').']);
         }

@@ -1,30 +1,29 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Link, router, useForm } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { MUNICIPIOS_YUCATAN } from '@/constants/municipiosYucatan';
 
 const props = defineProps({
     restauranteros: Object,
     categorias: Array,
     pendientesAprobacion: Number,
     proveedoresPendientes: Array,
+    filters: { type: Object, default: () => ({}) },
 });
 
-const municipios = [
-    'Mérida','Valladolid','Tizimín','Progreso','Motul','Ticul','Umán','Izamal',
-    'Maxcanú','Hunucmá','Tekax','Chemax','Espita','Oxkutzcab','Peto','Temozón',
-    'Baca','Bokobá','Cacalchén','Calotmul','Cantamayec','Celestún','Cenotillo',
-    'Conkal','Cuncunul','Cuzamá','Chacsinkín','Chankom','Chapab','Chichimilá',
-    'Chikindzonot','Chocholá','Chumayel','Dzan','Dzemul','Dzilam de Bravo',
-    'Dzilam González','Dzitás','Dzoncauich','Halachó','Hocabá','Hoctún',
-    'Homún','Huhí','Ichmul','Ixil','Kanasín','Kantunil','Kaua','Kinchil',
-    'Kopomá','Mama','Maní','Mayapán','Mocochá','Molché','Muna','Muxupip',
-    'Opichén','Panabá','Sanahcat','San Felipe','Santa Elena','Seyé','Sinanché',
-    'Sotuta','Sucilá','Sudzal','Suma','Tahdziú','Tahmek','Teabo','Tecoh',
-    'Tekal de Venegas','Tekantó','Tekit','Telchac Pueblo','Telchac Puerto',
-    'Temax','Teoponte','Tetiz','Teya','Tixkokob','Tixméhuac','Tixpéhual',
-    'Tunkás','Tzucacab','Uayma','Ucú','Xocchel','Yaxcabá','Yaxkukul','Yobaín',
-];
+const search = ref(props.filters.search ?? '');
+let searchTimer = null;
+watch(search, (val) => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+        router.get(route('admin.restauranteros.index'), { search: val || undefined }, {
+            preserveState: true, preserveScroll: true, replace: true,
+        });
+    }, 350);
+});
+
+const municipios = MUNICIPIOS_YUCATAN;
 
 const showModal = ref(false);
 const showRechazarModal = ref(false);
@@ -161,6 +160,21 @@ const formatFecha = (f) => f ? new Date(f).toLocaleDateString('es-MX', { day: 'n
             </div>
         </div>
 
+        <!-- ── BUSCADOR ────────────────────────────────────────────────── -->
+        <div class="flex items-center gap-3 mb-4">
+            <div class="relative flex-1 max-w-sm">
+                <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 pointer-events-none"
+                     fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"/>
+                </svg>
+                <input v-model="search" type="search" placeholder="Buscar por nombre, email, RFC, municipio…"
+                       class="w-full pl-9 pr-3 py-2 text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600 rounded-xl focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors" />
+            </div>
+            <span v-if="search" class="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">
+                {{ restauranteros.total }} resultado{{ restauranteros.total !== 1 ? 's' : '' }}
+            </span>
+        </div>
+
         <!-- ── TABLA DE TODOS LOS PROVEEDORES ─────────────────────────── -->
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm dark:shadow-none transition-colors overflow-x-auto">
             <table class="w-full text-sm min-w-[700px]">
@@ -248,14 +262,17 @@ const formatFecha = (f) => f ? new Date(f).toLocaleDateString('es-MX', { day: 'n
             </table>
 
             <div v-if="restauranteros.last_page > 1" class="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
-                <Link v-for="link in restauranteros.links" :key="link.label"
+                <Link v-for="(link, idx) in restauranteros.links" :key="link.label"
                     :href="link.url ?? '#'"
-                    v-html="link.label"
                     :class="[
                         'px-3 py-1.5 text-xs rounded-lg transition-colors',
                         link.active ? 'bg-guinda-800 text-white font-semibold' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700',
                         !link.url ? 'opacity-40 cursor-not-allowed' : ''
-                    ]" />
+                    ]">
+                    <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    <span v-else v-html="link.label" />
+                </Link>
             </div>
         </div>
 

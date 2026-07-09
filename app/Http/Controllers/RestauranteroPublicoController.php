@@ -16,7 +16,7 @@ class RestauranteroPublicoController extends Controller
         $proveedoresPlataforma = Restaurantero::query()
             ->where('activo', true)
             ->where('aprobado', true)
-            ->whereHas('user', fn ($q) => $q->where('perfil_completo', true))
+            ->where('perfil_completo', true)
             ->withCount('citas')
             ->orderByDesc('created_at')
             ->paginate(8, ['*'], 'plataforma_page')
@@ -148,15 +148,16 @@ class RestauranteroPublicoController extends Controller
         $evento = Evento::activo();
 
         return Inertia::render('Restauranteros/Show', [
-            'restaurantero' => $restaurantero->makeHidden(['telefono', 'rfc', 'direccion']),
+            'restaurantero' => $restaurantero->makeHidden(['direccion']),
             'citasCount'    => $citasCount,
             'citasOcupadas' => $citasOcupadas,
             'evento'        => $evento ? [
                 'nombre'                        => $evento->nombre,
                 'fecha_hora_inicio_compradores' => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
-                'fecha_hora_fin'                => $evento->fecha_hora_fin?->format('Y-m-d'),
+                'fecha_hora_fin'                => $evento->fecha_hora_fin?->format('Y-m-d H:i'),
                 'fecha_inicio_agenda'           => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
                 'fecha_fin_agenda'              => $evento->fecha_hora_fin?->format('Y-m-d'),
+                'fecha_hora_inicio'             => $evento->fecha_hora_inicio?->format('Y-m-d H:i'),
                 'tiempo_entre_citas_minutos'    => $evento->tiempo_entre_citas_minutos ?? 30,
                 'max_citas_por_comprador'       => $evento->max_citas_por_comprador ?? 3,
             ] : null,

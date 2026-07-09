@@ -7,6 +7,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import esLocale from '@fullcalendar/core/locales/es';
+import { MUNICIPIOS_YUCATAN } from '@/constants/municipiosYucatan';
 
 const props = defineProps({
     restaurantero: Object,
@@ -17,21 +18,7 @@ const props = defineProps({
     stats: { type: Object, default: () => ({ total: 0, aceptadas: 0, pendientes: 0 }) },
 });
 
-const municipios = [
-    'Mérida','Valladolid','Tizimín','Progreso','Motul','Ticul','Umán','Izamal',
-    'Maxcanú','Hunucmá','Tekax','Chemax','Espita','Oxkutzcab','Peto','Temozón',
-    'Baca','Bokobá','Cacalchén','Calotmul','Cantamayec','Celestún','Cenotillo',
-    'Conkal','Cuncunul','Cuzamá','Chacsinkín','Chankom','Chapab','Chichimilá',
-    'Chikindzonot','Chocholá','Chumayel','Dzan','Dzemul','Dzilam de Bravo',
-    'Dzilam González','Dzitás','Dzoncauich','Halachó','Hocabá','Hoctún',
-    'Homún','Huhí','Ichmul','Ixil','Kanasín','Kantunil','Kaua','Kinchil',
-    'Kopomá','Mama','Maní','Mayapán','Mocochá','Molché','Muna','Muxupip',
-    'Opichén','Panabá','Sanahcat','San Felipe','Santa Elena','Seyé','Sinanché',
-    'Sotuta','Sucilá','Sudzal','Suma','Tahdziú','Tahmek','Teabo','Tecoh',
-    'Tekal de Venegas','Tekantó','Tekit','Telchac Pueblo','Telchac Puerto',
-    'Temax','Teoponte','Tetiz','Teya','Tixkokob','Tixméhuac','Tixpéhual',
-    'Tunkás','Tzucacab','Uayma','Ucú','Xocchel','Yaxcabá','Yaxkukul','Yobaín',
-];
+const municipios = MUNICIPIOS_YUCATAN;
 
 const categoriaSeleccionada = ref(props.restaurantero.categoria || '');
 
@@ -124,17 +111,25 @@ const calendarOptions = ref({
                     </svg>
                 </Link>
                 <h1 class="text-xl font-bold text-gray-900 dark:text-white">{{ restaurantero.nombre_restaurante }}</h1>
+                <Link :href="route('proveedores.show', restaurantero.id)"
+                    target="_blank"
+                    class="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-full border bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/>
+                    </svg>
+                    Ver Perfil Público
+                </Link>
                 <span :class="restaurantero.activo
                         ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
                         : 'bg-red-50 dark:bg-red-500/15 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20'"
                     class="text-xs font-semibold px-2.5 py-1 rounded-full border">
                     {{ restaurantero.activo ? 'Activo' : 'Inactivo' }}
                 </span>
-                <span :class="restaurantero.user?.perfil_completo
+                <span :class="restaurantero.perfil_completo
                         ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
                         : 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'"
                     class="text-xs font-semibold px-2.5 py-1 rounded-full border">
-                    {{ restaurantero.user?.perfil_completo ? 'Perfil completo' : 'Perfil incompleto' }}
+                    {{ restaurantero.perfil_completo ? 'Perfil completo' : 'Perfil incompleto' }}
                 </span>
                 <div class="flex flex-wrap gap-2 mt-1">
                     <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border bg-gray-50 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700">
@@ -152,7 +147,7 @@ const calendarOptions = ref({
 
         <div class="space-y-6">
             <!-- Aviso perfil incompleto -->
-            <div v-if="!restaurantero.user?.perfil_completo"
+            <div v-if="!restaurantero.perfil_completo"
                 class="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-700 dark:text-amber-400 text-sm rounded-xl px-4 py-3">
                 Este proveedor todavía no ha completado su perfil (nombre de empresa, cámara/asociación, etc.).
                 No aparecerá en la sección pública "Explora los proveedores de la plataforma" hasta que lo complete.
@@ -176,7 +171,6 @@ const calendarOptions = ref({
                     <ul class="text-sm space-y-2">
                         <li v-for="s in restaurantero.servicios" :key="s.id" class="flex justify-between items-center">
                             <span class="text-gray-700 dark:text-gray-300">{{ s.nombre }}</span>
-                            <span class="text-xs text-guinda-700 dark:text-guinda-400 font-medium">{{ s.duracion_minutos }} min</span>
                         </li>
                         <li v-if="!restaurantero.servicios?.length" class="text-gray-400 dark:text-gray-600">Sin servicios.</li>
                     </ul>
@@ -302,6 +296,80 @@ const calendarOptions = ref({
                                 : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
                             class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
                             {{ restaurantero.requiere_congelacion ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Condiciones Comerciales -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm dark:shadow-none transition-colors animate-fadeInUp" style="animation-delay:0.31s">
+                <h2 class="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase tracking-wider mb-4">Condiciones Comerciales</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                    <!-- Crédito -->
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Acepta crédito</span>
+                        <span v-if="restaurantero.acepta_credito != null"
+                            :class="restaurantero.acepta_credito
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.acepta_credito ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <!-- Monto máximo crédito -->
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Monto máximo de crédito</span>
+                        <span v-if="restaurantero.acepta_credito && restaurantero.credito_a_negociar"
+                            class="font-medium text-gray-800 dark:text-gray-200">A negociar</span>
+                        <span v-else-if="restaurantero.acepta_credito && restaurantero.credito_monto_maximo"
+                            class="font-medium text-gray-800 dark:text-gray-200">
+                            ${{ Number(restaurantero.credito_monto_maximo).toLocaleString('es-MX', { minimumFractionDigits: 2 }) }} MXN
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <!-- Plazo de crédito -->
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Plazo de crédito</span>
+                        <span v-if="restaurantero.acepta_credito && restaurantero.credito_a_negociar"
+                            class="font-medium text-gray-800 dark:text-gray-200">A negociar</span>
+                        <span v-else-if="restaurantero.acepta_credito && restaurantero.credito_tiempo_cantidad"
+                            class="font-medium text-gray-800 dark:text-gray-200">
+                            {{ restaurantero.credito_tiempo_cantidad }} {{ restaurantero.credito_tiempo_unidad ?? '' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <!-- Pago contra entrega -->
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Pago contra entrega</span>
+                        <span v-if="restaurantero.pago_contraentrega != null"
+                            :class="restaurantero.pago_contraentrega
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.pago_contraentrega ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <!-- Factura -->
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Emite factura</span>
+                        <span v-if="restaurantero.factura != null"
+                            :class="restaurantero.factura
+                                ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'"
+                            class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold self-start">
+                            {{ restaurantero.factura ? 'Sí' : 'No' }}
+                        </span>
+                        <span v-else class="text-gray-400 dark:text-gray-600">—</span>
+                    </div>
+                    <!-- Régimen fiscal -->
+                    <div class="flex flex-col gap-1">
+                        <span class="text-xs text-gray-400 dark:text-gray-500">Régimen fiscal</span>
+                        <span v-if="restaurantero.factura && restaurantero.regimen_fiscal"
+                            class="font-medium text-gray-800 dark:text-gray-200">
+                            {{ restaurantero.regimen_fiscal }}
                         </span>
                         <span v-else class="text-gray-400 dark:text-gray-600">—</span>
                     </div>
@@ -523,14 +591,17 @@ const calendarOptions = ref({
                 </table>
 
                 <div v-if="citas.last_page > 1" class="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
-                    <Link v-for="link in citas.links" :key="link.label"
+                    <Link v-for="(link, idx) in citas.links" :key="link.label"
                         :href="link.url ?? '#'"
-                        v-html="link.label"
                         :class="[
                             'px-3 py-1.5 text-xs rounded-lg transition-colors',
                             link.active ? 'bg-guinda-800 text-white font-semibold' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700',
                             !link.url ? 'opacity-40 cursor-not-allowed' : ''
-                        ]" />
+                        ]">
+                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                        <svg v-else-if="idx === citas.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        <span v-else v-html="link.label" />
+                    </Link>
                 </div>
             </div>
         </div>

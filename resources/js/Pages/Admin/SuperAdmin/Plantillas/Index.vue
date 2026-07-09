@@ -1,6 +1,6 @@
 <script setup>
 import { ref } from 'vue';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 
 const props = defineProps({
@@ -8,6 +8,11 @@ const props = defineProps({
 });
 
 const toggleActivo = (p) => router.patch(route('admin.plantillas.toggle', p.id));
+
+const eliminar = (p) => {
+    if (!confirm(`¿Eliminar la plantilla "${p.nombre}"? Esta acción no se puede deshacer.`)) return;
+    router.delete(route('admin.plantillas.destroy', p.id), { preserveScroll: true });
+};
 
 const tipoBadge = (tipo) => {
     const map = {
@@ -26,11 +31,17 @@ const tipoLabel = { comprador: 'Comprador', proveedor: 'Proveedor', ambos: 'Ambo
         <Head title="Plantillas de Correo" />
 
         <div class="space-y-6">
-            <div>
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Plantillas de Correo</h1>
-                <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Personaliza el asunto y contenido de los correos automáticos del sistema.
-                </p>
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Plantillas de Correo</h1>
+                    <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                        Personaliza el asunto y contenido de los correos automáticos del sistema.
+                    </p>
+                </div>
+                <Link :href="route('admin.plantillas.create')"
+                    class="px-4 py-2 text-sm font-semibold rounded-xl bg-[#8b1028] hover:bg-[#6f0c1f] text-white transition-colors">
+                    + Nueva plantilla
+                </Link>
             </div>
 
             <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden">
@@ -69,10 +80,17 @@ const tipoLabel = { comprador: 'Comprador', proveedor: 'Proveedor', ambos: 'Ambo
                                     </button>
                                 </td>
                                 <td class="px-5 py-4 text-right">
-                                    <Link :href="route('admin.plantillas.edit', p.id)"
-                                        class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 transition-colors">
-                                        Editar
-                                    </Link>
+                                    <div class="flex items-center justify-end gap-2">
+                                        <Link :href="route('admin.plantillas.edit', p.id)"
+                                            class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 transition-colors">
+                                            Editar
+                                        </Link>
+                                        <button v-if="!p.es_sistema"
+                                            @click="eliminar(p)"
+                                            class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 transition-colors">
+                                            Eliminar
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>

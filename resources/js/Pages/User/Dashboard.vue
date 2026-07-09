@@ -299,7 +299,7 @@ const guardarNota = (citaId) => {
 
             <!-- ── TAB EVENTOS ──────────────────────────────────────── -->
             <div v-if="mainTab === 'eventos'">
-                <TabEventos :eventos="eventos" />
+                <TabEventos :eventos="eventos" @open-perfil-modal="showPerfilModal = true" />
             </div>
 
             <!-- ── TAB CITAS ────────────────────────────────────────── -->

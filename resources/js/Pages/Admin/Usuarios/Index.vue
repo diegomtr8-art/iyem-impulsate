@@ -116,14 +116,22 @@ const iniciales = (nombre) => {
             </div>
 
             <div v-if="usuarios.last_page > 1" class="flex items-center justify-center gap-1 px-6 py-4 border-t border-gray-200 dark:border-gray-800">
-                <template v-for="link in usuarios.links" :key="link.label">
+                <template v-for="(link, idx) in usuarios.links" :key="link.label">
                     <Link v-if="link.url" :href="link.url"
                         :class="[
                             'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                             link.active ? 'bg-guinda-800 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                         ]"
-                        v-html="link.label" />
-                    <span v-else class="px-3 py-1.5 rounded-lg text-xs text-gray-400 dark:text-gray-600 cursor-not-allowed" v-html="link.label" />
+                    >
+                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                        <svg v-else-if="idx === usuarios.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        <span v-else v-html="link.label" />
+                    </Link>
+                    <span v-else class="px-3 py-1.5 rounded-lg text-xs text-gray-400 dark:text-gray-600 cursor-not-allowed">
+                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                        <svg v-else-if="idx === usuarios.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        <span v-else v-html="link.label" />
+                    </span>
                 </template>
             </div>
         </div>

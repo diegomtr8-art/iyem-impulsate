@@ -8,6 +8,7 @@ import FullCalendar from '@fullcalendar/vue3';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import esLocale from '@fullcalendar/core/locales/es';
+import { MUNICIPIOS_YUCATAN } from '@/constants/municipiosYucatan';
 
 const props = defineProps({
     restaurantero: Object,
@@ -82,9 +83,9 @@ const MAX_PROD = 5;
 const productosInputs = ref(
     Array.from({ length: MAX_PROD }, (_, i) => {
         const p = props.restaurantero.productos_top?.[i];
-        if (!p) return { nombre: '', descripcion: '', foto_path: null, _file: null };
-        if (typeof p === 'string') return { nombre: p, descripcion: '', foto_path: null, _file: null };
-        return { nombre: p.nombre || '', descripcion: p.descripcion || '', foto_path: p.foto_path || null, _file: null };
+        if (!p) return { nombre: '', descripcion: '', foto_path: null, _file: null, capacidad_cantidad: '', capacidad_unidad: 'piezas' };
+        if (typeof p === 'string') return { nombre: p, descripcion: '', foto_path: null, _file: null, capacidad_cantidad: '', capacidad_unidad: 'piezas' };
+        return { nombre: p.nombre || '', descripcion: p.descripcion || '', foto_path: p.foto_path || null, _file: null, capacidad_cantidad: p.capacidad_cantidad ?? '', capacidad_unidad: p.capacidad_unidad || 'piezas' };
     })
 );
 
@@ -108,6 +109,17 @@ const formPerfil = useForm({
     direccion:               props.restaurantero.direccion || '',
     sitio_web:               props.restaurantero.sitio_web || '',
     rfc:                     props.restaurantero.rfc || '',
+    acepta_credito:          props.restaurantero.acepta_credito ?? false,
+    credito_monto_maximo:    props.restaurantero.credito_monto_maximo ?? '',
+    credito_tiempo_cantidad: props.restaurantero.credito_tiempo_cantidad ?? '',
+    credito_tiempo_unidad:   props.restaurantero.credito_tiempo_unidad || 'dias',
+    credito_a_negociar:      props.restaurantero.credito_a_negociar ?? false,
+    pago_contraentrega:      props.restaurantero.pago_contraentrega ?? false,
+    factura:                 props.restaurantero.factura ?? false,
+    regimen_fiscal:          props.restaurantero.regimen_fiscal || '',
+    entrega_domicilio:       props.restaurantero.entrega_domicilio ?? null,
+    cobertura_entrega:       props.restaurantero.cobertura_entrega || '',
+    forma_entrega:           props.restaurantero.forma_entrega || '',
     productos_top:           [],
     foto:                    null,
 });
@@ -136,6 +148,21 @@ const submitPerfil = () => {
     fd.append('direccion',                formPerfil.direccion || '');
     fd.append('sitio_web',                formPerfil.sitio_web || '');
     fd.append('rfc',                      formPerfil.rfc || '');
+    fd.append('acepta_credito',     formPerfil.acepta_credito ? '1' : '0');
+    fd.append('credito_a_negociar', formPerfil.credito_a_negociar ? '1' : '0');
+    fd.append('pago_contraentrega', formPerfil.pago_contraentrega ? '1' : '0');
+    fd.append('factura',            formPerfil.factura ? '1' : '0');
+    if (formPerfil.acepta_credito) {
+        if (formPerfil.credito_monto_maximo !== '') fd.append('credito_monto_maximo', formPerfil.credito_monto_maximo);
+        if (formPerfil.credito_tiempo_cantidad !== '') fd.append('credito_tiempo_cantidad', formPerfil.credito_tiempo_cantidad);
+        fd.append('credito_tiempo_unidad', formPerfil.credito_tiempo_unidad || 'dias');
+    }
+    if (formPerfil.factura && formPerfil.regimen_fiscal) fd.append('regimen_fiscal', formPerfil.regimen_fiscal);
+    fd.append('entrega_domicilio', formPerfil.entrega_domicilio === true ? '1' : '0');
+    if (formPerfil.entrega_domicilio) {
+        if (formPerfil.cobertura_entrega) fd.append('cobertura_entrega', formPerfil.cobertura_entrega);
+        if (formPerfil.forma_entrega)     fd.append('forma_entrega', formPerfil.forma_entrega);
+    }
     if (formPerfil.foto) fd.append('foto', formPerfil.foto);
 
     let idx = 0;
@@ -143,6 +170,8 @@ const submitPerfil = () => {
         if (!p.nombre.trim()) return;
         fd.append(`productos[${idx}][nombre]`,      p.nombre);
         fd.append(`productos[${idx}][descripcion]`, p.descripcion || '');
+        fd.append(`productos[${idx}][capacidad_cantidad]`, p.capacidad_cantidad ?? '');
+        fd.append(`productos[${idx}][capacidad_unidad]`,   p.capacidad_unidad   || 'piezas');
         if (p._file) fd.append(`producto_foto_${idx}`, p._file);
         idx++;
     });
@@ -172,37 +201,42 @@ const kpis = computed(() => [
     { label: 'Total evento', value: props.totalEnEvento,   bg: 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/20', iconColor: 'text-indigo-600 dark:text-indigo-400', valColor: 'text-indigo-700 dark:text-indigo-300', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
 ]);
 
-const municipios = [
-    'Mérida','Valladolid','Tizimín','Progreso','Motul','Ticul','Umán','Izamal',
-    'Maxcanú','Hunucmá','Tekax','Chemax','Espita','Oxkutzcab','Peto','Temozón',
-    'Kanasín','Telchac Puerto','Celestún','Ixil','Santa Elena','Muna','Tekax',
-];
+const municipios = MUNICIPIOS_YUCATAN;
 
 // ── PERFIL INCOMPLETO ─────────────────────────────────────────
 const perfilPorcentaje = computed(() => {
     const r = props.restaurantero;
     if (!r) return 0;
     let pct = 0;
-    if (r.nombre_restaurante) pct += 15;
-    if (r.descripcion)        pct += 15;
-    if (r.telefono)           pct += 10;
-    if (r.rfc)                pct += 10;
-    if (r.municipio)          pct += 10;
-    if (r.sitio_web)          pct += 5;
-    if (r.logo_path)          pct += 15;
-    if (r.productos_top?.length > 0) pct += 20;
-    return pct;
+    if (r.nombre_restaurante)        pct += 10;
+    if (r.descripcion)               pct += 10;
+    if (r.telefono)                  pct += 8;
+    if (r.municipio)                 pct += 7;
+    if (r.logo_path)                 pct += 15;
+    if (r.productos_top?.length > 0) pct += 15;
+    if (r.acepta_credito !== null && r.acepta_credito !== undefined) pct += 5;
+    if (r.pago_contraentrega !== null && r.pago_contraentrega !== undefined) pct += 5;
+    if (r.factura !== null && r.factura !== undefined) pct += 5;
+    if (!r.factura || (r.rfc && r.regimen_fiscal)) pct += 10;
+    if (r.entrega_domicilio !== null && r.entrega_domicilio !== undefined) pct += 10;
+    return Math.min(pct, 100);
 });
 
 const perfilCamposFaltantes = computed(() => {
     const r = props.restaurantero;
     const f = [];
+    if (!r?.nombre_restaurante)       f.push('Nombre del negocio');
     if (!r?.descripcion)              f.push('Descripción');
-    if (!r?.rfc)                      f.push('RFC');
+    if (!r?.telefono)                 f.push('Teléfono');
     if (!r?.municipio)                f.push('Municipio');
     if (!r?.logo_path)                f.push('Logo');
     if (!r?.productos_top?.length)    f.push('Al menos 1 producto');
-    if (!r?.telefono)                 f.push('Teléfono');
+    if (r?.entrega_domicilio === null || r?.entrega_domicilio === undefined)
+        f.push('Logística (¿entrega a domicilio?)');
+    else if (r?.entrega_domicilio && !r?.cobertura_entrega)
+        f.push('Cobertura de entrega');
+    else if (r?.entrega_domicilio && !r?.forma_entrega)
+        f.push('Forma de entrega');
     return f;
 });
 
@@ -333,7 +367,7 @@ const tiempoHastaCitaProxima = computed(() => {
 
             <!-- ── TAB EVENTOS ──────────────────────────────────────── -->
             <div v-if="mainTab === 'eventos'">
-                <TabEventos :eventos="eventos" />
+                <TabEventos :eventos="eventos" @open-perfil-modal="showPerfilModal = true" />
             </div>
 
             <!-- ── TAB CITAS ────────────────────────────────────────── -->
@@ -742,6 +776,161 @@ const tiempoHastaCitaProxima = computed(() => {
                             </div>
                         </div>
 
+                        <!-- Condiciones comerciales -->
+                        <div>
+                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Condiciones comerciales</p>
+                            <div class="space-y-4">
+                                <!-- Crédito -->
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" v-model="formPerfil.acepta_credito"
+                                        class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Acepta crédito</span>
+                                </label>
+                                <div v-if="formPerfil.acepta_credito" class="ml-7 space-y-3">
+                                    <!-- Checkbox A negociar -->
+                                    <label class="flex items-center gap-3 cursor-pointer">
+                                        <input type="checkbox" v-model="formPerfil.credito_a_negociar"
+                                            class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+                                        <span class="text-sm text-gray-700 dark:text-gray-300">A negociar</span>
+                                    </label>
+
+                                    <!-- Campos condicionales: requeridos si NO es a negociar -->
+                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                Monto máximo (MXN)
+                                                <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
+                                            </label>
+                                            <input v-model="formPerfil.credito_monto_maximo"
+                                                type="number" min="0" step="0.01" placeholder="50000"
+                                                :required="formPerfil.acepta_credito && !formPerfil.credito_a_negociar"
+                                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                Plazo
+                                                <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
+                                            </label>
+                                            <input v-model="formPerfil.credito_tiempo_cantidad"
+                                                type="number" min="1" placeholder="30"
+                                                :required="formPerfil.acepta_credito && !formPerfil.credito_a_negociar"
+                                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
+                                        </div>
+                                        <div>
+                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                                                Unidad
+                                                <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
+                                            </label>
+                                            <select v-model="formPerfil.credito_tiempo_unidad"
+                                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500">
+                                                <option value="">-- Selecciona --</option>
+                                                <option value="dias">Días</option>
+                                                <option value="semanas">Semanas</option>
+                                                <option value="meses">Meses</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Contraentrega -->
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" v-model="formPerfil.pago_contraentrega"
+                                        class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Acepta pago contraentrega</span>
+                                </label>
+                                <!-- Factura -->
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" v-model="formPerfil.factura"
+                                        class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Emite factura</span>
+                                </label>
+                                <div v-if="formPerfil.factura" class="ml-7">
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Régimen fiscal</label>
+                                    <input v-model="formPerfil.regimen_fiscal" type="text" maxlength="100"
+                                        placeholder="Ej. Régimen Simplificado de Confianza (RESICO)"
+                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Logística y Distribución -->
+                        <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-4">
+                            <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                                🚚 Logística y Distribución
+                            </h3>
+
+                            <div>
+                                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                    ¿Entregan a domicilio?
+                                </p>
+                                <div class="flex gap-3">
+                                    <button type="button"
+                                        @click="formPerfil.entrega_domicilio = true"
+                                        :class="formPerfil.entrega_domicilio === true
+                                            ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                                        class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors">
+                                        Sí
+                                    </button>
+                                    <button type="button"
+                                        @click="formPerfil.entrega_domicilio = false; formPerfil.cobertura_entrega = ''; formPerfil.forma_entrega = ''"
+                                        :class="formPerfil.entrega_domicilio === false
+                                            ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                                        class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors">
+                                        No
+                                    </button>
+                                </div>
+                                <p v-if="formPerfil.errors?.entrega_domicilio"
+                                   class="text-red-500 text-xs mt-1">
+                                    {{ formPerfil.errors.entrega_domicilio }}
+                                </p>
+                            </div>
+
+                            <template v-if="formPerfil.entrega_domicilio === true">
+                                <div>
+                                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        ¿Cobertura de entrega?
+                                    </p>
+                                    <div class="flex gap-2 flex-wrap">
+                                        <button v-for="op in ['local', 'regional', 'nacional']"
+                                            :key="op" type="button"
+                                            @click="formPerfil.cobertura_entrega = op"
+                                            :class="formPerfil.cobertura_entrega === op
+                                                ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                                            class="px-5 py-2 rounded-xl border text-sm font-semibold transition-colors capitalize">
+                                            {{ op.charAt(0).toUpperCase() + op.slice(1) }}
+                                        </button>
+                                    </div>
+                                    <p v-if="formPerfil.errors?.cobertura_entrega"
+                                       class="text-red-500 text-xs mt-1">
+                                        {{ formPerfil.errors.cobertura_entrega }}
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                                        ¿Forma de entrega?
+                                    </p>
+                                    <div class="flex gap-2">
+                                        <button v-for="op in ['programada', 'flexible']"
+                                            :key="op" type="button"
+                                            @click="formPerfil.forma_entrega = op"
+                                            :class="formPerfil.forma_entrega === op
+                                                ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                                            class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors capitalize">
+                                            {{ op.charAt(0).toUpperCase() + op.slice(1) }}
+                                        </button>
+                                    </div>
+                                    <p v-if="formPerfil.errors?.forma_entrega"
+                                       class="text-red-500 text-xs mt-1">
+                                        {{ formPerfil.errors.forma_entrega }}
+                                    </p>
+                                </div>
+                            </template>
+                        </div>
+
                         <!-- Información legal y operativa (IYEM) -->
                         <div>
                             <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Información legal y operativa</p>
@@ -853,7 +1042,7 @@ const tiempoHastaCitaProxima = computed(() => {
                                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Foto del negocio</label>
                                     <input type="file" accept="image/*" @change="e => formPerfil.foto = e.target.files[0]"
                                         class="text-sm text-gray-600 dark:text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-100 dark:file:bg-guinda-900/30 file:text-guinda-700 dark:file:text-guinda-400 hover:file:bg-guinda-200 dark:hover:file:bg-guinda-900/50 cursor-pointer" />
-                                    <p class="text-xs text-gray-400 mt-1">JPG, PNG o WEBP · Máx. 4MB</p>
+                                    <p class="text-xs text-gray-400 mt-1">JPG, PNG o WEBP · Máx. 4MB · Resolución recomendada: <span class="font-semibold text-gray-500 dark:text-gray-300">1280 × 720 px</span> (proporción 16:9 horizontal)</p>
                                 </div>
                             </div>
                         </div>
@@ -885,7 +1074,35 @@ const tiempoHastaCitaProxima = computed(() => {
                                                 @change="e => { prod._file = e.target.files[0] }"
                                                 class="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-100 dark:file:bg-guinda-900/30 file:text-guinda-700 dark:file:text-guinda-400" />
                                         </div>
+                                        <p class="text-xs text-gray-400 mt-1">JPG, PNG o WEBP · Máx. 4MB · Resolución recomendada: <span class="font-semibold text-gray-500 dark:text-gray-300">800 × 600 px</span></p>
                                     </div>
+                                    <div class="flex gap-2 mt-2">
+                                        <input
+                                            type="number"
+                                            v-model="prod.capacidad_cantidad"
+                                            min="0"
+                                            placeholder="Cant. aprox."
+                                            class="w-1/2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700
+                                                   text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600
+                                                   rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-guinda-500
+                                                   dark:focus:border-guinda-500 transition-colors"
+                                        />
+                                        <select
+                                            v-model="prod.capacidad_unidad"
+                                            class="w-1/2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700
+                                                   text-gray-900 dark:text-white rounded-xl px-3 py-2 text-sm
+                                                   focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500
+                                                   transition-colors"
+                                        >
+                                            <option value="piezas">Piezas</option>
+                                            <option value="cajas">Cajas</option>
+                                            <option value="litros">Litros</option>
+                                            <option value="kilogramos">Kilogramos</option>
+                                        </select>
+                                    </div>
+                                    <p class="text-xs text-gray-400 dark:text-gray-600 mt-1">
+                                        Capacidad de producción mensual aprox.
+                                    </p>
                                 </div>
                             </div>
                         </div>

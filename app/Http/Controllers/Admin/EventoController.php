@@ -36,7 +36,7 @@ class EventoController extends Controller
 
         return Inertia::render('Admin/Eventos/Index', [
             'eventos'   => $eventos,
-            'categorias' => Restaurantero::$categorias,
+            'categorias' => Restaurantero::categoriasActivas(),
         ]);
     }
 

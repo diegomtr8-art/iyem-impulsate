@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Cita;
 use App\Models\Evento;
+use App\Models\Horario;
+use App\Models\Servicio;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -16,8 +18,33 @@ class RestauranteroPanelController extends Controller
         $restaurantero = $request->user()->restaurantero;
 
         if (!$restaurantero) {
-            return redirect()->route('restaurantero.completar-perfil')
-                ->with('warning', 'Debes completar tu perfil de proveedor antes de acceder al panel.');
+            $restaurantero = $request->user()->restaurantero()->create([
+                'edicion_id'               => Evento::activo()?->id,
+                'nombre_restaurante'       => $request->user()->name . ' — Negocio',
+                'activo'                   => false,
+                'aprobado'                 => false,
+                'solicitado_aprobacion_at' => now(),
+            ]);
+            if (!$restaurantero->servicios()->exists()) {
+                Servicio::create([
+                    'restaurantero_id' => $restaurantero->id,
+                    'nombre'           => 'Mesa de Networking',
+                    'duracion_minutos' => 30,
+                    'precio'           => 0,
+                    'activo'           => true,
+                ]);
+            }
+            if (!$restaurantero->horarios()->exists()) {
+                for ($dia = 1; $dia <= 5; $dia++) {
+                    Horario::create([
+                        'restaurantero_id' => $restaurantero->id,
+                        'dia_semana'       => $dia,
+                        'hora_inicio'      => '09:00:00',
+                        'hora_fin'         => '16:00:00',
+                        'activo'           => true,
+                    ]);
+                }
+            }
         }
 
         $hoy       = Carbon::today();
@@ -109,7 +136,7 @@ class RestauranteroPanelController extends Controller
             'citasSemana'     => $citasSemana,
             'citasPendientes' => $citasPendientes,
             'todasLasCitas'   => $todasLasCitas,
-            'categorias'      => \App\Models\Restaurantero::$categorias,
+            'categorias'      => \App\Models\Restaurantero::categoriasActivas(),
             'tasaAceptacion'  => $tasaAceptacion,
             'totalEnEvento'   => $totalEnEvento,
             'citaProxima2h'   => $citaProxima2h ? [

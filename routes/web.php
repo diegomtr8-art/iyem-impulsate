@@ -18,6 +18,8 @@ use App\Http\Controllers\Admin\TorreControlController;
 use App\Http\Controllers\Admin\SuperAdmin\UsuariosGestionController;
 use App\Http\Controllers\Admin\SuperAdmin\PlantillasCorreoController;
 use App\Http\Controllers\Admin\SuperAdmin\PublicidadController;
+use App\Http\Controllers\Admin\SuperAdmin\CorreoMasivoController;
+use App\Http\Controllers\Admin\SuperAdmin\CategoriasController;
 use App\Http\Controllers\RestauranteroPanelController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\Auth\SeleccionarRolController;
@@ -168,6 +170,7 @@ Route::middleware([
             Route::post('/{evento}/solicitudes/{user}/aprobar', [EventoSolicitudesController::class, 'aprobar'])->name('solicitudes.aprobar');
             Route::post('/{evento}/solicitudes/{user}/rechazar', [EventoSolicitudesController::class, 'rechazar'])->name('solicitudes.rechazar');
             Route::post('/{evento}/solicitudes/{user}/revertir', [EventoSolicitudesController::class, 'revertirPendiente'])->name('solicitudes.revertir');
+            Route::post('/{evento}/solicitudes/{user}/eliminar', [EventoSolicitudesController::class, 'eliminar'])->name('solicitudes.eliminar');
             Route::post('/{evento}/solicitudes/aprobar-todos', [EventoSolicitudesController::class, 'aprobarTodos'])->name('solicitudes.aprobar-todos');
         });
 
@@ -213,11 +216,30 @@ Route::middleware([
 
             Route::prefix('plantillas-correo')->name('plantillas.')->group(function () {
                 Route::get('/',                             [PlantillasCorreoController::class, 'index'])->name('index');
+                Route::post('/',                            [PlantillasCorreoController::class, 'store'])->name('store');
+                Route::get('/crear',                        [PlantillasCorreoController::class, 'create'])->name('create');
                 Route::get('/{plantilla}/edit',             [PlantillasCorreoController::class, 'edit'])->name('edit');
                 Route::put('/{plantilla}',                  [PlantillasCorreoController::class, 'update'])->name('update');
+                Route::delete('/{plantilla}',               [PlantillasCorreoController::class, 'destroy'])->name('destroy');
                 Route::post('/{plantilla}/enviar',          [PlantillasCorreoController::class, 'enviar'])->name('enviar');
                 Route::patch('/{plantilla}/toggle',         [PlantillasCorreoController::class, 'toggle'])->name('toggle');
                 Route::post('/{plantilla}/restablecer',     [PlantillasCorreoController::class, 'restablecer'])->name('restablecer');
+            });
+
+            Route::prefix('correo-masivo')->name('correo-masivo.')->group(function () {
+                Route::get('/',                             [CorreoMasivoController::class, 'index'])->name('index');
+                Route::post('/preview',                     [CorreoMasivoController::class, 'preview'])->name('preview');
+                Route::post('/prueba',                      [CorreoMasivoController::class, 'prueba'])->name('prueba');
+                Route::post('/enviar',                      [CorreoMasivoController::class, 'enviar'])->name('enviar');
+            });
+
+            Route::prefix('categorias')->name('categorias.')->group(function () {
+                Route::get('/',               [CategoriasController::class, 'index'])->name('index');
+                Route::post('/',              [CategoriasController::class, 'store'])->name('store');
+                Route::put('/{categoria}',    [CategoriasController::class, 'update'])->name('update');
+                Route::patch('/{categoria}/toggle', [CategoriasController::class, 'toggle'])->name('toggle');
+                Route::delete('/{categoria}', [CategoriasController::class, 'destroy'])->name('destroy');
+                Route::post('/reordenar',     [CategoriasController::class, 'reordenar'])->name('reordenar');
             });
 
             Route::prefix('publicidad')->name('publicidad.')->group(function () {

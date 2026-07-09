@@ -21,9 +21,15 @@
             </td></tr>
         </table>
         @endif
-        <p style="margin:0;font-size:14px;color:#6b7280;">
+        <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
             Puedes actualizar tu perfil y volver a solicitar la revisión.
         </p>
+        <div style="text-align:center;">
+            <a href="{{ url('/') }}"
+               style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+                Ir a la plataforma
+            </a>
+        </div>
     </td></tr>
     <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
         <p style="margin:0;font-size:12px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>

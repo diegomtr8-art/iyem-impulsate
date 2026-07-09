@@ -388,21 +388,6 @@ const secuenciaValidaEditar = computed(() =>
                         </div>
                     </div>
 
-                    <!-- Stats -->
-                    <div class="grid grid-cols-3 gap-4 mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
-                        <div class="text-center">
-                            <div class="text-2xl font-black text-guinda-700 dark:text-guinda-400">{{ eventoActivo.citas_count }}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Citas</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-2xl font-black text-guinda-700 dark:text-guinda-400">{{ eventoActivo.restauranteros_count }}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Proveedores</div>
-                        </div>
-                        <div class="text-center">
-                            <div class="text-2xl font-black text-guinda-700 dark:text-guinda-400">{{ eventoActivo.usuarios_count }}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Usuarios activos</div>
-                        </div>
-                    </div>
 
                     <!-- Acciones adicionales evento activo -->
                     <div class="flex flex-col sm:flex-row gap-3 mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
@@ -464,14 +449,6 @@ const secuenciaValidaEditar = computed(() =>
                         <div class="text-xs text-gray-400 dark:text-gray-600 space-y-0.5 mb-4">
                             <p v-if="evento.fecha_hora_inicio">Inicio: {{ formatFechaCorta(evento.fecha_hora_inicio) }}</p>
                             <p v-if="evento.fecha_corte">Archivado: {{ formatFechaCorta(evento.fecha_corte) }}</p>
-                        </div>
-
-                        <div class="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-500 mb-4">
-                            <span>{{ evento.citas_count }} citas</span>
-                            <span>·</span>
-                            <span>{{ evento.restauranteros_count }} proveedores</span>
-                            <span>·</span>
-                            <span>{{ evento.usuarios_count }} usuarios</span>
                         </div>
 
                         <div class="flex flex-wrap items-center gap-2">

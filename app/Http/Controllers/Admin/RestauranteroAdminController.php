@@ -20,12 +20,27 @@ use Inertia\Inertia;
 
 class RestauranteroAdminController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $restauranteros = Restaurantero::with('user')
+        $query = Restaurantero::with('user')
             ->withCount('citas')
-            ->orderByDesc('created_at')
-            ->paginate(15);
+            ->orderByDesc('created_at');
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('nombre_restaurante', 'like', "%{$s}%")
+                  ->orWhere('telefono', 'like', "%{$s}%")
+                  ->orWhere('municipio', 'like', "%{$s}%")
+                  ->orWhere('rfc', 'like', "%{$s}%")
+                  ->orWhere('descripcion', 'like', "%{$s}%")
+                  ->orWhereHas('user', fn($u) => $u
+                      ->where('name', 'like', "%{$s}%")
+                      ->orWhere('email', 'like', "%{$s}%"));
+            });
+        }
+
+        $restauranteros = $query->paginate(15)->withQueryString();
 
         $pendientesAprobacion = Restaurantero::whereNotNull('solicitado_aprobacion_at')
             ->where('aprobado', false)
@@ -41,9 +56,10 @@ class RestauranteroAdminController extends Controller
 
         return Inertia::render('Admin/Restauranteros/Index', [
             'restauranteros'        => $restauranteros,
-            'categorias'            => Restaurantero::$categorias,
+            'categorias'            => Restaurantero::categoriasActivas(),
             'pendientesAprobacion'  => $pendientesAprobacion,
             'proveedoresPendientes' => $proveedoresPendientes,
+            'filters'               => $request->only(['search']),
         ]);
     }
 
@@ -107,7 +123,7 @@ class RestauranteroAdminController extends Controller
     public function show(Restaurantero $restaurantero)
     {
         $restaurantero->load(['user', 'servicios', 'horarios']);
-        $categorias = Restaurantero::$categorias;
+        $categorias = Restaurantero::categoriasActivas();
 
         $citas = Cita::with([
             'servicio:id,nombre,duracion_minutos,precio',
@@ -259,7 +275,7 @@ class RestauranteroAdminController extends Controller
                 $restaurantero->user->id,
                 'info',
                 '🎉 ¡Tu perfil fue aprobado!',
-                'Tu perfil de proveedor está activo y visible para los compradores.',
+                'Tu perfil fue aprobado. Completa la información de tu negocio y podrás registrarte a los eventos disponibles.',
             );
         }
 

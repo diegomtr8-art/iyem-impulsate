@@ -15,6 +15,17 @@ const props = defineProps({
 const page = usePage();
 const auth = computed(() => page.props.auth);
 const eventoActivo = computed(() => page.props.eventoActivo);
+
+// Redirige al panel correcto según el rol activo del usuario
+const panelRoute = computed(() => {
+    const user = auth.value.user;
+    if (!user) return route('login');
+    if (user.is_admin) return route('admin.dashboard');
+    if (user.active_role === 'proveedor' || (user.is_restaurantero && !user.is_cliente)) {
+        return route('restaurantero.panel');
+    }
+    return route('user.dashboard');
+});
 const tituloPagina = computed(() =>
     eventoActivo.value
         ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
@@ -60,7 +71,7 @@ const seleccionarCategoria = (cat) => {
                 <div class="flex items-center gap-3">
                     <ThemeToggle />
                     <template v-if="auth.user">
-                        <Link :href="route('user.dashboard')"
+                        <Link :href="panelRoute"
                               class="text-sm text-gray-600 dark:text-gray-300 hover:text-guinda-700 dark:hover:text-white transition-colors">
                             Mi Panel
                         </Link>
@@ -184,7 +195,7 @@ const seleccionarCategoria = (cat) => {
 
             <!-- Paginación -->
             <div v-if="restauranteros.links && restauranteros.last_page > 1" class="flex items-center justify-center gap-1 mt-12">
-                <template v-for="link in restauranteros.links" :key="link.label">
+                <template v-for="(link, idx) in restauranteros.links" :key="link.label">
                     <Link v-if="link.url" :href="link.url"
                         :class="[
                             'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
@@ -192,12 +203,18 @@ const seleccionarCategoria = (cat) => {
                                 ? 'bg-guinda-800 text-white font-semibold'
                                 : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
                         ]"
-                        v-html="link.label"
-                    />
+                    >
+                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                        <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        <span v-else v-html="link.label" />
+                    </Link>
                     <span v-else
                         :class="['px-3 py-1.5 rounded-lg text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed']"
-                        v-html="link.label"
-                    />
+                    >
+                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                        <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                        <span v-else v-html="link.label" />
+                    </span>
                 </template>
             </div>
 
@@ -238,7 +255,7 @@ const seleccionarCategoria = (cat) => {
 
                 <!-- Paginación sección plataforma -->
                 <div v-if="proveedoresPlataforma.links && proveedoresPlataforma.last_page > 1" class="flex items-center justify-center gap-1 mt-10">
-                    <template v-for="link in proveedoresPlataforma.links" :key="'pl-' + link.label">
+                    <template v-for="(link, idx) in proveedoresPlataforma.links" :key="'pl-' + link.label">
                         <Link v-if="link.url" :href="link.url"
                             :class="[
                                 'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
@@ -246,8 +263,16 @@ const seleccionarCategoria = (cat) => {
                                     ? 'bg-guinda-800 text-white font-semibold'
                                     : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
                             ]"
-                            v-html="link.label" />
-                        <span v-else class="px-3 py-1.5 rounded-lg text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed" v-html="link.label" />
+                        >
+                            <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                            <svg v-else-if="idx === proveedoresPlataforma.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            <span v-else v-html="link.label" />
+                        </Link>
+                        <span v-else class="px-3 py-1.5 rounded-lg text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed">
+                            <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                            <svg v-else-if="idx === proveedoresPlataforma.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            <span v-else v-html="link.label" />
+                        </span>
                     </template>
                 </div>
             </div>
