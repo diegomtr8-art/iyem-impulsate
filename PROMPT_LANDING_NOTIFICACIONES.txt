@@ -1,0 +1,510 @@
+========================================================
+PROMPT — LANDING, NOTIFICACIONES Y 404 PROVEEDOR
+========================================================
+
+REGLA FUNDAMENTAL — LEE ANTES DE EMPEZAR:
+Este prompt tiene tres fases. Las fases 1 y 3 requieren que presentes
+un plan/bosquejo al usuario y esperes su aprobación ANTES de tocar código.
+La fase 2 (bug 404 y notificaciones) son correcciones técnicas directas
+que sí puedes implementar sin aprobación previa porque son bugs.
+
+STACK: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Color primario: guinda (#8b1028). darkMode: 'class'.
+URL producción: https://lightcyan-mallard-509513.hostingersite.com/
+
+===========================================================
+FASE 1 — INVESTIGA Y PRESENTA PLAN (NO CODIFICAR AÚN)
+===========================================================
+
+───────────────────────────────────────────────────────
+PASO 1A — INVESTIGA LAS LANDINGS DE LOS COMPETIDORES
+───────────────────────────────────────────────────────
+
+Visita y analiza las siguientes URLs para extraer sus mejores prácticas
+de diseño, estructura, animaciones y secciones:
+
+1. https://www.swapcard.com             (networking events)
+2. https://grip.events                  (B2B matchmaking)
+3. https://www.bizzabo.com             (event management)
+4. https://calendly.com                (appointment scheduling)
+5. https://www.hubspot.com/meetings-tool (scheduling)
+6. https://motionsites.ai              (referencia de animaciones web modernas)
+
+De cada sitio, documentar:
+  - Estructura de secciones (qué secciones tiene y en qué orden)
+  - Estilo visual (tipografía, colores, uso del espacio)
+  - Animaciones y micro-interacciones (scroll reveals, parallax, hover effects)
+  - Hero: cómo presentan su propuesta de valor
+  - Social proof: cómo muestran números/logos/testimonios
+  - CTA (call to action): qué botones usan y dónde los ponen
+  - Footer: qué incluyen y cómo lo organizan
+  - Recursos visuales: tipo de imágenes, ilustraciones, íconos SVG
+
+───────────────────────────────────────────────────────
+PASO 1B — LEE LA LANDING ACTUAL DEL PROYECTO
+───────────────────────────────────────────────────────
+
+Lee completo: resources/js/Pages/Welcome.vue (544 líneas)
+
+Identifica:
+  - Qué secciones existen actualmente
+  - Qué emojis se usan (todos deben ser reemplazados por SVGs)
+  - El estado actual del mapa y el footer
+  - Animaciones existentes (fade-up, float, countUp)
+  - Textos que NO se deben tocar (ver abajo)
+
+TEXTOS PROTEGIDOS — NO MODIFICAR BAJO NINGUNA CIRCUNSTANCIA:
+
+  Texto 1 (Hero):
+  "Conecta, negocia y haz crecer tu empresa
+  Conecta con los mejores proveedores de Yucatán de manera gratuita
+  y genera nuevas oportunidades de negocio. Impúlsate es una iniciativa
+  que fortalece el ecosistema empresarial y emprendedor del estado."
+
+  Texto 2 (Sección ¿Qué es?):
+  "¿Qué es Impúlsate-Encuentros de Negocios?
+  "Impúlsate-Encuentros de Negocios" es la plataforma de citas de 1-1
+  del IYEM, creada para ayudar a emprendedores y empresas a conectar con
+  clientes potenciales, proveedores y aliados estratégicos. A través de
+  reuniones previamente programadas, los participantes pueden presentar
+  sus productos y servicios directamente a las empresas que buscan,
+  generando oportunidades reales de venta, colaboración y crecimiento."
+
+───────────────────────────────────────────────────────
+PASO 1C — GENERA EL PLAN + BOSQUEJO DE LA NUEVA LANDING
+───────────────────────────────────────────────────────
+
+Presenta al usuario un documento con:
+
+PARTE 1 — ANÁLISIS COMPARATIVO
+  Tabla de: Competidor | Fortalezas visuales | Lo que adaptaremos
+  Lista de las 5 mejores ideas de animación/diseño que se pueden adaptar
+  con Tailwind CSS + Vue 3 (sin librerías externas pesadas salvo las ya instaladas)
+
+PARTE 2 — ESTRUCTURA PROPUESTA DE LA NUEVA LANDING
+
+  Presenta el wireframe textual de cada sección en este formato:
+
+  ┌──────────────────────────────────────────────────────┐
+  │  SECCIÓN N: [Nombre]                                  │
+  │  Altura aprox: [px o vh]                              │
+  │  Contenido: [descripción]                             │
+  │  Animación: [tipo de animación]                       │
+  │  Cambio vs actual: [qué cambia exactamente]           │
+  └──────────────────────────────────────────────────────┘
+
+  Las secciones propuestas (basadas en mejores prácticas de competidores):
+
+  1. NAVBAR — fijo, transparente que se vuelve opaco al hacer scroll
+  2. HERO — textos protegidos, con animación de entrada, imagen/ilustración de fondo,
+     partículas o gradiente animado, dos CTAs
+  3. STATS — números animados (contador countUp ya existe) — mejorar diseño
+  4. ¿QUÉ ES IMPÚLSATE? — texto protegido, con diseño de "split" (texto + visual)
+  5. CÓMO FUNCIONA — pasos numerados con íconos SVG (NO emojis), animación al scroll
+  6. PARA QUIÉN ES — dos columnas: Compradores vs Proveedores, con SVGs
+  7. PROVEEDORES DESTACADOS — grid de cards de proveedores registrados (ya existe, mejorar)
+  8. TESTIMONIOS / SOCIAL PROOF — si hay datos, mostrar logos de empresas o frases
+  9. UBICACIÓN — mapa mejorado + datos de contacto con SVGs (NO emojis)
+  10. CTA FINAL — sección de llamada a la acción con fondo guinda
+  11. FOOTER — mejorado con sitios aliados + navegación + contacto
+
+PARTE 3 — MEJORAS ESPECÍFICAS
+
+  3.1 SUSTITUCIÓN DE EMOJIS → SVGs
+  Lista cada emoji encontrado y el SVG que lo reemplazará:
+    📝 → SVG de lápiz/editar (HeroIcons outline)
+    🔍 → SVG de lupa (HeroIcons outline)
+    📅 → SVG de calendario (HeroIcons outline)
+    🤝 → SVG de manos / handshake
+    🏛️ → SVG de edificio gubernamental
+    📍 → SVG de location pin
+    🕐 → SVG de reloj
+    ✉️ → SVG de sobre/email
+    🔔 → SVG de campana (en NotificacionCampana ya existe)
+    (cualquier otro que encuentres en la landing)
+
+  3.2 MEJORAS AL MAPA
+  El mapa actual es un iframe de Google Maps embed simple.
+  Proponer: iframe de Google Maps mejorado con:
+    - Tamaño mayor y bordes redondeados
+    - Marcador personalizado si es posible
+    - Panel lateral con dirección, horario y botón "Cómo llegar"
+    - O alternativamente: mapa estático de Google Maps con overlay de datos de contacto
+    - Responsivo: altura ajustada en móvil
+
+  3.3 FOOTER MEJORADO
+  El footer actual tiene: Brand + Navegación + Contacto
+  Proponer nuevo footer con 4 columnas:
+    Col 1: Logo + descripción + badge gobierno
+    Col 2: Navegación (links del sitio)
+    Col 3: SITIOS ALIADOS (nuevos — estos son exactos y no cambiar):
+              - Instituto Yucateco de Emprendedores (IYEM)
+                URL: https://iyem.yucatan.gob.mx/
+              - Nodico
+                URL: https://www.nodico.com.mx/
+              - Herencia Viva
+                URL: https://www.herenciaviva.com/
+            Cada aliado: nombre + URL clickeable + ícono SVG de enlace externo
+    Col 4: Contacto (con SVGs en lugar de emojis)
+    Bottom bar: copyright + crédito de desarrollo
+
+  3.4 ANIMACIONES MODERNAS (inspiradas en motionsites.ai y competidores)
+  Lista las animaciones que se implementarán con CSS/Tailwind puro:
+    - Navbar: transición de transparente a sólido al hacer scroll (IntersectionObserver o scroll event)
+    - Hero: fade + slide-up en texto, fade-in en imagen con delay
+    - Stats: countUp al entrar en viewport (ya existe, mejorar timing)
+    - Secciones: fade-up escalonado con delay incremental por elemento
+    - Cards de proveedores: hover con scale + shadow sutil
+    - CTAs: hover con translateY(-2px) + shadow
+    - Línea decorativa animada bajo el título del hero (ancho crece de 0 a 100%)
+    - Gradiente animado en el hero (CSS @keyframes para el background)
+    - Número de stats: efecto de "flip" o ease-out pronounced al contar
+    NO usar librerías externas adicionales (no GSAP, no AOS, no Framer Motion)
+    Solo: CSS @keyframes + Tailwind transitions + IntersectionObserver con JS vanilla
+
+PARTE 4 — IMÁGENES
+  La landing necesita imágenes profesionales. Proponer:
+    - Hero: imagen o ilustración SVG de networking/handshake empresarial
+      (buscar en Unsplash: "business networking meeting professional" o crear SVG)
+    - Sección "Cómo funciona": íconos SVG grandes por paso (ya propuesto)
+    - Sección "Para quién es": ilustraciones SVG de comprador y proveedor
+    - Fondo del hero: gradiente de guinda o patrón geométrico sutil con SVG
+    Indicar cuáles imágenes usar de Unsplash (dar URLs concretas) y cuáles crear como SVG inline
+
+PARTE 5 — DECISIONES QUE EL USUARIO DEBE TOMAR
+  Lista 5-8 decisiones de diseño donde el usuario debe elegir, por ejemplo:
+    - "¿Quieres que el hero tenga imagen fotográfica o gradiente abstracto?"
+    - "¿Cuántos proveedores mostrar en la sección de destacados? ¿3, 4 o 6?"
+    - "¿Quieres sección de testimonios? ¿Tienes frases de usuarios reales?"
+    - etc.
+
+───────────────────────────────────────────────────────
+ALTO — DESPUÉS DE PRESENTAR EL PLAN, ESCRIBE:
+───────────────────────────────────────────────────────
+
+"✋ Plan de landing presentado.
+Por favor revisa el wireframe y dime:
+  1. ¿Qué secciones apruebas?
+  2. ¿Hay algo que cambiar del diseño propuesto?
+  3. ¿Tienes imágenes propias que quieras usar?
+  4. ¿Respondes las decisiones de diseño de la Parte 5?
+No comenzaré a codificar hasta recibir tu respuesta."
+
+===========================================================
+FASE 2 — BUGS TÉCNICOS (IMPLEMENTAR DIRECTO, SIN ESPERAR)
+===========================================================
+
+Estos son bugs confirmados. Corrígelos mientras el usuario revisa el plan.
+
+───────────────────────────────────────────────────────
+BUG 1 — 404 EN PERFIL DE PROVEEDOR
+───────────────────────────────────────────────────────
+
+PROBLEMA DETECTADO:
+En routes/web.php existe una ruta duplicada con el mismo nombre:
+
+  // Ruta pública (fuera del grupo auth):
+  Route::get('/restauranteros/{restaurantero}', [RestauranteroPublicoController::class, 'show'])
+       ->name('restauranteros.show');  ← nombre 'restauranteros.show'
+
+  // Ruta de admin (dentro del grupo admin con middleware):
+  Route::get('/restauranteros/{restaurantero}', [RestauranteroAdminController::class, 'show'])
+       ->name('restauranteros.show');  ← MISMO nombre, sobreescribe la anterior
+
+Esto causa que cuando un proveedor logueado intenta ver su perfil público,
+Laravel resuelve el helper route('restauranteros.show', $id) hacia la ruta
+del admin, que exige middleware 'admin', y devuelve 403 o 404.
+
+ADEMÁS: en RestauranteroPublicoController::show() hay:
+  abort_if(!$restaurantero->activo, 404);
+Si el restaurantero no tiene activo = true, da 404 aunque sea el dueño.
+
+CORRECCIONES:
+
+1. En routes/web.php, cambiar el nombre de la ruta de admin:
+   ANTES: ->name('restauranteros.show')
+   DESPUÉS: ->name('admin.restauranteros.show')
+   (busca esta línea dentro del grupo admin prefix('admin'))
+
+2. En todos los archivos que usen route('restauranteros.show') dentro del
+   contexto admin, actualizar a route('admin.restauranteros.show').
+   Buscar con: grep -r "restauranteros.show" resources/js/Pages/Admin/
+
+3. Para el problema de activo=false causando 404 al propio proveedor:
+   En RestauranteroPublicoController::show(), cambiar la lógica:
+   - Si el usuario autenticado es el dueño del restaurantero O es admin:
+     permitir acceso aunque !$restaurantero->activo
+   - Si es visitante público: mantener abort_if(!$restaurantero->activo, 404)
+
+   Código de la corrección:
+   ```php
+   $esdueno = auth()->check() && auth()->id() === $restaurantero->user_id;
+   $esAdmin = auth()->check() && auth()->user()->hasRole('admin');
+   abort_if(!$restaurantero->activo && !$esDueno && !$esAdmin, 404);
+   ```
+
+4. Verificar que el link "Ver mi perfil público" en el panel proveedor
+   (Restaurantero/Panel.vue) use la ruta correcta:
+   route('restauranteros.show', restaurantero.id)
+   Y que ese ID corresponda al restaurantero del usuario, no a otro.
+
+5. Probar el fix con: php artisan route:list | grep restauranteros
+   Verificar que no haya nombres de ruta duplicados.
+
+───────────────────────────────────────────────────────
+BUG 2 — NOTIFICACIONES: AGREGAR RECORDATORIO 1 HORA ANTES
+───────────────────────────────────────────────────────
+
+SITUACIÓN ACTUAL:
+- EnviarRecordatorios.php tiene recordatorios de 24h y 2h antes
+- La campana (NotificacionCampana.vue) lee de /api/notificaciones
+- No existe recordatorio de 1 hora antes
+- El admin NO recibe notificaciones de citas que no son suyas
+
+CAMBIOS REQUERIDOS:
+
+2.1 — NUEVA MIGRACIÓN para campo recordatorio_1h_enviado en citas:
+```php
+Schema::table('citas', function (Blueprint $table) {
+    $table->boolean('recordatorio_1h_enviado')->default(false)->after('recordatorio_2h_enviado');
+});
+```
+
+2.2 — ACTUALIZAR app/Console/Commands/EnviarRecordatorios.php:
+Agregar bloque de recordatorio 1h ENTRE el de 2h y el info() final:
+
+```php
+// Recordatorio 1h: citas que empiezan entre 45min y 75min desde ahora
+$citas1h = Cita::where('estado', 'confirmada')
+    ->where('recordatorio_1h_enviado', false)
+    ->whereBetween('inicio', [
+        $ahora->copy()->addMinutes(45),
+        $ahora->copy()->addMinutes(75),
+    ])
+    ->with(['cliente', 'restaurantero.user'])
+    ->get();
+
+foreach ($citas1h as $cita) {
+    // Notificación in-app al comprador
+    Notificacion::create([
+        'user_id'  => $cita->cliente_id,
+        'tipo'     => 'recordatorio_1h',
+        'titulo'   => '¡Tu cita empieza en 1 hora!',
+        'mensaje'  => 'Tienes una cita con ' . ($cita->restaurantero->nombre_restaurante ?? 'el proveedor')
+                    . ' a las ' . $cita->inicio->format('H:i') . 'h. ¡Prepárate!',
+        'leida'    => false,
+    ]);
+
+    // Notificación in-app al proveedor (dueño del restaurantero)
+    if ($cita->restaurantero?->user_id) {
+        Notificacion::create([
+            'user_id'  => $cita->restaurantero->user_id,
+            'tipo'     => 'recordatorio_1h',
+            'titulo'   => '¡Cita en 1 hora!',
+            'mensaje'  => 'Tienes una cita con ' . ($cita->cliente->name ?? 'un comprador')
+                        . ' a las ' . $cita->inicio->format('H:i') . 'h.',
+            'leida'    => false,
+        ]);
+    }
+
+    $cita->update(['recordatorio_1h_enviado' => true]);
+}
+```
+
+2.3 — NOTIFICACIONES AL ADMIN (todas las citas, no solo las suyas):
+En EnviarRecordatorios.php, dentro del foreach de cada bloque de recordatorio
+(24h, 2h Y 1h), agregar al final del foreach:
+
+```php
+// Notificar al admin de TODAS las citas próximas
+$admins = \App\Models\User::role('admin')->get();
+foreach ($admins as $admin) {
+    Notificacion::create([
+        'user_id'  => $admin->id,
+        'tipo'     => 'recordatorio_1h',  // (o 24h o 2h según el bloque)
+        'titulo'   => '[Admin] Cita en 1h: ' . ($cita->restaurantero->nombre_restaurante ?? '—'),
+        'mensaje'  => $cita->cliente->name . ' → ' . ($cita->restaurantero->nombre_restaurante ?? '—')
+                    . ' · ' . $cita->inicio->format('d/m H:i') . 'h',
+        'leida'    => false,
+    ]);
+}
+```
+
+IMPORTANTE: Evitar duplicados de notificaciones admin. Verificar si ya se envió
+antes de insertar. Añadir: unique constraint o check previo.
+
+2.4 — ACTUALIZAR NotificacionCampana.vue:
+Agregar el nuevo tipo 'recordatorio_1h' al objeto iconoTipo.
+REEMPLAZAR el emoji por un SVG inline:
+
+En lugar de:
+```js
+const iconoTipo = (tipo) => {
+    const iconos = {
+        cita_nueva:       '📅',
+        cita_aceptada:    '✅',
+        ...
+    };
+    return iconos[tipo] || '🔔';
+};
+```
+
+Crear un componente de ícono SVG por tipo y renderizarlo en el template.
+Tipos y sus SVGs (HeroIcons outline):
+  - cita_nueva / recordatorio_1h / recordatorio_24h / recordatorio_2h
+    → SVG de calendario (calendar)
+  - cita_aceptada
+    → SVG de check-circle
+  - cita_rechazada
+    → SVG de x-circle
+  - cita_reagendada
+    → SVG de arrow-path (refresh)
+  - info
+    → SVG de information-circle
+
+Modificar el template de NotificacionCampana.vue para usar <component :is>
+o un v-if/v-else-if con SVGs inline en lugar del emoji de texto.
+
+2.5 — VERIFICAR QUE EL SCHEDULER ESTÉ CONFIGURADO:
+En app/Console/Kernel.php (o routes/console.php si usa Laravel 11 style):
+El comando debe correr cada 5 minutos mínimo para no perder la ventana de 1h:
+  $schedule->command('citas:enviar-recordatorios')->everyFiveMinutes();
+
+Si ya está en el scheduler, verificar y dejar en everyFiveMinutes().
+
+2.6 — PROBAR EL FIX:
+```bash
+php artisan migrate
+php artisan citas:enviar-recordatorios
+# Verificar en la tabla notificaciones que se crearon registros correctamente
+```
+
+===========================================================
+FASE 3 — IMPLEMENTAR LA LANDING (SOLO DESPUÉS DE APROBACIÓN)
+===========================================================
+
+Esta fase SOLO se ejecuta después de que el usuario apruebe el plan de la Fase 1.
+
+───────────────────────────────────────────────────────
+3.1 — IMPLEMENTAR LA NUEVA LANDING
+───────────────────────────────────────────────────────
+
+Reescribir resources/js/Pages/Welcome.vue completo con:
+
+PRESERVAR OBLIGATORIAMENTE:
+  - Los dos textos protegidos (ver Fase 1, Paso 1B)
+  - El logo: /images/logo_impulsate.png
+  - La dirección: Av. Industrias No Contaminantes Tab 13613, Col. Sodzil Norte, Mérida
+  - El email: impulsate@iyemyucatan.com
+  - El horario: Lunes a Viernes 9:00 — 16:00 h
+  - El crédito: Diego Martínez
+  - Los links de navegación (home, restauranteros.index, login, register)
+  - La integración con props de Laravel: { restauranteros, canLogin, canRegister }
+
+REGLAS DE IMPLEMENTACIÓN:
+  - CERO emojis en toda la landing — solo SVGs inline o HeroIcons SVG
+  - Colores: solo guinda, gray, white/black — CERO azul
+  - darkMode: todas las clases con dark: partner
+  - Completamente responsivo: móvil 375px, tablet 768px, desktop 1280px
+  - Las animaciones CSS con @keyframes van en <style scoped>
+  - El JS de animaciones en <script setup> con onMounted + IntersectionObserver
+  - No añadir nuevas dependencias npm
+  - Navbar fijo con transición transparente→sólido al hacer scroll
+
+NUEVO FOOTER con sitios aliados:
+  Columna "Sitios Aliados":
+    - Instituto Yucateco de Emprendedores (IYEM) → https://iyem.yucatan.gob.mx/
+    - Nodico → https://www.nodico.com.mx/
+    - Herencia Viva → https://www.herenciaviva.com/
+  Cada enlace: target="_blank" rel="noopener noreferrer"
+  Cada enlace con SVG de "external link" (flecha diagonal) al lado del nombre
+
+MAPA MEJORADO:
+  - Mantener el iframe de Google Maps para la dirección actual
+  - Aumentar tamaño: h-64 sm:h-80 lg:h-96
+  - Bordes redondeados: rounded-2xl overflow-hidden
+  - Sombra sutil: shadow-lg
+  - Panel de datos al lado (en desktop) o debajo (en móvil) con SVGs:
+    SVG-pin + dirección
+    SVG-reloj + horario
+    SVG-email + correo
+    Botón "Cómo llegar" → href de Google Maps directions
+
+───────────────────────────────────────────────────────
+3.2 — VERIFICACIÓN FINAL DE LA LANDING
+───────────────────────────────────────────────────────
+
+Después de implementar, verificar:
+  □ grep "emoji\|📝\|🔍\|📅\|🤝\|🏛\|📍\|🕐\|✉\|🔔\|📋" Welcome.vue → 0 resultados
+  □ grep "blue-\|indigo-" Welcome.vue → 0 resultados
+  □ Los dos textos protegidos están intactos (buscar por substring)
+  □ Los tres sitios aliados están en el footer con sus URLs correctas
+  □ La landing se ve bien en light mode Y dark mode
+  □ En 375px no hay scroll horizontal
+  □ npm run build sin errores
+
+===========================================================
+FASE 4 — DEPLOY A PRODUCCIÓN
+===========================================================
+
+Solo ejecutar cuando el usuario confirme: "Haz el deploy".
+
+URL: https://lightcyan-mallard-509513.hostingersite.com/
+Hosting: Hostinger Business con SSH/cPanel.
+
+PASOS:
+
+1. Build local:
+   npm run build
+
+2. Subir código al servidor:
+   cd /home/usuario/impulsate
+   git add .
+   git commit -m "fix: 404 proveedor, notif 1h admin, landing mejorada"
+   git push origin main
+   (o FTP si no hay Git en servidor)
+
+3. En el servidor vía SSH:
+   cd /home/usuario/impulsate
+   composer install --no-dev --optimize-autoloader
+   php artisan migrate --force
+   php artisan optimize:clear
+   php artisan config:cache
+   php artisan route:cache
+   php artisan view:cache
+   chmod -R 755 storage bootstrap/cache
+
+4. Copiar assets:
+   Copiar public/build/ → public_html/build/
+
+5. Verificar:
+   php artisan route:list | grep restauranteros
+   tail -20 storage/logs/laravel.log
+   # Visitar la URL de producción y probar:
+   #   - Landing page en mobile y desktop
+   #   - Login como proveedor → ver perfil público → no debe dar 404
+   #   - Campana de notificaciones → debe mostrar recordatorio 1h
+
+6. Reportar al usuario:
+   "✅ Deploy completado en https://lightcyan-mallard-509513.hostingersite.com/
+    Cambios desplegados:
+    - Corregido 404 en perfil de proveedor
+    - Notificaciones de 1 hora antes (comprador + proveedor + admin)
+    - Landing page renovada sin emojis, con sitios aliados en footer
+    - Mapa mejorado"
+
+===========================================================
+RESUMEN DE ORDEN DE EJECUCIÓN
+===========================================================
+
+  PASO 1: Investigar competidores + leer Welcome.vue actual (Fase 1A + 1B)
+  PASO 2: Generar plan + bosquejo → presentar al usuario → DETENERSE (Fase 1C)
+  PASO 3: Mientras el usuario revisa el plan, corregir BUG 1 (404) (Fase 2)
+  PASO 4: Corregir BUG 2 (notificaciones 1h + admin) (Fase 2)
+  PASO 5: Esperar aprobación del plan de landing
+  PASO 6: Implementar nueva landing según aprobación (Fase 3)
+  PASO 7: Deploy solo cuando el usuario lo confirme (Fase 4)
+
+========================================================
+FIN DEL PROMPT
+========================================================

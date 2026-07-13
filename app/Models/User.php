@@ -42,6 +42,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'rol_seleccionado',
         'necesidades',
         'perfil_completo',
+        'es_restaurantero',
         'sitio_web',
         'acepta_aviso_at',
         'camara_asociacion',
@@ -104,6 +105,7 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'acepta_aviso_at'   => 'datetime',
+            'es_restaurantero'  => 'boolean',
             'password' => 'hashed',
         ];
     }

@@ -1,0 +1,154 @@
+PROMPT PARA CLAUDE CODE - IMPULSATE V4
+==========================================
+Proyecto: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Ruta: C:\xampp\htdocs\citas
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo/blue-*.
+Todo el texto en español, con acentos correctos.
+Todo debe verse bien en modo claro Y oscuro, y ser responsivo (375px móvil, tablet, desktop).
+Deploy final: Hostinger - dominio impulsate.iyemyucatan.com (Business hosting, SSH/cPanel).
+
+CONTEXTO DEL PROYECTO
+---------------------
+- Modelo `Evento` (app/Models/Evento.php) ya tiene: nombre, sector_economico, descripcion, fecha_hora_inicio, fecha_hora_fin, fechas de proveedores/compradores, max_citas_por_comprador, tiempo_entre_citas_minutos, activa.
+- Paneles: resources/js/Pages/User/Dashboard.vue (comprador) y resources/js/Pages/Restaurantero/Panel.vue (proveedor), ambos usan resources/js/Layouts/AppLayout.vue.
+- Notificaciones por correo en app/Mail/ (CitaAgendada, CitaAceptada, CitaRechazada, CitaReagendada, CitaConfirmada, CitaCancelada, ProveedorAprobado, ProveedorRechazado, RecordatorioCita).
+- Modelo Notificacion.php para notificaciones in-app (campanita).
+- Admin controllers en app/Http/Controllers/Admin/ (EventoController, UserAdminController, ExportController, etc.) bajo prefix /admin con name admin.*.
+- Seeders en database/seeders/ (DatabaseSeeder.php solo llama a RolesAndPermissionsSeeder; existe DemoDataSeeder.php sin usar).
+- Storage de imágenes: usar `php artisan storage:link` y disco `public` (ya debería existir patrón similar para fotos de proveedores/servicios; revisar app/Models/Restaurantero.php y Servicio.php para seguir el mismo patrón de upload).
+
+==========================================
+CAMBIO 1: Barra lateral de "anuncios" de eventos en los paneles
+==========================================
+Objetivo: en AppLayout.vue (o en Dashboard.vue/Panel.vue si AppLayout no aplica a ambos), agregar una barra lateral IZQUIERDA fija, visible solo en desktop/tablet (oculta o colapsable en móvil <1024px), que muestre tarjetas tipo "anuncio publicitario" de los eventos (usando el campo de imagen del CAMBIO 2).
+
+Implementación:
+1. Crear componente `resources/js/Components/EventosSidebar.vue` que reciba la lista de eventos (activo, próximos, recientes) vía prop o `usePage().props`.
+2. Cada tarjeta debe mostrar: imagen del evento (con fallback a un diseño con gradiente guinda + ícono si no hay imagen), nombre del evento, fecha, y un badge de estado ("Activo", "Próximamente", "Finalizado"). Si es el evento activo y el usuario aún no está registrado, agregar un botón/CTA "Más información" o "Registrarme" que lleve a la pestaña de Eventos del panel.
+3. Diseño: ancho fijo (~260-280px), sticky/fixed bajo el navbar, scroll independiente si hay muchas tarjetas, bordes redondeados, sombra suave, esquema de color guinda. En modo oscuro usar fondos gray-900/800.
+4. Layout de página: el contenido principal del panel debe desplazarse a la derecha (usar flex/grid: sidebar fijo + contenido en `flex-1` con `lg:ml-[280px]` o similar) cuando hay sidebar visible.
+5. Insertar este componente en User/Dashboard.vue y Restaurantero/Panel.vue (ambos comprador y proveedor). Si AppLayout.vue ya envuelve ambos, considerar agregarlo ahí con un slot o prop `mostrarEventosSidebar` para no afectar otras páginas (Welcome, Auth, Admin, etc.).
+6. Pasar los eventos necesarios vía HandleInertiaRequests.php o vía props específicas del controlador (RestauranteroPanelController, CitaPublicaController/dashboard). Obtener: evento activo (`Evento::activo()`), próximos eventos (fecha_hora_inicio futura, activa o no), y el último evento finalizado (opcional, para mostrar "revive el evento pasado" o resultados).
+7. En móvil, convertir el sidebar en un carrusel horizontal o sección colapsable arriba del contenido (no debe romper el layout).
+
+==========================================
+CAMBIO 2: Imagen al crear/editar Evento
+==========================================
+1. Migración: agregar columna `imagen` (string, nullable) a la tabla `eventos`.
+2. Agregar `imagen` a `$fillable` en app/Models/Evento.php.
+3. En app/Http/Controllers/Admin/EventoController.php (`store` y `update`):
+   - Validar `imagen` como `nullable|image|mimes:jpg,jpeg,png,webp|max:4096`.
+   - Guardar con `$request->file('imagen')->store('eventos', 'public')` y guardar la ruta relativa en el modelo.
+   - Si se sube nueva imagen al actualizar, borrar la anterior con `Storage::disk('public')->delete(...)` si existe.
+   - Asegurarse de que el formulario use `multipart/form-data` (Inertia: usar `useForm` con `forceFormData: true` o `router.post` con `_method: 'put'`/`patch` spoofing para soportar archivos en update).
+4. En la vista de administración de eventos (buscar en resources/js/Pages/Admin/Eventos/*.vue, ej. Index.vue o un modal de creación/edición), agregar un campo de carga de imagen con preview (mostrar imagen actual si existe al editar, y preview de la nueva imagen seleccionada antes de subir).
+5. Exponer la URL completa de la imagen (`Storage::url($evento->imagen)` o `asset('storage/'.$evento->imagen)`) en los recursos/props que se envían al frontend (para Welcome.vue, EventosSidebar.vue, panel de Eventos, etc.).
+6. Usar esta imagen también en la pestaña "Eventos" de los paneles de comprador/proveedor (TabEventos.vue) como banner/cover de cada tarjeta de evento.
+7. Ejecutar `php artisan storage:link` si aún no existe el enlace simbólico (verificar primero que no exista ya, para no duplicar).
+
+==========================================
+CAMBIO 3: Encuesta de satisfacción post-evento
+==========================================
+Objetivo: cuando un evento finaliza (o el admin lo marca como finalizado/archivado), se envía un correo a cada participante (proveedores y compradores que hayan estado registrados/aprobados en ese evento) invitándolo a contestar una encuesta de satisfacción. Las respuestas se guardan y el admin puede exportarlas a Excel.
+
+Implementación:
+1. Migraciones:
+   - `encuestas_satisfaccion`: id, evento_id (FK eventos), user_id (FK users), tipo (enum: comprador/proveedor), token (string único, para acceso sin login), completada_at (nullable timestamp), timestamps.
+   - `encuesta_respuestas`: id, encuesta_satisfaccion_id (FK), pregunta (string), respuesta (text), timestamps. (Diseño flexible tipo "key-value" para que cuando el usuario envíe el cuestionario definitivo más adelante, no haya que migrar de nuevo el esquema — solo cambiar las preguntas que se renderizan en el formulario).
+2. Modelos: `EncuestaSatisfaccion` (relaciones con Evento, User, hasMany EncuestaRespuesta) y `EncuestaRespuesta`.
+3. Preguntas por defecto (definir como constante/array en el controlador o un archivo de config `config/encuestas.php`), aplicar las MISMAS preguntas para proveedor y comprador por ahora:
+   - "¿Cómo calificarías tu experiencia general en el evento?" (escala 1-5)
+   - "¿Las citas agendadas cumplieron tus expectativas?" (escala 1-5)
+   - "¿La organización y logística del evento fue adecuada?" (escala 1-5)
+   - "¿Qué fue lo que más te gustó del evento?" (texto libre)
+   - "¿Qué podríamos mejorar para futuros eventos?" (texto libre)
+   - "¿Recomendarías participar en futuros eventos de Impúlsate?" (Sí/No)
+   Dejar comentado en el código un TODO indicando que esta lista será reemplazada cuando el usuario proporcione el cuestionario oficial.
+4. Controlador público `EncuestaController` (sin middleware auth, acceso por token):
+   - `GET /encuesta/{token}` -> muestra formulario Inertia con las preguntas (página `Encuestas/Responder.vue`). Si `completada_at` ya tiene valor, mostrar mensaje de "ya respondiste, gracias".
+   - `POST /encuesta/{token}` -> guarda las respuestas en `encuesta_respuestas`, marca `completada_at = now()`.
+5. Trigger de envío de correos:
+   - Agregar acción en EventoController (Admin) - botón/endpoint "Finalizar evento y enviar encuestas" (puede integrarse en `archivar()` o como nueva acción `enviarEncuestas`). Al ejecutarse:
+     a. Buscar todos los `evento_usuario` con estado='aprobado' para ese evento (ambos tipos comprador y proveedor).
+     b. Por cada uno, crear un registro `EncuestaSatisfaccion` con token único (`Str::random(40)`) si no existe ya uno para ese user+evento.
+     c. Enviar correo `app/Mail/EncuestaSatisfaccion.php` (Mailable nuevo) con el link `route('encuestas.responder', $token)`, usando plantilla Markdown con la identidad visual guinda.
+6. Panel de administración:
+   - Nueva sección en el menú admin "Encuestas" -> ruta `admin.encuestas.index`, controlador `Admin/EncuestaAdminController.php`.
+   - Vista `Admin/Encuestas/Index.vue`: tabla filtrable por evento, con columnas Usuario, Tipo (proveedor/comprador), Estado (respondida/pendiente), Fecha de respuesta.
+   - Botón "Exportar a Excel" -> usar maatwebsite/excel (igual patrón que ExportController existente) para generar un Excel con todas las respuestas (una fila por encuesta, columnas = preguntas, agrupable o con hoja por evento si aplica el patrón `WithMultipleSheets` ya usado en el proyecto).
+7. Agregar la nueva ruta del menú lateral/admin nav (buscar dónde está definido el menú de Admin, probablemente en AppLayout.vue o un layout admin específico).
+8. Registrar rutas: las públicas (`/encuesta/{token}` GET y POST) fuera de middleware auth; las de admin dentro del grupo `admin.` con middleware `admin`.
+
+==========================================
+CAMBIO 4: Reset de datos + nuevo admin
+==========================================
+1. Crear un seeder `LimpiarYResetearSeeder` (o agregar lógica en DatabaseSeeder) que:
+   - Borre TODOS los registros de: citas, evento_usuario, notificaciones, encuestas (si ya existen), servicios, horarios, restauranteros, users (excepto el admin que se va a crear/conservar), eventos (si se desea reiniciar también - confirmar que sí, ya que en CAMBIO 5 se crearán 3 eventos nuevos).
+   - Usar `DB::table(...)->delete()` o `truncate()` respetando foreign keys (desactivar `PRAGMA`/`SET FOREIGN_KEY_CHECKS=0` si es MySQL, o borrar en orden correcto: citas -> evento_usuario -> notificaciones -> servicios/horarios -> restauranteros -> users -> eventos).
+   - Conservar/crear el usuario administrador único:
+     - email: impulsate@iyemyucatan.com
+     - password: password (usar `Hash::make('password')`)
+     - name: "Administrador Impulsate" (o similar)
+     - rol: admin (asignar vía Spatie `assignRole('admin')`)
+     - Si ya existe un admin con otro correo (ej. Admin@citas.com), eliminarlo o actualizarlo a este nuevo correo - confirmar que solo debe existir ESTE admin.
+2. Este seeder debe poder ejecutarse de forma segura en producción vía `php artisan db:seed --class=LimpiarYResetearSeeder --force`.
+3. ADVERTENCIA: este paso borra datos reales de producción. Antes de ejecutar en producción, hacer un respaldo de la base de datos actual (`mysqldump`) y guardarlo, e informar al usuario dónde quedó el respaldo.
+
+==========================================
+CAMBIO 5: Datos de prueba (seeders)
+==========================================
+Crear/actualizar `database/seeders/DemoDataSeeder.php` para generar:
+1. 10 proveedores (`User` con rol `restaurantero` + registro `Restaurantero` asociado):
+   - Nombres de empresa, sector económico, descripción, datos ficticios pero realistas (usar Faker en español: `fake('es_MX')`).
+   - Cada proveedor con `Servicio` y `Horario` asociados (seguir el patrón ya existente en el proyecto para crear estos registros, revisar cómo lo hace CompletarPerfilController::agregarRol o RestauranteroAdminController::store).
+   - Imagen de perfil/logo: usar un placeholder (ej. `https://ui-avatars.com/api/?name=...` descargado y guardado en storage, o usar imágenes de stock libres ya incluidas en `public/images` si existen; si no, generar avatares con UI Avatars y guardarlos localmente vía `Http::get()->save()` en `storage/app/public/restauranteros/`).
+   - `aprobado = true` (aprobación global) para que aparezcan activos.
+2. 15 compradores (`User` con rol `cliente`):
+   - Datos de perfil completos (telefono, curp, rfc, municipio, necesidades, etc. - usar los campos agregados en V3 si ya existen, verificar con `php artisan migrate:status` o revisando la tabla `users`).
+3. 3 Eventos:
+   - 1 evento ACTIVO (`activa = true`, fechas que incluyan la fecha actual del sistema, ventanas de proveedores y compradores ya abiertas) con imagen (usar un placeholder descargado, igual que en el punto 1).
+   - 1 evento PASADO (fechas ya finalizadas, `activa = false`).
+   - 1 evento PRÓXIMO (fechas futuras, `activa = false` o como corresponda según la lógica de `Evento::activo()`).
+   - Todos con imagen.
+4. Registrar a los 10 proveedores y 15 compradores en el evento activo (`evento_usuario`, estado='aprobado', tipo correspondiente). Para el evento pasado, registrar también algunos usuarios con estado aprobado (para poder probar el flujo de encuestas del CAMBIO 3).
+5. Generar citas (`Cita`) de ejemplo entre compradores y proveedores para el evento activo:
+   - Mezclar estados: pendiente, aceptada, rechazada, reagendada (varias por proveedor, respetando `max_citas_por_comprador` y `tiempo_entre_citas_minutos` del evento).
+   - Fechas/horas dentro de la ventana de agenda del evento activo.
+6. Para el evento pasado, generar también algunas citas con estado "aceptada"/"finalizada" para que la encuesta tenga sentido (usuarios "participaron").
+7. Registrar este seeder en `DatabaseSeeder.php` (después del seeder de reset del CAMBIO 4) para que `php artisan db:seed --force` ejecute todo en orden: roles -> reset -> demo data.
+8. Verificar que las imágenes de proveedores/eventos generadas se guarden en `storage/app/public/...` y que el enlace simbólico `public/storage` exista.
+
+==========================================
+CAMBIO 6: Deploy a producción (impulsate.iyemyucatan.com)
+==========================================
+NOTA: el dominio cambió de `lightcyan-mallard-509513.hostingersite.com` a `impulsate.iyemyucatan.com`. Verificar:
+- Configuración de `.env` en el servidor: `APP_URL=https://impulsate.iyemyucatan.com`.
+- Configuración de correo (`MAIL_FROM_ADDRESS`, etc.) - revisar si debe actualizarse a un correo del dominio iyemyucatan.com.
+- Si el dominio es nuevo en Hostinger, verificar que el DNS apunte correctamente y que el documento raíz del hosting (public_html o subdominio) sea el correcto antes de hacer deploy. Si hay dudas sobre la configuración de DNS/dominio, PREGUNTAR al usuario antes de proceder, ya que esto requiere acceso al panel de Hostinger fuera del alcance del código.
+
+Pasos de deploy (mismos que en prompts anteriores, ajustados):
+1. Local: `npm run build`.
+2. `git add . && git commit -m "V4: sidebar eventos, imagen evento, encuestas satisfacción, reset datos, seed demo"` y `git push`.
+3. SSH al servidor de Hostinger:
+   - `cd` al directorio del proyecto.
+   - `git pull`.
+   - `composer install --no-dev --optimize-autoloader`.
+   - Actualizar `.env` con `APP_URL` correcto y nuevas variables si aplica.
+   - `php artisan migrate --force` (ejecuta las migraciones de imagen de evento y encuestas).
+   - `php artisan storage:link` (si no existe ya).
+   - **CONFIRMAR CON EL USUARIO ANTES DE EJECUTAR**: `php artisan db:seed --class=LimpiarYResetearSeeder --force` y luego `php artisan db:seed --class=DemoDataSeeder --force` (esto borra datos reales - hacer respaldo previo con `mysqldump` y avisar al usuario).
+   - `php artisan optimize:clear`
+   - `php artisan config:cache && php artisan route:cache && php artisan view:cache`
+   - Copiar `public/build/` al `public_html/build/` correspondiente (o la ruta del subdominio impulsate.iyemyucatan.com).
+4. Verificar en el navegador: ambos paneles muestran la barra de eventos, el admin puede crear un evento con imagen, la sección de Encuestas existe en el admin, y los datos de prueba (10 proveedores, 15 compradores, 3 eventos) se ven correctamente en modo claro y oscuro, en móvil y desktop.
+
+==========================================
+VERIFICACIÓN FINAL
+==========================================
+- [ ] Sidebar de eventos visible y bien alineada en panel de comprador y proveedor, responsiva (oculta/colapsada en móvil).
+- [ ] Crear/editar evento permite subir imagen, con preview, y la imagen se ve en la sidebar, en TabEventos y en Welcome (si aplica).
+- [ ] Encuesta: al finalizar/archivar un evento se generan tokens y se envían correos; formulario público `/encuesta/{token}` funciona sin login; admin puede ver y exportar respuestas a Excel.
+- [ ] Solo existe un usuario admin: impulsate@iyemyucatan.com / password.
+- [ ] 10 proveedores y 15 compradores con datos e imágenes; 3 eventos (activo, pasado, próximo) con imagen; citas generadas con distintos estados.
+- [ ] Modo claro/oscuro y responsividad (375px, tablet, desktop) revisados en todas las pantallas nuevas.
+- [ ] Deploy realizado en impulsate.iyemyucatan.com y verificado en producción.

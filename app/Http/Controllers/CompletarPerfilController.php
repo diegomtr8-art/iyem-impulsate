@@ -4,18 +4,51 @@ namespace App\Http\Controllers;
 
 use App\Models\Evento;
 use App\Models\Horario;
+use App\Models\Notificacion;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class CompletarPerfilController extends Controller
 {
+    public const MUNICIPIOS = [
+        'Abalá','Acanceh','Akil','Baca','Bokobá','Buctzotz','Calkiní',
+        'Calotmul','Cansahcab','Cantamayec','Celestún','Cenotillo','Conkal',
+        'Cuncunul','Cuzamá','Chacsinkín','Chankom','Chapab','Chemax',
+        'Chicxulub Pueblo','Chichimilá','Chikindzonot','Chocholá','Chumayel',
+        'Dzan','Dzemul','Dzidzantún','Dzilam de Bravo','Dzilam González',
+        'Dzitás','Dzoncauich','Espita','Halachó','Hocabá','Hoctún','Homún',
+        'Huhí','Hunucmá','Ixil','Izamal','Kanasín','Kantunil','Kaua',
+        'Kinchil','Kopomá','Mama','Maní','Maxcanú','Mayapán','Mérida',
+        'Mocochá','Motul','Muna','Muxupip','Opichén','Oxkutzcab','Panabá',
+        'Peto','Progreso','Quintana Roo','Río Lagartos','Sacalum','Samahil',
+        'Sanahcat','San Felipe','Santa Elena','Seyé','Sinanché','Sotuta',
+        'Sucilá','Sudzal','Suma','Tahdziú','Tahmek','Teabo','Tecoh',
+        'Tekal de Venegas','Tekantó','Tekax','Tekit','Tekom','Telchac Pueblo',
+        'Telchac Puerto','Temax','Temozón','Tepakán','Tetiz','Teya','Ticul',
+        'Timucuy','Tinum','Tixcacalcupul','Tixkokob','Tixmehuac','Tixpéhual',
+        'Tizimín','Tunkás','Tzucacab','Uayma','Ucú','Umán','Valladolid',
+        'Xocchel','Yaxcabá','Yaxkukul','Yobaín',
+    ];
+
     public function create(Request $request)
     {
+        $user = $request->user();
+
+        // Los proveedores completan su perfil en el panel de Restaurantero, no aquí.
+        if ($user->hasRole('restaurantero') && !$user->hasRole('cliente')) {
+            return redirect()->route('restaurantero.completar-perfil');
+        }
+
+        $municipios = self::MUNICIPIOS;
+        sort($municipios);
+
         return Inertia::render('Auth/CompletarPerfil', [
-            'user' => $request->user(),
+            'user'       => $user,
+            'municipios' => $municipios,
         ]);
     }
 
@@ -25,16 +58,20 @@ class CompletarPerfilController extends Controller
             'telefono'              => ['required', 'string', 'max:20'],
             'curp'                  => ['nullable', 'string', 'max:18'],
             'rfc'                   => ['nullable', 'string', 'max:13'],
-            'municipio'             => ['nullable', 'string', 'max:100'],
+            'municipio'             => ['required', 'string', 'max:100'],
             'nombre_empresa'        => ['required', 'string', 'max:200'],
             'camara_asociacion'     => ['required', 'string', 'in:CANIRAC,Ninguna'],
             'nombre_establecimiento'=> [
                 'nullable', 'string', 'max:255',
                 Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),
             ],
+            'necesidades'           => ['required', 'string', 'max:2000'],
+            'es_restaurantero'      => ['boolean'],
         ]);
 
-        $request->user()->update([
+        $user = $request->user();
+
+        $user->update([
             'telefono'               => $request->telefono,
             'curp'                   => $request->curp ? strtoupper($request->curp) : null,
             'rfc'                    => $request->rfc ? strtoupper($request->rfc) : null,
@@ -45,7 +82,44 @@ class CompletarPerfilController extends Controller
             'nombre_establecimiento' => $request->camara_asociacion === 'CANIRAC'
                                         ? $request->nombre_establecimiento
                                         : null,
+            'necesidades'            => $request->necesidades,
+            'es_restaurantero'       => $request->boolean('es_restaurantero'),
         ]);
+
+        // Auto-registro y auto-aprobación al evento activo si es restaurantero
+        if ($request->boolean('es_restaurantero')) {
+            $evento = Evento::activo();
+            if ($evento) {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $user->id)
+                    ->where('tipo', 'comprador')
+                    ->first();
+
+                if (!$registro) {
+                    DB::table('evento_usuario')->insert([
+                        'evento_id'     => $evento->id,
+                        'user_id'       => $user->id,
+                        'tipo'          => 'comprador',
+                        'estado'        => 'aprobado',
+                        'respondido_at' => now(),
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]);
+                } elseif ($registro->estado !== 'aprobado') {
+                    DB::table('evento_usuario')
+                        ->where('id', $registro->id)
+                        ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+                }
+
+                Notificacion::crear(
+                    $user->id,
+                    'solicitud_aprobada',
+                    '¡Bienvenido al evento!',
+                    'Tu registro al evento "' . $evento->nombre . '" fue aprobado automáticamente. Ya puedes ver el directorio de proveedores y agendar citas.'
+                );
+            }
+        }
 
         return redirect()->route('dashboard')
             ->with('success', '¡Perfil completado! Ya puedes acceder a todas las funciones.');
@@ -67,9 +141,13 @@ class CompletarPerfilController extends Controller
                 'nullable', 'string', 'max:255',
                 Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),
             ],
+            'es_restaurantero'      => ['boolean'],
         ]);
 
-        $request->user()->update([
+        $user = $request->user();
+        $seAcabaDeVolverRestaurantero = $request->boolean('es_restaurantero') && !$user->es_restaurantero;
+
+        $user->update([
             'name'                   => $request->name,
             'telefono'               => $request->telefono,
             'curp'                   => $request->curp ? strtoupper($request->curp) : null,
@@ -82,7 +160,43 @@ class CompletarPerfilController extends Controller
             'nombre_establecimiento' => $request->camara_asociacion === 'CANIRAC'
                                         ? $request->nombre_establecimiento
                                         : null,
+            'es_restaurantero'       => $request->boolean('es_restaurantero'),
         ]);
+
+        // Si acaba de marcar "¿Eres restaurantero?", auto-registrarlo al evento activo
+        if ($seAcabaDeVolverRestaurantero) {
+            $evento = Evento::activo();
+            if ($evento) {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $user->id)
+                    ->where('tipo', 'comprador')
+                    ->first();
+
+                if (!$registro) {
+                    DB::table('evento_usuario')->insert([
+                        'evento_id'     => $evento->id,
+                        'user_id'       => $user->id,
+                        'tipo'          => 'comprador',
+                        'estado'        => 'aprobado',
+                        'respondido_at' => now(),
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]);
+                } elseif ($registro->estado !== 'aprobado') {
+                    DB::table('evento_usuario')
+                        ->where('id', $registro->id)
+                        ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+                }
+
+                Notificacion::crear(
+                    $user->id,
+                    'solicitud_aprobada',
+                    '¡Ahora eres parte del evento!',
+                    'Tu registro como restaurantero al evento "' . $evento->nombre . '" fue activado automáticamente.'
+                );
+            }
+        }
 
         return back()->with('success', 'Perfil actualizado correctamente.');
     }

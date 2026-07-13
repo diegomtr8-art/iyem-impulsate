@@ -106,10 +106,21 @@ class PlantillasCorreoSeeder extends Seeder
                 'es_sistema'         => true,
                 'contenido'          => $this->tplEventoSolicitudRechazada(),
             ],
+            [
+                'clave'              => 'agenda_propuesta',
+                'nombre'             => 'Propuesta de agenda al comprador',
+                'asunto'             => 'IMPULSATE: Tu propuesta de agenda — {{nombre_evento}}',
+                'tipo_destinatario'  => 'comprador',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplAgendaPropuesta(),
+            ],
         ];
 
         foreach ($plantillas as $data) {
-            PlantillaCorreo::updateOrCreate(
+            // firstOrCreate (no updateOrCreate): las plantillas son editables desde la UI de
+            // admin, así que re-correr este seeder no debe pisar el contenido que un admin
+            // ya haya personalizado. Solo crea las que falten.
+            PlantillaCorreo::firstOrCreate(
                 ['clave' => $data['clave']],
                 array_merge($data, ['activo' => true])
             );
@@ -312,5 +323,28 @@ HTML;
 </div>
 HTML;
         return $this->wrap('Solicitud Revisada', '⚠️ Resultado de tu solicitud', $cuerpo);
+    }
+
+    private function tplAgendaPropuesta(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_comprador}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">El equipo de IMPULSATE preparó una propuesta de agenda de citas con proveedores para tu participación en <strong>{{nombre_evento}}</strong> el <strong>{{fecha_evento}}</strong>.</p>
+<div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Tu agenda propuesta</p>
+  <p style="margin:0;font-size:14px;color:#374151;line-height:1.9;">{{lista_citas}}</p>
+</div>
+<p style="margin:0 0 20px;font-size:15px;color:#374151;">¿Aceptas esta propuesta de agenda? Si aceptas, las citas se crearán automáticamente en el sistema.</p>
+<div style="text-align:center;margin-bottom:16px;">
+  <a href="{{url_aceptar}}" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;margin:0 8px 8px;">
+    ✅ Aceptar agenda
+  </a>
+  <a href="{{url_rechazar}}" style="display:inline-block;background:#ffffff;border:2px solid #d1d5db;color:#6b7280;font-weight:700;font-size:15px;padding:12px 30px;border-radius:12px;text-decoration:none;margin:0 8px 8px;">
+    ❌ No acepto
+  </a>
+</div>
+<p style="margin:0;font-size:13px;color:#9ca3af;">Este enlace es de un solo uso. Si tienes dudas, escríbenos a impulsate@iyemyucatan.com</p>
+HTML;
+        return $this->wrap('Propuesta de Agenda', '📅 Nueva propuesta de agenda', $cuerpo);
     }
 }

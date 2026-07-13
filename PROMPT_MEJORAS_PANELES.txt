@@ -1,0 +1,407 @@
+========================================================
+PROMPT — ANÁLISIS Y MEJORAS: PANELES COMPRADOR Y PROVEEDOR
+========================================================
+
+IMPORTANTE — LEE ESTO PRIMERO:
+Este prompt tiene DOS fases claramente separadas.
+FASE A: Solo analizar, investigar y presentar recomendaciones.
+FASE B: Implementar ÚNICAMENTE lo que el usuario apruebe explícitamente.
+
+NO escribas una sola línea de código hasta que el usuario haya leído
+el reporte de la Fase A y confirme qué cambios quiere.
+Después de presentar el reporte, escribe:
+"✋ Esperando tu confirmación — ¿qué cambios quieres que implemente?"
+Y detente completamente.
+
+===========================================================
+CONTEXTO DEL PROYECTO
+===========================================================
+
+Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS + Jetstream + Fortify.
+Color primario: guinda (#8b1028). darkMode: 'class'.
+URL producción: https://lightcyan-mallard-509513.hostingersite.com/
+
+PANEL COMPRADOR — ruta: /mi-panel
+Archivo: resources/js/Pages/User/Dashboard.vue
+Controlador: app/Http/Controllers/CitaPublicaController.php
+
+Lo que ya existe en el panel comprador:
+- Banner de bienvenida con modo activo
+- Card de registro al evento activo
+- Stats: barra de progreso de citas usadas vs máximo
+- Lista de citas con estado, fecha, botón cancelar
+- Vista de calendario (FullCalendar)
+- Modal de edición de perfil (nombre, teléfono, sitio web, necesidades)
+- Próxima cita destacada
+- Banner de invitación a ser proveedor
+- Historial de ediciones/eventos pasados
+
+PANEL PROVEEDOR — ruta: /proveedor/panel
+Archivo: resources/js/Pages/Restaurantero/Panel.vue
+Controlador: app/Http/Controllers/RestauranteroPanelController.php
+
+Lo que ya existe en el panel proveedor:
+- 3 stats: citas hoy, citas esta semana, citas pendientes
+- Lista de últimas citas con acciones: aceptar, rechazar, reagendar
+- Calendario semanal con citas del proveedor
+- Modal de edición de perfil (nombre empresa, descripción, RFC, municipio,
+  teléfono, sitio web, hasta 5 productos top con foto)
+- Modal de reagendamiento de citas
+- Banner de invitación a ser comprador
+
+Vista de citas del proveedor — ruta: /proveedor/citas
+Archivo: resources/js/Pages/Restaurantero/Citas.vue
+- Tabs: Pendientes / Confirmadas / Rechazadas / Historial
+- Acciones por cita: aceptar, rechazar, reagendar
+- Datos del comprador: nombre, email, teléfono
+
+===========================================================
+FASE A — ANÁLISIS Y REPORTE (NO CODIFICAR)
+===========================================================
+
+Haz lo siguiente en orden:
+
+───────────────────────────────────────────────
+PASO A1 — LEE EL CÓDIGO DE AMBOS PANELES
+───────────────────────────────────────────────
+
+Lee los siguientes archivos completamente:
+  resources/js/Pages/User/Dashboard.vue
+  resources/js/Pages/Restaurantero/Panel.vue
+  resources/js/Pages/Restaurantero/Citas.vue
+  app/Http/Controllers/CitaPublicaController.php
+  app/Http/Controllers/RestauranteroPanelController.php
+  app/Http/Controllers/RestauranteroCitasController.php
+  app/Models/User.php
+  app/Models/Restaurantero.php
+  app/Models/Cita.php
+
+───────────────────────────────────────────────
+PASO A2 — INVESTIGA PLATAFORMAS DE REFERENCIA
+───────────────────────────────────────────────
+
+Busca en internet y analiza las siguientes plataformas para entender
+qué funcionalidades ofrecen a compradores y proveedores en contextos
+de eventos de networking y agendado de citas B2B:
+
+Buscar: "b2b matchmaking platform buyer seller dashboard features"
+Buscar: "business networking event appointment scheduling app features"
+Buscar: "b2b trade show appointment booking platform ux"
+Buscar: "proveedor comprador plataforma citas empresariales funciones"
+Buscar: "Bizzabo Swapcard Grip networking event features buyer"
+Buscar: "buyer profile completion onboarding modal best practices saas"
+Buscar: "supplier dashboard appointment management best ux 2024"
+
+Plataformas concretas a investigar:
+- Swapcard (swapcard.com) — networking events
+- Grip (grip.events) — B2B matchmaking
+- Bizzabo (bizzabo.com) — event management
+- Calendly — appointment scheduling UX
+- HubSpot meetings — buyer/seller scheduling UX
+
+De cada plataforma, extraer:
+  ¿Qué le muestran al comprador en su dashboard?
+  ¿Qué le muestran al proveedor/expositor en su dashboard?
+  ¿Qué notificaciones o guías de onboarding tienen?
+  ¿Qué información muestra el perfil de cada parte?
+  ¿Qué herramientas de preparación para las reuniones ofrecen?
+  ¿Qué métricas/stats le muestran al proveedor?
+
+───────────────────────────────────────────────
+PASO A3 — GENERA EL REPORTE DE RECOMENDACIONES
+───────────────────────────────────────────────
+
+Con base en el análisis del código (A1) y la investigación (A2),
+presenta un reporte estructurado con el siguiente formato:
+
+════════════════════════════════════════
+📋 REPORTE DE ANÁLISIS Y RECOMENDACIONES
+════════════════════════════════════════
+
+──────────────────────────────────────────────────────
+SECCIÓN 1: PANEL COMPRADOR — Lo que ya tiene ✅
+──────────────────────────────────────────────────────
+[Lista detallada de lo que actualmente funciona bien,
+con observaciones sobre UX y usabilidad]
+
+──────────────────────────────────────────────────────
+SECCIÓN 2: PANEL COMPRADOR — Lo que le falta ❌
+──────────────────────────────────────────────────────
+Para cada funcionalidad faltante, indicar:
+  📌 Nombre de la funcionalidad
+  🎯 Por qué es importante (qué problema resuelve)
+  💡 Cómo se implementaría (descripción simple, sin código)
+  📊 Nivel de impacto: Alto / Medio / Bajo
+  ⚙️ Complejidad de implementación: Alta / Media / Baja
+  🔗 Referencia: dónde se usa en plataformas similares
+
+Funcionalidades a evaluar si faltan (no todas necesariamente):
+  - Buscador/filtro de proveedores disponibles en el evento
+  - Vista de perfil del proveedor antes de agendar (productos, descripción)
+  - Indicador de slots disponibles por proveedor
+  - Preparación para la reunión (notas previas, agenda personal)
+  - Recordatorio visual de próxima cita en el dashboard
+  - Historial de citas pasadas con resumen
+  - Sección "Mis Favoritos" (guardar proveedores de interés)
+  - Descarga de agenda personal en PDF o iCal
+  - Evaluación/calificación del proveedor después de la cita
+  - Chat o mensajería básica con el proveedor
+  - Indicador de progreso del evento (timeline visual)
+  - Sección de "Recomendados para ti" basada en sector
+  - Estado de perfil completo / incompleto con pasos claros
+  - Notificación push o in-app cuando el proveedor acepta/rechaza
+
+──────────────────────────────────────────────────────
+SECCIÓN 3: PANEL PROVEEDOR — Lo que ya tiene ✅
+──────────────────────────────────────────────────────
+[Lista detallada de lo que actualmente funciona bien]
+
+──────────────────────────────────────────────────────
+SECCIÓN 4: PANEL PROVEEDOR — Lo que le falta ❌
+──────────────────────────────────────────────────────
+[Mismo formato que Sección 2, evaluando:]
+  - Dashboard de métricas más completo (tasa de aceptación, % de conversión)
+  - Vista de los compradores que van a asistir al evento
+  - Perfil público del proveedor (página que ven los compradores)
+  - Galería de productos/servicios más visual
+  - Preparación para cada cita (notas del comprador, qué necesita)
+  - Exportar lista de citas del día / agenda del evento
+  - Alerta cuando una cita está próxima (en las próximas 2h)
+  - Sistema de respuesta rápida a solicitudes (aprobar/rechazar con 1 tap)
+  - Estadísticas del evento: cuántos compradores me visitaron vs agendaron
+  - Material de presentación / brochure digital adjuntable
+  - Insignia de "Perfil Verificado" o "Aprobado por el organizador"
+  - Mensajería básica con el comprador
+  - Disponibilidad bloqueada (marcar horarios en los que NO puede)
+
+──────────────────────────────────────────────────────
+SECCIÓN 5: NOTIFICACIÓN DE PERFIL INCOMPLETO
+──────────────────────────────────────────────────────
+Analizar el sistema de onboarding de plataformas como:
+  - LinkedIn (indicador de perfil al X%)
+  - Swapcard (pasos de configuración del expositor)
+  - Airbnb (checklist de anfitrión)
+  - HubSpot (barra de configuración)
+
+Proponer un diseño específico para este proyecto:
+  ¿Cómo debería verse la notificación de perfil incompleto?
+  ¿Qué campos son obligatorios vs opcionales para cada rol?
+  ¿Debe ser un banner, modal, barra de progreso, o un checklist?
+  ¿Cuándo aparece y cuándo desaparece?
+  ¿Qué pasa si el usuario la cierra? ¿Vuelve a aparecer?
+
+Para el COMPRADOR, los campos de perfil a evaluar son:
+  - Nombre completo
+  - Teléfono
+  - Empresa (si aplica)
+  - Sector económico de interés
+  - Necesidades / qué busca en el evento
+  - Foto de perfil (opcional pero recomendado)
+
+Para el PROVEEDOR, los campos a evaluar son:
+  - Nombre de la empresa
+  - Descripción de la empresa
+  - RFC
+  - Municipio / ubicación
+  - Teléfono
+  - Sitio web
+  - Al menos 1 producto o servicio con nombre
+  - Logo o foto de la empresa
+  - Categoría/sector
+
+──────────────────────────────────────────────────────
+SECCIÓN 6: PRIORIZACIÓN — TOP 10 CAMBIOS RECOMENDADOS
+──────────────────────────────────────────────────────
+Con base en todo el análisis, listar los 10 cambios más importantes
+ordenados por impacto/esfuerzo, en este formato:
+
+  #1 — [Nombre del cambio]
+       Panel: Comprador / Proveedor / Ambos
+       Impacto: Alto/Medio/Bajo | Esfuerzo: Alto/Medio/Bajo
+       Descripción en 2-3 líneas de qué es y por qué es prioritario
+
+  [... #2 al #10 ...]
+
+──────────────────────────────────────────────────────
+SECCIÓN 7: MOCKUP TEXTUAL DE CÓMO QUEDARÍAN LOS PANELES
+──────────────────────────────────────────────────────
+Dibuja un mockup ASCII/textual de cómo quedaría cada panel
+si se implementaran las mejoras prioritarias. Por ejemplo:
+
+┌─────────────────────────────────────────┐
+│  🛒 Panel Comprador                      │
+├─────────────────────────────────────────┤
+│  [Banner: Perfil 60% completo ███░░]     │
+│  [Próxima cita en: 2h 30min]             │
+│  [Stats: 3/5 citas usadas]               │
+│  ...                                     │
+└─────────────────────────────────────────┘
+
+════════════════════════════════════════
+FIN DEL REPORTE
+════════════════════════════════════════
+
+Al terminar el reporte escribe exactamente esto:
+"✋ Análisis completado. Por favor revisa las recomendaciones y dime:
+   1. ¿Cuáles de estos cambios quieres que implemente?
+   2. ¿Hay algo que NO quieres que toque?
+   3. ¿Tienes alguna preferencia de diseño o prioridad adicional?
+   No haré ningún cambio hasta recibir tu respuesta."
+
+===========================================================
+FASE B — IMPLEMENTACIÓN (SOLO DESPUÉS DE APROBACIÓN)
+===========================================================
+
+Esta fase se ejecuta ÚNICAMENTE después de que el usuario confirme
+explícitamente qué cambios aprobar. No asumir. Esperar confirmación.
+
+Cuando el usuario apruebe cambios, implementar en este orden:
+
+───────────────────────────────────────────────────────
+B1 — SISTEMA DE PERFIL INCOMPLETO (NOTIFICACIÓN/MODAL)
+───────────────────────────────────────────────────────
+
+Crear componente: resources/js/Components/PerfilIncompleto.vue
+
+Para el COMPRADOR:
+Calcular porcentaje de completitud del perfil según campos:
+  name (20%) + telefono (20%) + sector/necesidades (20%) + foto (20%) + empresa (20%)
+
+Para el PROVEEDOR:
+  nombre_restaurante (15%) + descripcion (15%) + telefono (10%) + rfc (10%)
+  + municipio (10%) + sitio_web (10%) + logo (10%) + al menos 1 producto (20%)
+
+DISEÑO DEL BANNER (no modal intrusivo — aparece en el dashboard):
+  - Banner pegado en la parte superior del contenido (debajo del navbar)
+  - Barra de progreso visual con porcentaje
+  - Mensaje: "Tu perfil está al [X]% — complétalo para que los [compradores/proveedores]
+    te encuentren fácilmente"
+  - Botón "Completar perfil" que abre el modal de edición existente
+  - Botón X para cerrarlo (se guarda en localStorage que fue cerrado)
+  - Si el perfil está al 100%, el banner desaparece permanentemente
+  - El banner solo aparece si el perfil está por debajo del 80%
+  - Diseño: usando colores guinda, responsivo para móvil (ocupa todo el ancho)
+  - En móvil: compacto con solo la barra de progreso y el botón
+
+LÓGICA DE PERSISTENCIA:
+  - Usar localStorage key: 'perfil_banner_cerrado_{user_id}'
+  - Si el usuario cierra el banner, no volver a mostrarlo en 24 horas
+  - Pasadas las 24 horas, si sigue incompleto, volver a mostrar
+
+DATOS DESDE EL BACKEND:
+  En HandleInertiaRequests.php, añadir a los datos compartidos:
+    'perfil_completitud' => [
+        'porcentaje' => $porcentaje,  // 0-100
+        'campos_faltantes' => [...],  // lista de campos que faltan
+    ]
+
+───────────────────────────────────────────────────────
+B2 — CAMBIOS APROBADOS POR EL USUARIO
+───────────────────────────────────────────────────────
+
+[Esta sección se llena con los cambios específicos que el usuario apruebe.
+ Implementar uno por uno, confirmando con el usuario antes de pasar al siguiente
+ si son cambios grandes, o en grupo si son cambios pequeños relacionados.]
+
+Para CADA cambio implementado:
+  - Hacer el cambio en el backend (controlador/modelo) si aplica
+  - Hacer el cambio en el frontend (Vue/Inertia)
+  - Asegurar que sea completamente responsivo para móvil (375px mínimo)
+  - Usar colores guinda (no azul)
+  - Implementar dark mode (clases dark:)
+  - Si hay texto nuevo, en español con acentos correctos
+
+───────────────────────────────────────────────────────
+B3 — RESPONSIVIDAD MÓVIL DE TODOS LOS CAMBIOS
+───────────────────────────────────────────────────────
+
+Para CADA componente nuevo o modificado en la Fase B, verificar:
+  □ Se ve bien en 375px (iPhone SE)
+  □ Se ve bien en 430px (iPhone Pro Max)
+  □ Se ve bien en 768px (iPad)
+  □ No hay scroll horizontal en ningún breakpoint
+  □ Botones tienen min-height: 44px (táctiles)
+  □ Textos son legibles sin hacer zoom (mínimo 14px)
+  □ Modales ocupan el ancho disponible en móvil (mx-3 o similar)
+  □ El banner de perfil incompleto es compacto en móvil
+
+───────────────────────────────────────────────────────
+B4 — VERIFICACIÓN FINAL ANTES DEL DEPLOY
+───────────────────────────────────────────────────────
+
+Antes de hacer el deploy, verificar:
+  □ php artisan test (si existen tests, que pasen)
+  □ No hay errores en la consola del navegador (javascript errors)
+  □ No hay errores en storage/logs/laravel.log
+  □ Todos los cambios se ven bien en light mode Y dark mode
+  □ Los nuevos componentes usan color guinda, no azul
+  □ Los textos están en español con acentos
+  □ La notificación de perfil incompleto aparece correctamente
+    para un usuario con perfil vacío y desaparece con perfil completo
+  □ npm run build sin errores
+
+───────────────────────────────────────────────────────
+B5 — DEPLOY A PRODUCCIÓN
+───────────────────────────────────────────────────────
+
+URL producción: https://lightcyan-mallard-509513.hostingersite.com/
+Hosting: Hostinger Business con SSH y cPanel.
+
+Solo ejecutar el deploy después de que el usuario confirme:
+"Todo se ve bien, haz el deploy."
+
+Pasos del deploy:
+
+1. Build local de assets:
+   npm run build
+
+2. Subir archivos al servidor vía Git (SSH):
+   cd /home/usuario/impulsate
+   git add .
+   git commit -m "feat: mejoras paneles comprador y proveedor — [lista de cambios]"
+   git push origin main
+
+   O si se usa FTP: subir todos los archivos modificados excepto
+   node_modules/, .env, storage/logs/*.log
+
+3. En el servidor vía SSH o Terminal de cPanel:
+   cd /home/usuario/impulsate
+   composer install --no-dev --optimize-autoloader
+   php artisan migrate --force
+   php artisan optimize:clear
+   php artisan config:cache
+   php artisan route:cache
+   php artisan view:cache
+
+4. Copiar assets compilados:
+   Copiar public/build/ → public_html/build/
+
+5. Verificación post-deploy:
+   php artisan about
+   # Revisar: tail -20 storage/logs/laravel.log
+   # Visitar: https://lightcyan-mallard-509513.hostingersite.com/
+
+6. Al terminar el deploy, reportar al usuario:
+   "✅ Deploy completado. La plataforma está actualizada en producción.
+    URL: https://lightcyan-mallard-509513.hostingersite.com/
+    Cambios desplegados: [lista de lo que se implementó]"
+
+===========================================================
+RECORDATORIO FINAL
+===========================================================
+
+El flujo es:
+  1. Leer código actual (A1)
+  2. Investigar plataformas similares en internet (A2)
+  3. Generar reporte con recomendaciones (A3)
+  4. DETENERSE y esperar aprobación del usuario
+  5. Implementar solo lo aprobado (B2)
+  6. Verificar responsividad y calidad (B3, B4)
+  7. Deploy solo si el usuario lo confirma (B5)
+
+NO saltarse ningún paso. NO asumir aprobación.
+NO hacer cambios sin confirmación explícita del usuario.
+
+========================================================
+FIN DEL PROMPT
+========================================================

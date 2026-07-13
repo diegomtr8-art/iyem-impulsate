@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup — Logística + Capacidad + Excel</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+    darkMode: 'class',
+    theme: {
+        extend: {
+            colors: {
+                guinda: {
+                    50:  '#fdf2f4',
+                    100: '#fce7eb',
+                    200: '#f9c5cf',
+                    300: '#f495a8',
+                    400: '#ec5a77',
+                    500: '#e0294f',
+                    600: '#c71a3b',
+                    700: '#8b1028',
+                    800: '#751028',
+                    900: '#641027',
+                    950: '#3b0512',
+                },
+            }
+        }
+    }
+}
+</script>
+<style>
+  body { background: #030712; color: #f9fafb; font-family: 'Inter', system-ui, sans-serif; }
+  .tab-btn { cursor: pointer; padding: 10px 20px; border-radius: 8px 8px 0 0; font-weight: 600; font-size: 14px; transition: all .2s; }
+  .tab-btn.active { background: #8b1028; color: #fff; }
+  .tab-btn:not(.active) { background: #111827; color: #9ca3af; }
+  .tab-btn:not(.active):hover { background: #1f2937; color: #fff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .toggle-yes.active, .toggle-no.active { background: #8b1028; color: #fff; border-color: #8b1028; }
+  .pill-option.active { background: #8b1028; color: #fff; border-color: #8b1028; }
+
+  /* Excel preview */
+  .xl-table th { background: #8b1028; color: #fff; font-weight: 700; font-size: 11px; padding: 8px 10px; text-align: center; white-space: nowrap; border: 1px solid #6b0d1e; }
+  .xl-table td { font-size: 10px; padding: 6px 10px; border: 1px solid #e5e7eb; white-space: nowrap; vertical-align: middle; color: #111827; }
+  .xl-table tr:nth-child(even) td { background: #fdf2f4; }
+  .xl-table tr:nth-child(odd) td { background: #ffffff; }
+  .xl-table td.bold { font-weight: 700; }
+  .xl-table td.center { text-align: center; }
+  .xl-wrap { overflow-x: auto; border-radius: 10px; box-shadow: 0 4px 24px rgba(0,0,0,.18); }
+</style>
+</head>
+<body>
+
+<div class="max-w-5xl mx-auto px-4 py-10">
+
+  <!-- Header -->
+  <div class="mb-8">
+    <img src="/images/logo_impulsate.png" alt="" class="h-8 mb-4 opacity-80" onerror="this.style.display='none'" />
+    <div class="inline-flex items-center gap-2 bg-guinda-700/20 border border-guinda-700/30 px-3 py-1 rounded-full mb-3">
+      <span class="w-2 h-2 rounded-full bg-guinda-500 animate-pulse"></span>
+      <span class="text-guinda-400 text-xs font-semibold">Mockup de cambios — IMPÚLSATE</span>
+    </div>
+    <h1 class="text-3xl font-black text-white">Logística · Capacidad · Excel</h1>
+    <p class="text-gray-400 mt-1 text-sm">Vista previa de los 3 cambios antes del deploy a producción</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex flex-wrap gap-1 mb-0">
+    <button class="tab-btn active" onclick="showTab('form')">1 · Formulario (Logística + Capacidad)</button>
+    <button class="tab-btn" onclick="showTab('public')">2 · Perfil Público</button>
+    <button class="tab-btn" onclick="showTab('excel')">3 · Excel Mejorado</button>
+  </div>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-b-2xl rounded-tr-2xl p-6 space-y-6">
+
+    <!-- ══ TAB 1: FORMULARIO ══════════════════════════════════════════════════ -->
+    <div id="tab-form" class="tab-panel active space-y-6">
+
+      <div class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-2">
+        Modal de edición de perfil del proveedor — secciones nuevas/modificadas
+      </div>
+
+      <!-- Sección Condiciones comerciales (ya existía) -->
+      <div class="border border-gray-700 rounded-xl p-4 space-y-3 opacity-60">
+        <h3 class="text-sm font-bold text-gray-200 flex items-center gap-2">💳 Condiciones comerciales <span class="text-xs font-normal text-gray-500">(ya existía)</span></h3>
+        <div class="flex gap-3 text-xs">
+          <span class="px-3 py-1 bg-guinda-700/30 border border-guinda-600/40 text-guinda-300 rounded-full">Acepta crédito: Sí · máx. $50,000</span>
+          <span class="px-3 py-1 bg-guinda-700/30 border border-guinda-600/40 text-guinda-300 rounded-full">Contraentrega: No</span>
+          <span class="px-3 py-1 bg-guinda-700/30 border border-guinda-600/40 text-guinda-300 rounded-full">Factura: Sí</span>
+        </div>
+      </div>
+
+      <!-- ✅ NUEVA Sección Logística y Distribución -->
+      <div class="border-2 border-guinda-700/60 rounded-xl p-4 space-y-4 relative">
+        <div class="absolute -top-3 left-4 bg-guinda-700 text-white text-xs font-bold px-2 py-0.5 rounded-full">NUEVO</div>
+        <h3 class="text-sm font-bold text-gray-100 flex items-center gap-2">🚚 Logística y Distribución</h3>
+
+        <!-- Entrega a domicilio -->
+        <div>
+          <p class="text-sm font-medium text-gray-300 mb-2">¿Entregan a domicilio?</p>
+          <div class="flex gap-3">
+            <button id="yes-btn" onclick="toggleEntrega(true)"
+              class="toggle-yes active flex-1 py-2 rounded-xl border border-guinda-700 text-sm font-semibold transition-colors">Sí</button>
+            <button id="no-btn" onclick="toggleEntrega(false)"
+              class="toggle-no flex-1 py-2 rounded-xl border border-gray-600 bg-gray-800 text-gray-300 text-sm font-semibold transition-colors">No</button>
+          </div>
+        </div>
+
+        <!-- Sub-preguntas (visibles cuando Sí) -->
+        <div id="sub-preguntas" class="space-y-4">
+
+          <!-- Cobertura -->
+          <div>
+            <p class="text-sm font-medium text-gray-300 mb-2">¿Cobertura de entrega?</p>
+            <div class="flex gap-2 flex-wrap">
+              <button onclick="selectPill(this,'cobertura')" class="pill-option cobertura active px-5 py-2 rounded-xl border border-guinda-700 bg-guinda-700 text-white text-sm font-semibold transition-colors">Local</button>
+              <button onclick="selectPill(this,'cobertura')" class="pill-option cobertura px-5 py-2 rounded-xl border border-gray-600 bg-gray-800 text-gray-300 text-sm font-semibold transition-colors">Regional</button>
+              <button onclick="selectPill(this,'cobertura')" class="pill-option cobertura px-5 py-2 rounded-xl border border-gray-600 bg-gray-800 text-gray-300 text-sm font-semibold transition-colors">Nacional</button>
+            </div>
+          </div>
+
+          <!-- Forma de entrega -->
+          <div>
+            <p class="text-sm font-medium text-gray-300 mb-2">¿Forma de entrega?</p>
+            <div class="flex gap-2">
+              <button onclick="selectPill(this,'forma')" class="pill-option forma flex-1 py-2 rounded-xl border border-gray-600 bg-gray-800 text-gray-300 text-sm font-semibold transition-colors">Programada</button>
+              <button onclick="selectPill(this,'forma')" class="pill-option forma active flex-1 py-2 rounded-xl border border-guinda-700 bg-guinda-700 text-white text-sm font-semibold transition-colors">Flexible</button>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Mensaje cuando No entrega -->
+        <div id="no-entrega-msg" class="hidden">
+          <p class="text-sm text-gray-500 italic">El proveedor no realiza entregas a domicilio. ✓</p>
+        </div>
+      </div>
+
+      <!-- ✅ Sección de Productos con capacidad nueva -->
+      <div class="border-2 border-guinda-700/60 rounded-xl p-4 space-y-4 relative">
+        <div class="absolute -top-3 left-4 bg-guinda-700 text-white text-xs font-bold px-2 py-0.5 rounded-full">NUEVO CAMPO</div>
+        <h3 class="text-sm font-bold text-gray-100 flex items-center gap-2">📦 Productos / Servicios</h3>
+        <p class="text-xs text-gray-500">Máximo 5 productos. Cada uno puede tener nombre, descripción, foto y ahora también <strong class="text-guinda-400">capacidad de producción mensual</strong>.</p>
+
+        <!-- Producto 1 -->
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-guinda-700 text-white text-xs font-bold flex items-center justify-center">1</span>
+            <span class="text-sm font-semibold text-gray-200">Producto destacado</span>
+          </div>
+          <input class="w-full bg-gray-700 border border-gray-600 text-white rounded-xl px-3 py-2 text-sm" value="Salsa habanera artesanal" readonly />
+          <textarea class="w-full bg-gray-700 border border-gray-600 text-white rounded-xl px-3 py-2 text-sm resize-none" rows="2" readonly>Salsa de habanero cosechado en Yucatán, sin conservadores artificiales.</textarea>
+
+          <!-- Campo nuevo: capacidad -->
+          <div class="border-t border-gray-600/50 pt-3">
+            <p class="text-xs text-guinda-400 font-semibold mb-2">📦 Capacidad de producción mensual aprox.</p>
+            <div class="flex gap-2">
+              <input type="number" class="w-1/2 bg-gray-700 border border-guinda-600 text-white rounded-xl px-3 py-2 text-sm" value="2500" readonly />
+              <select class="w-1/2 bg-gray-700 border border-guinda-600 text-white rounded-xl px-3 py-2 text-sm">
+                <option selected>Piezas</option>
+                <option>Cajas</option>
+                <option>Litros</option>
+                <option>Kilogramos</option>
+              </select>
+            </div>
+            <p class="text-xs text-gray-500 mt-1">Ejemplo: 2,500 Piezas/mes</p>
+          </div>
+        </div>
+
+        <!-- Producto 2 (sin capacidad aún) -->
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-4 space-y-3 opacity-70">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="w-6 h-6 rounded-full bg-gray-600 text-white text-xs font-bold flex items-center justify-center">2</span>
+            <span class="text-sm font-semibold text-gray-400">Producto destacado</span>
+          </div>
+          <input class="w-full bg-gray-700 border border-gray-600 text-gray-400 rounded-xl px-3 py-2 text-sm" placeholder="Nombre del producto (opcional)" readonly />
+          <div class="border-t border-gray-600/50 pt-3">
+            <p class="text-xs text-gray-600 font-semibold mb-2">📦 Capacidad de producción mensual aprox.</p>
+            <div class="flex gap-2">
+              <input type="number" class="w-1/2 bg-gray-700 border border-gray-700 text-gray-500 rounded-xl px-3 py-2 text-sm" placeholder="Cant. aprox." readonly />
+              <select class="w-1/2 bg-gray-700 border border-gray-700 text-gray-500 rounded-xl px-3 py-2 text-sm" disabled>
+                <option>Piezas</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <p class="text-xs text-gray-600 text-center">Los demás campos del formulario (nombre, descripción, logo, etc.) no cambian.</p>
+    </div>
+
+    <!-- ══ TAB 2: PERFIL PÚBLICO ══════════════════════════════════════════════ -->
+    <div id="tab-public" class="tab-panel">
+      <div class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-4">
+        Perfil público del proveedor — secciones nuevas/modificadas
+      </div>
+
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm space-y-5 max-w-xl">
+
+        <!-- Nombre -->
+        <div>
+          <div class="flex flex-wrap gap-2 mb-2">
+            <span class="inline-flex items-center gap-1 text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-500/20 px-3 py-1 rounded-full">
+              📍 Mérida, Yucatán
+            </span>
+          </div>
+          <h1 class="text-xl font-black text-gray-900 dark:text-white">Salsas Yucatecas Don Pedro</h1>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Productores artesanales de salsas y condimentos yucatecos desde 2010.</p>
+        </div>
+
+        <!-- Grilla de productos CON capacidad nueva -->
+        <div>
+          <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Productos / Servicios</h3>
+          <div class="grid grid-cols-3 gap-3">
+            <!-- Producto con capacidad -->
+            <div class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm hover:border-guinda-300 dark:hover:border-guinda-500/40 cursor-pointer transition-all">
+              <div class="w-full h-20 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+                <span class="text-2xl">🌶️</span>
+              </div>
+              <div class="p-2.5">
+                <p class="font-bold text-xs text-gray-900 dark:text-white">Salsa habanera</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">Sin conservadores artificiales</p>
+                <!-- NUEVO: badge de capacidad -->
+                <p class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold mt-1">📦 2,500 Piezas/mes</p>
+              </div>
+            </div>
+            <!-- Producto sin capacidad -->
+            <div class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm hover:border-guinda-300 dark:hover:border-guinda-500/40 cursor-pointer transition-all">
+              <div class="w-full h-20 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+                <span class="text-2xl">🍯</span>
+              </div>
+              <div class="p-2.5">
+                <p class="font-bold text-xs text-gray-900 dark:text-white">Miel de abeja</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">Miel orgánica de la región</p>
+                <!-- Sin capacidad definida: no se muestra nada -->
+              </div>
+            </div>
+            <!-- Producto con capacidad en litros -->
+            <div class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm hover:border-guinda-300 dark:hover:border-guinda-500/40 cursor-pointer transition-all">
+              <div class="w-full h-20 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+                <span class="text-2xl">🫙</span>
+              </div>
+              <div class="p-2.5">
+                <p class="font-bold text-xs text-gray-900 dark:text-white">Recado negro</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">Pasta tradicional yucateca</p>
+                <!-- NUEVO: badge de capacidad -->
+                <p class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold mt-1">📦 80 Kilogramos/mes</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Condiciones comerciales (ya existía, sin cambios) -->
+        <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+          <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Condiciones comerciales</h3>
+          <div class="flex flex-wrap gap-2">
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+              ✓ Acepta crédito <span class="opacity-70">· máx. $50,000 · 30 dias</span>
+            </span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+              ✓ Emite factura <span class="opacity-70">· RESICO</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- NUEVA sección: Logística y Distribución (con entrega a domicilio = Sí) -->
+        <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+          <div class="flex items-center gap-2 mb-3">
+            <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Logística y Distribución</h3>
+            <span class="text-xs bg-guinda-700/20 text-guinda-400 border border-guinda-700/30 px-2 py-0.5 rounded-full font-semibold">NUEVO</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+              🚚 Entrega a domicilio
+              <span class="opacity-70">· Local</span>
+              <span class="opacity-70">· Flexible</span>
+            </span>
+          </div>
+        </div>
+
+        <!-- NUEVA sección: Logística y Distribución (con entrega a domicilio = No) -->
+        <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+          <p class="text-xs text-gray-400 mb-2 italic">Ejemplo cuando el proveedor NO entrega:</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700">
+              📦 Sin entrega a domicilio
+            </span>
+          </div>
+        </div>
+
+        <!-- Modal de producto (capacidad) -->
+        <div class="border-t border-gray-100 dark:border-gray-800 pt-4">
+          <p class="text-xs text-gray-400 mb-3 italic">Vista del modal de producto (al hacer clic en la card):</p>
+          <div class="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+            <div class="w-full h-36 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+              <span class="text-5xl">🌶️</span>
+            </div>
+            <div class="p-5">
+              <h2 class="text-lg font-black text-gray-900 dark:text-white mb-2">Salsa habanera artesanal</h2>
+              <p class="text-sm text-gray-600 dark:text-gray-300 mb-4">Salsa de habanero cosechado en Yucatán, sin conservadores artificiales. Disponible en presentaciones de 150ml y 300ml.</p>
+              <!-- NUEVO: badge de capacidad en el modal -->
+              <div class="inline-flex items-center gap-1.5 bg-guinda-50 dark:bg-guinda-500/10 border border-guinda-200 dark:border-guinda-500/20 text-guinda-700 dark:text-guinda-400 text-xs font-semibold px-3 py-1.5 rounded-full">
+                📦 Capacidad producción: 2,500 Piezas/mes
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ TAB 3: EXCEL ═══════════════════════════════════════════════════════ -->
+    <div id="tab-excel" class="tab-panel">
+      <div class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-4">
+        Excel de descarga de proveedores — diseño mejorado con toda la información
+      </div>
+
+      <!-- Preview estilo "aplicación de escritorio de Excel" -->
+      <div class="bg-gray-200 rounded-t-lg px-4 pt-3 pb-0 flex items-center gap-2">
+        <div class="flex gap-1.5">
+          <div class="w-3 h-3 rounded-full bg-red-400"></div>
+          <div class="w-3 h-3 rounded-full bg-yellow-400"></div>
+          <div class="w-3 h-3 rounded-full bg-green-400"></div>
+        </div>
+        <div class="ml-3 flex-1 bg-white rounded text-xs text-gray-600 px-3 py-1 font-mono">
+          Proveedores_IMPULSATE.xlsx
+        </div>
+      </div>
+      <div class="bg-gray-100 border-b border-gray-300 px-4 py-2 flex gap-4 text-xs text-gray-600">
+        <span class="font-semibold">Archivo</span><span>Inicio</span><span>Insertar</span>
+        <span>Fórmulas</span><span>Datos</span><span>Vista</span>
+      </div>
+
+      <!-- Pestaña de hoja -->
+      <div class="bg-gray-100 px-4 pt-1 flex gap-1 border-b border-gray-300">
+        <div class="bg-white border border-b-0 border-gray-300 px-4 py-1.5 text-xs font-bold text-red-800 rounded-t">
+          Proveedores
+        </div>
+      </div>
+
+      <!-- Tabla Excel -->
+      <div class="xl-wrap">
+        <table class="xl-table border-collapse" style="background:#fff;">
+          <thead>
+            <tr>
+              <!-- Encabezados por grupo -->
+              <th colspan="5" style="border-right:2px solid #6b0d1e">Identificación</th>
+              <th colspan="5" style="border-right:2px solid #6b0d1e">Ubicación y Contacto</th>
+              <th colspan="7" style="border-right:2px solid #6b0d1e">Negocio</th>
+              <th colspan="2" style="border-right:2px solid #6b0d1e">Productos</th>
+              <th colspan="3" style="border-right:2px solid #6b0d1e;background:#7a0b22">Logística ★</th>
+              <th colspan="6" style="border-right:2px solid #6b0d1e">Condiciones comerciales</th>
+              <th colspan="6">Plataforma</th>
+            </tr>
+            <tr>
+              <th>Empresa</th>
+              <th>Categoría</th>
+              <th>Razón Social</th>
+              <th>Representante</th>
+              <th style="border-right:2px solid #6b0d1e">CURP</th>
+              <th>Municipio</th>
+              <th>Dom. Yucatán</th>
+              <th>Teléfono</th>
+              <th>Email</th>
+              <th style="border-right:2px solid #6b0d1e">Sitio Web</th>
+              <th>RFC</th>
+              <th>Núm. Emp.</th>
+              <th>Inicio Ops.</th>
+              <th>Mercado Meta</th>
+              <th>Vida Anaquel</th>
+              <th>Req. Refrig.</th>
+              <th style="border-right:2px solid #6b0d1e">Req. Congel.</th>
+              <th>Productos/Servicios</th>
+              <th style="border-right:2px solid #6b0d1e">Cap. Producción</th>
+              <th style="background:#7a0b22">Entrega Dom.</th>
+              <th style="background:#7a0b22">Cobertura</th>
+              <th style="background:#7a0b22;border-right:2px solid #6b0d1e">Forma Entrega</th>
+              <th>Acepta Crédito</th>
+              <th>Crédito Máx.</th>
+              <th>Plazo</th>
+              <th>Contraentrega</th>
+              <th>Factura</th>
+              <th style="border-right:2px solid #6b0d1e">Régimen Fiscal</th>
+              <th>Total Citas</th>
+              <th>Aprobado</th>
+              <th>Activo</th>
+              <th>Perfil Completo</th>
+              <th>Sol. Aprobación</th>
+              <th>Registro</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="bold">Salsas Yucatecas Don Pedro</td>
+              <td>Alimentos y Beb.</td>
+              <td>Salsas Don Pedro S.A.</td>
+              <td>Pedro Canul Dzib</td>
+              <td>CADP800101HYNNZR08</td>
+              <td>Mérida</td>
+              <td class="center">Sí</td>
+              <td>999 123 4567</td>
+              <td>donpedro@gmail.com</td>
+              <td>salsasdonpedro.mx</td>
+              <td>DPE800101ABC</td>
+              <td class="center">12</td>
+              <td>15/03/2010</td>
+              <td>Restaurantes y tiendas de abarrotes</td>
+              <td>6 meses</td>
+              <td class="center">No</td>
+              <td class="center">Sí</td>
+              <td>Salsa habanera, Miel de abeja, Recado negro</td>
+              <td>Salsa habanera: 2,500 Piezas/mes | Recado negro: 80 Kilogramos/mes</td>
+              <td class="center" style="background:#f0fdf4;color:#166534;font-weight:700">Sí</td>
+              <td class="center" style="background:#f0fdf4;color:#166534">Local</td>
+              <td class="center" style="background:#f0fdf4;color:#166534;border-right:2px solid #e5e7eb">Flexible</td>
+              <td class="center">Sí</td>
+              <td class="center">$50,000.00</td>
+              <td class="center">30 dias</td>
+              <td class="center">No</td>
+              <td class="center">Sí</td>
+              <td>RESICO</td>
+              <td class="center">8</td>
+              <td class="center">Sí</td>
+              <td class="center">Sí</td>
+              <td class="center" style="color:#166534;font-weight:700">Sí</td>
+              <td>12/06/2026 10:30</td>
+              <td>01/03/2024</td>
+            </tr>
+            <tr>
+              <td class="bold">Tech Yucatán Pro</td>
+              <td>Tecnología</td>
+              <td>Tech Yucatán Pro S.C.</td>
+              <td>María González</td>
+              <td>GOMM920515MYNZRR02</td>
+              <td>Mérida</td>
+              <td class="center">Sí</td>
+              <td>999 876 5432</td>
+              <td>mgonzalez@techyuc.com</td>
+              <td>techyucatan.com</td>
+              <td>TYP920515XYZ</td>
+              <td class="center">5</td>
+              <td>22/07/2019</td>
+              <td>PyMEs y empresas del sector restaurantero</td>
+              <td>N/A</td>
+              <td class="center">—</td>
+              <td class="center">—</td>
+              <td>Sistema de punto de venta, Módulo inventarios</td>
+              <td>Sistema de punto de venta: 150 Piezas/mes</td>
+              <td class="center" style="background:#fef2f2;color:#991b1b;font-weight:700">No</td>
+              <td class="center" style="background:#fef2f2;color:#991b1b">—</td>
+              <td class="center" style="background:#fef2f2;color:#991b1b;border-right:2px solid #e5e7eb">—</td>
+              <td class="center">No</td>
+              <td class="center">—</td>
+              <td class="center">—</td>
+              <td class="center">Sí</td>
+              <td class="center">Sí</td>
+              <td>Régimen General</td>
+              <td class="center">3</td>
+              <td class="center">Sí</td>
+              <td class="center">Sí</td>
+              <td class="center" style="color:#166534;font-weight:700">Sí</td>
+              <td>20/06/2026 09:15</td>
+              <td>15/08/2024</td>
+            </tr>
+            <tr>
+              <td class="bold">Muebles Artesanales Itzá</td>
+              <td>Manufactura</td>
+              <td>—</td>
+              <td>—</td>
+              <td>—</td>
+              <td>Valladolid</td>
+              <td class="center">No</td>
+              <td>985 234 5678</td>
+              <td>itza@muebles.com</td>
+              <td>—</td>
+              <td>MAI010101DEF</td>
+              <td class="center">8</td>
+              <td>—</td>
+              <td>Restaurantes y hoteles</td>
+              <td>N/A</td>
+              <td class="center">—</td>
+              <td class="center">—</td>
+              <td>Mesa rústica, Silla yucateca, Librero maya</td>
+              <td>Mesa rústica: 40 Piezas/mes | Silla yucateca: 120 Piezas/mes</td>
+              <td class="center" style="background:#f0fdf4;color:#166534;font-weight:700">Sí</td>
+              <td class="center" style="background:#f0fdf4;color:#166534">Regional</td>
+              <td class="center" style="background:#f0fdf4;color:#166534;border-right:2px solid #e5e7eb">Programada</td>
+              <td class="center">Sí</td>
+              <td class="center">$20,000.00</td>
+              <td class="center">15 dias</td>
+              <td class="center">No</td>
+              <td class="center">No</td>
+              <td>—</td>
+              <td class="center">5</td>
+              <td class="center">Sí</td>
+              <td class="center">Sí</td>
+              <td class="center" style="color:#dc2626;font-weight:700">No</td>
+              <td>—</td>
+              <td>10/01/2025</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Leyenda del Excel -->
+      <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-3 text-center">
+          <div class="w-6 h-4 rounded mx-auto mb-2" style="background:#8b1028"></div>
+          <p class="text-xs text-gray-300 font-semibold">Encabezado guinda</p>
+          <p class="text-xs text-gray-500">Blanco/bold — fila fija</p>
+        </div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-3 text-center">
+          <div class="w-6 h-4 rounded mx-auto mb-2" style="background:#fdf2f4;border:1px solid #ccc"></div>
+          <p class="text-xs text-gray-300 font-semibold">Filas alternas</p>
+          <p class="text-xs text-gray-500">Blanco y rosa-guinda</p>
+        </div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-3 text-center">
+          <div class="w-6 h-4 rounded mx-auto mb-2" style="background:#7a0b22"></div>
+          <p class="text-xs text-gray-300 font-semibold">Cols. Logística ★</p>
+          <p class="text-xs text-gray-500">Tono guinda oscuro</p>
+        </div>
+        <div class="bg-gray-800 border border-gray-700 rounded-xl p-3 text-center">
+          <div class="flex gap-1 justify-center mb-2">
+            <div class="w-2.5 h-4 rounded" style="background:#e5e7eb"></div>
+            <div class="w-2.5 h-4 rounded" style="background:#e5e7eb"></div>
+          </div>
+          <p class="text-xs text-gray-300 font-semibold">Bordes + Filtros</p>
+          <p class="text-xs text-gray-500">Autofilter en col. A1:AH1</p>
+        </div>
+      </div>
+
+      <!-- Características del Excel -->
+      <div class="mt-4 bg-gray-800 border border-gray-700 rounded-xl p-4">
+        <h4 class="text-sm font-bold text-white mb-3">📋 Características del nuevo Excel</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-300">
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>34 columnas</strong> — toda la información disponible del proveedor</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Encabezado congelado</strong> — scroll sin perder los títulos de columna</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Filas alternas</strong> — blanco y rosa-guinda para mejor lectura</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Autofiltro</strong> — filtra directamente desde Excel por cualquier columna</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Anchos optimizados</strong> — cada columna ajustada a su contenido</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Pestaña color guinda</strong> — identificación visual del archivo</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Capacidades de producción</strong> — una línea por producto con unidad</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-guinda-400 font-bold">✓</span>
+            <span><strong>Columnas logística</strong> — entrega, cobertura y forma visibles</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="mt-8 text-center text-xs text-gray-600">
+    Mockup generado para revisión antes del deploy — IMPÚLSATE Gobierno de Yucatán
+  </div>
+
+</div>
+
+<script>
+function showTab(id) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    event.target.classList.add('active');
+}
+
+function toggleEntrega(val) {
+    const yesBtn = document.getElementById('yes-btn');
+    const noBtn  = document.getElementById('no-btn');
+    const sub    = document.getElementById('sub-preguntas');
+    const noMsg  = document.getElementById('no-entrega-msg');
+    if (val) {
+        yesBtn.classList.add('active');
+        noBtn.classList.remove('active');
+        yesBtn.style.background = '#8b1028';
+        yesBtn.style.color = '#fff';
+        yesBtn.style.borderColor = '#8b1028';
+        noBtn.style.background = '#1f2937';
+        noBtn.style.color = '#d1d5db';
+        noBtn.style.borderColor = '#4b5563';
+        sub.classList.remove('hidden');
+        noMsg.classList.add('hidden');
+    } else {
+        noBtn.classList.add('active');
+        yesBtn.classList.remove('active');
+        noBtn.style.background = '#8b1028';
+        noBtn.style.color = '#fff';
+        noBtn.style.borderColor = '#8b1028';
+        yesBtn.style.background = '#1f2937';
+        yesBtn.style.color = '#d1d5db';
+        yesBtn.style.borderColor = '#4b5563';
+        sub.classList.add('hidden');
+        noMsg.classList.remove('hidden');
+    }
+}
+
+function selectPill(el, group) {
+    document.querySelectorAll('.pill-option.' + group).forEach(b => {
+        b.classList.remove('active');
+        b.style.background = '#1f2937';
+        b.style.color = '#d1d5db';
+        b.style.borderColor = '#4b5563';
+    });
+    el.classList.add('active');
+    el.style.background = '#8b1028';
+    el.style.color = '#fff';
+    el.style.borderColor = '#8b1028';
+}
+</script>
+</body>
+</html>

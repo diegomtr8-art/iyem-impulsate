@@ -1,0 +1,117 @@
+PROMPT PARA CLAUDE CODE - IMPULSATE V5
+==========================================
+Proyecto: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Ruta: C:\xampp\htdocs\citas
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo/blue-*.
+Texto en español, con acentos correctos.
+Modo claro y oscuro correctos. Responsivo (375px móvil, tablet, desktop).
+NO hacer deploy en este prompt salvo que se indique al final - confirmar con el usuario antes de subir a producción.
+
+CONTEXTO
+--------
+- Roles actuales (Spatie Permission): admin, restaurantero, cliente. Middleware `EnsureIsAdmin` (app/Http/Middleware/EnsureIsAdmin.php) protege rutas `admin.*`.
+- Existe ya un usuario admin (impulsate@iyemyucatan.com, definido en V4). Ahora se requiere un SEGUNDO administrador con privilegios EXTRA (super-admin) que solo él pueda usar.
+- Controladores admin en app/Http/Controllers/Admin/, vistas en resources/js/Pages/Admin/, rutas bajo prefix /admin name admin. middleware admin (routes/web.php ~línea 112).
+- Mailables existentes en app/Mail/: CitaAceptada, CitaAgendada, CitaCancelada, CitaConfirmada, CitaReagendada, CitaRechazada, EncuestaSatisfaccionMail, ProveedorAprobado, ProveedorRechazado, RecordatorioCita. Todos son clases PHP con plantillas Blade/Markdown asociadas (revisar resources/views/emails o resources/views/vendor/mail).
+- AppLayout.vue (resources/js/Layouts/AppLayout.vue) es el layout compartido de comprador/proveedor; los paneles admin probablemente usan otro layout (revisar resources/js/Layouts para un AdminLayout o similar; si no existe, identificar el layout que usan las páginas Admin/*.vue).
+- HandleInertiaRequests.php comparte props globales (auth.user, eventoActivo, etc.) - aquí se debe agregar la lógica del pop-up de publicidad.
+
+==========================================
+CAMBIO 1: Super-administrador (Diegomtr8@gmail.com)
+==========================================
+1. Crear migración que agregue una columna booleana `es_super_admin` (default false) a la tabla `users`. (Alternativa más "Spatie-correcta": crear un nuevo rol `super-admin` además de `admin` y asignar AMBOS roles a este usuario - elegir el enfoque de ROL adicional `super-admin` vía Spatie, ya que es más extensible y consistente con el sistema de permisos existente. Documentar la decisión con un comentario en el seeder).
+2. Seeder (agregar a RolesAndPermissionsSeeder.php o crear uno nuevo `SuperAdminSeeder.php`, registrado en DatabaseSeeder.php):
+   - Crear rol `super-admin` si no existe.
+   - Crear/actualizar usuario:
+     - email: Diegomtr8@gmail.com
+     - password: Realmadrid1 (usar `Hash::make`)
+     - name: "Diego Martínez" (o similar)
+     - Asignar roles `admin` Y `super-admin` (para que tenga acceso a TODO lo que ya tiene un admin, más los 3 módulos exclusivos).
+3. Middleware: crear `EnsureIsSuperAdmin.php` (app/Http/Middleware/) que verifique `auth()->user()->hasRole('super-admin')`, devolviendo 403 si no. Registrar el alias en `bootstrap/app.php` (Laravel 11 usa `withMiddleware` en bootstrap/app.php) o en Kernel si aplica.
+4. Rutas: nuevo grupo dentro de `Route::prefix('admin')->name('admin.')` pero con middleware adicional `super-admin`, por ejemplo:
+   ```
+   Route::middleware('super-admin')->group(function () {
+       Route::prefix('usuarios-gestion')->name('usuarios-gestion.')->group(...);   // CAMBIO 2
+       Route::prefix('plantillas-correo')->name('plantillas.')->group(...);        // CAMBIO 3
+       Route::prefix('publicidad')->name('publicidad.')->group(...);               // CAMBIO 4
+   });
+   ```
+5. Navegación: en el layout/menú de administración, mostrar los 3 nuevos módulos ("Usuarios", "Plantillas de Correo", "Publicidad") SOLO si `$page.props.auth.user.is_super_admin` (o `roles` incluye `super-admin`) es verdadero. Exponer este flag desde HandleInertiaRequests.php en `auth.user`.
+
+==========================================
+CAMBIO 2: Módulo "Usuarios" (gestión completa)
+==========================================
+Diferencia con el módulo Admin/Usuarios existente (UserAdminController, que excluye admins y es de solo lectura/listado básico): este módulo nuevo es EXCLUSIVO del super-admin y permite ver y EDITAR todos los usuarios (compradores, proveedores, e incluso otros admins), incluyendo su contraseña.
+
+1. Controlador `Admin/SuperAdmin/UsuariosGestionController.php`:
+   - `index`: lista TODOS los usuarios (sin excluir admins), con filtros por rol (admin/restaurantero/cliente), búsqueda por nombre/email, paginado. Mostrar columnas: nombre, email, rol(es), estado (activo/perfil completo), fecha de registro.
+   - `edit`/`show`: muestra el detalle completo del usuario - datos de perfil (incluyendo campos agregados en V3: curp, rfc, municipio, nombre_empresa; y si es proveedor, datos de `Restaurantero`).
+   - `update`: permite editar todos los campos del perfil (name, email, telefono, curp, rfc, municipio, nombre_empresa, sitio_web, necesidades, y campos de Restaurantero si aplica - nombre_restaurante/nombre_empresa, descripción, sector, etc.). Validar email único (ignorando el propio usuario).
+   - `updatePassword`: endpoint separado para cambiar la contraseña de cualquier usuario (validar `password|confirmed|min:8`), usando `Hash::make`. Por seguridad, registrar en log (`Log::info`) quién hizo el cambio y a qué usuario, con timestamp.
+   - `updateRoles` (opcional pero recomendado): permitir cambiar el rol de un usuario (cliente <-> restaurantero <-> admin), reutilizando la lógica existente de `agregarRol`/creación de Restaurantero+Servicio+Horario si se promueve a proveedor (ver CompletarPerfilController::agregarRol como referencia).
+2. Vistas Inertia en `resources/js/Pages/Admin/SuperAdmin/Usuarios/`:
+   - `Index.vue`: tabla con buscador, filtro de rol, paginación, botón "Editar" por fila.
+   - `Edit.vue` (o un modal de edición dentro de Index): formulario con todos los campos editables, sección separada y claramente diferenciada para "Cambiar contraseña" (dos campos: nueva contraseña + confirmación, con medidor de fortaleza opcional), y botón guardar. Mostrar advertencia/confirmación antes de guardar cambios sensibles (cambio de email o contraseña).
+3. Seguridad: el super-admin no debe poder eliminarse a sí mismo ni quitarse el rol `super-admin` desde esta interfaz (validación en backend).
+
+==========================================
+CAMBIO 3: Módulo "Plantillas de Correo"
+==========================================
+Objetivo: permitir editar el contenido de las plantillas de correo existentes, crear nuevas plantillas, y enviarlas manualmente a compradores, proveedores o ambos.
+
+1. Migración + modelo `PlantillaCorreo`:
+   - Tabla `plantillas_correo`: id, clave (string único, ej. "cita_agendada", "promocion_evento"), nombre (string, descriptivo), asunto (string), contenido (longtext, HTML o Markdown editable), tipo_destinatario (enum: comprador/proveedor/ambos - solo aplica a plantillas de envío manual), es_sistema (boolean - true para las plantillas que ya usan los Mailables existentes, false para las creadas manualmente por el super-admin), activo (boolean), timestamps.
+2. Seeder: insertar como `es_sistema = true` un registro por cada Mailable existente (CitaAgendada, CitaAceptada, CitaRechazada, CitaReagendada, CitaConfirmada, CitaCancelada, ProveedorAprobado, ProveedorRechazado, RecordatorioCita, EncuestaSatisfaccionMail), con el asunto y contenido actuales extraídos de sus vistas Blade/Markdown (revisar `resources/views/emails/` o `resources/views/vendor/mail/markdown/` para copiar el contenido base).
+3. Refactor de Mailables del sistema (CitaAgendada, etc.): en lugar de tener el texto hardcodeado en el .blade.php, deben leer el `asunto` y `contenido` desde el registro `PlantillaCorreo` correspondiente (por `clave`), permitiendo placeholders dinámicos tipo `{{nombre_usuario}}`, `{{nombre_evento}}`, `{{fecha_cita}}`, etc. que se reemplazan al momento de enviar. Si la plantilla no existe o está inactiva, usar el contenido por defecto hardcodeado como fallback (no romper el sistema existente).
+4. Controlador `Admin/SuperAdmin/PlantillasCorreoController.php`:
+   - `index`: lista todas las plantillas (sistema + personalizadas), con badge indicando si es de sistema o personalizada, y si está activa.
+   - `store`/`update`: crear/editar plantillas (las de sistema solo permiten editar asunto/contenido/activo, no la `clave`; las personalizadas permiten editar todo incluyendo `tipo_destinatario`).
+   - `destroy`: solo para plantillas personalizadas (`es_sistema = false`).
+   - `enviar` (Action): para plantillas personalizadas, permite seleccionar destinatarios:
+     - Por tipo (todos los compradores / todos los proveedores / ambos), o
+     - Selección manual de usuarios específicos (buscador con checkboxes).
+     Enviar correo usando un Mailable genérico `PlantillaCorreoMail.php` que reciba la plantilla y el usuario destinatario, reemplazando placeholders básicos (`{{nombre_usuario}}`, `{{email}}`).
+     IMPORTANTE: para evitar timeouts en envíos masivos, usar `Mail::to(...)->queue(...)` o despachar un Job (`SendPlantillaCorreoJob`) por lote/usuario. Verificar configuración de colas (`QUEUE_CONNECTION` en `.env`); si está en `sync`, documentar en el prompt que se recomienda configurar `database` o `redis` para producción, pero no bloquear la funcionalidad si sigue en sync (solo advertir sobre tiempos de envío con muchos destinatarios).
+5. Vistas en `resources/js/Pages/Admin/SuperAdmin/Plantillas/`:
+   - `Index.vue`: lista de plantillas con badges (Sistema/Personalizada, Activa/Inactiva), botones Editar/Eliminar/Enviar.
+   - `Edit.vue` (o modal): editor de asunto y contenido. Para el contenido, usar un editor enriquecido simple (ej. integrar un editor WYSIWYG ligero vía CDN compatible con el proyecto, o un textarea con preview en vivo + lista de placeholders disponibles documentados al lado).
+   - `Enviar.vue` (o modal dentro de Index): selector de destinatarios (todos compradores/proveedores/ambos o selección manual) + botón "Enviar" con confirmación (mostrar cuántos destinatarios recibirán el correo antes de confirmar).
+
+==========================================
+CAMBIO 4: Módulo "Publicidad" (pop-up al iniciar sesión)
+==========================================
+Objetivo: el super-admin sube una imagen publicitaria con un hipervínculo opcional, define una ventana de fechas de vigencia, y esa imagen aparece como pop-up modal a compradores y proveedores justo después de iniciar sesión (o al cargar el panel), mientras esté dentro de la ventana de fechas y "activa". El usuario puede cerrarla con la X o la tecla Esc. Las publicidades pasadas/desactivadas quedan archivadas para poder reactivarlas después.
+
+1. Migración + modelo `Publicidad`:
+   - Tabla `publicidades`: id, titulo (string, solo para identificación interna en el panel admin), imagen (string, ruta en storage), enlace (string nullable - puede ser URL externa `https://...` o ruta interna `/algo`), abre_en_nueva_pestana (boolean, solo aplica si el enlace es externo), fecha_inicio (datetime), fecha_fin (datetime), activa (boolean, default true), timestamps.
+2. Modelo `Publicidad` con scope `vigente()`: `activa = true AND fecha_inicio <= now() AND fecha_fin >= now()`.
+3. Controlador `Admin/SuperAdmin/PublicidadController.php`:
+   - `index`: lista todas las publicidades (vigentes, programadas, expiradas/archivadas), con badge de estado calculado.
+   - `store`: validar imagen (`image|mimes:jpg,jpeg,png,webp,gif|max:5120`), `enlace` (nullable, url o ruta relativa - validar formato básico), `fecha_inicio`/`fecha_fin` (`fecha_fin > fecha_inicio`), `activa`. Guardar imagen en `storage/app/public/publicidad/`.
+   - `update`: permitir editar todos los campos, incluyendo re-subir imagen (borrar la anterior si se reemplaza) y reactivar una publicidad pasada (cambiar fechas y/o `activa = true` para "reutilizar" un anuncio archivado, tal como pidió el usuario).
+   - `toggleActiva`: activar/desactivar manualmente sin borrar.
+   - `destroy`: eliminar definitivamente (con confirmación en frontend) - borra también el archivo de imagen.
+   - Solo puede existir lógicamente UNA publicidad "vigente" mostrándose a la vez para no saturar al usuario; si hay varias vigentes simultáneamente (fechas solapadas), mostrar la más reciente (`orderByDesc('fecha_inicio')->first()`) - documentar este comportamiento con un comentario en el código.
+4. Vistas en `resources/js/Pages/Admin/SuperAdmin/Publicidad/`:
+   - `Index.vue`: tabla/galería de tarjetas con miniatura de la imagen, título, enlace, rango de fechas, estado (Vigente/Programada/Expirada/Inactiva), acciones (Editar, Activar/Desactivar, Eliminar).
+   - `Form.vue` (crear/editar, modal o página): subir imagen con preview, campo enlace, checkbox "abrir en nueva pestaña" (solo si enlace es externo), selectores de fecha/hora inicio y fin, checkbox activa.
+5. Lógica de visualización del pop-up (frontend):
+   - En `HandleInertiaRequests.php`, agregar al share global una prop `publicidadActiva` que devuelva los datos de la publicidad vigente (id, imagen URL, enlace, abre_en_nueva_pestana) SOLO si el usuario autenticado tiene rol `cliente` o `restaurantero` (no mostrar al admin/super-admin), o `null` si no hay ninguna vigente.
+   - Crear componente `resources/js/Components/PublicidadPopup.vue`:
+     - Modal centrado con overlay oscuro semitransparente, la imagen a tamaño responsivo (max-width controlado, `object-contain`), botón "X" en la esquina superior derecha.
+     - Si `enlace` está presente, la imagen completa es clickeable (`<a>` o `@click` con `router.visit`/`window.open` según `abre_en_nueva_pestana` y si es URL externa o ruta interna - usar Inertia `Link`/`router.visit` para rutas internas, `window.open` para externas).
+     - Cerrar con click en "X", click en el overlay (fuera de la imagen), o tecla `Escape` (listener de teclado, limpiar al desmontar).
+     - Mostrar SOLO UNA VEZ por sesión de login: usar un flag en memoria/sessionStorage del lado del backend NO es necesario - basta con controlar en el componente Vue que se muestre solo al montar AppLayout la primera vez tras login (se puede usar `sessionStorage` del navegador para no volver a mostrarla en cada navegación de página dentro de la misma sesión, ya que Inertia no recarga la app completa en cada visita - guardar `publicidad_vista_<id>` en `sessionStorage`).
+   - Integrar `PublicidadPopup.vue` en `AppLayout.vue`, renderizado condicionalmente si `$page.props.publicidadActiva` existe y no se ha visto aún en esta sesión.
+6. Navegación del menú admin: agregar "Publicidad" al menú visible solo para super-admin (igual que CAMBIO 2 y 3).
+
+==========================================
+VERIFICACIÓN FINAL
+==========================================
+- [ ] Login con Diegomtr8@gmail.com / Realmadrid1 da acceso a TODO el panel admin normal MÁS los 3 módulos nuevos (Usuarios, Plantillas de Correo, Publicidad), visibles solo para este usuario.
+- [ ] Un admin normal (impulsate@iyemyucatan.com) NO ve ni puede acceder (403) a las rutas de los 3 módulos nuevos.
+- [ ] Módulo Usuarios: se puede buscar, filtrar, editar datos de cualquier usuario (comprador/proveedor) y cambiar su contraseña.
+- [ ] Módulo Plantillas: las plantillas de sistema reflejan el contenido actual de los correos; se puede editar su texto y se refleja en el próximo envío automático; se pueden crear plantillas nuevas y enviarlas a compradores/proveedores/ambos.
+- [ ] Módulo Publicidad: subir imagen + enlace + fechas funciona; el pop-up aparece a comprador/proveedor dentro de la ventana de fechas, se cierra con X o Esc, no aparece al admin/super-admin, y las publicidades pasadas se conservan y pueden reactivarse.
+- [ ] Modo claro/oscuro y responsividad (375px, tablet, desktop) revisados en las 3 nuevas secciones y en el pop-up.
+- [ ] Sin deploy automático - confirmar con el usuario antes de subir a producción.

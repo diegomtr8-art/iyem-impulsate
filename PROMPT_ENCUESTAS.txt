@@ -1,0 +1,545 @@
+PROMPT PARA CLAUDE CODE — Plantilla de encuestas, envío de prueba y métricas en Admin > Encuestas
+========================================================================================================
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3 + Tailwind, darkMode 'class')
+Color primario: guinda (#8b1028, paleta completa ya en tailwind.config.js). NUNCA azul/indigo.
+
+DIAGNÓSTICO DEL SISTEMA ACTUAL (para que Claude Code no reinvente lo que ya existe)
+--------------------------------------------------------------------------------------
+Ya existe un sistema de encuestas de satisfacción, pero es más limitado de lo que se pide:
+
+- `app/Models/EncuestaSatisfaccion.php` — tabla `encuestas_satisfaccion`: cada fila es el envío de
+  una encuesta a UN participante de UN evento (`evento_id`, `user_id`, `tipo`, `token`,
+  `completada_at`). Hoy `evento_id` y `user_id` son obligatorios (FK not-nullable).
+- `app/Models/EncuestaRespuesta.php` — tabla `encuesta_respuestas`: cada fila es una pregunta+
+  respuesta de una encuesta ya completada (`encuesta_satisfaccion_id`, `pregunta`, `respuesta`).
+- Las PREGUNTAS de la encuesta NO están en base de datos: están fijas en `config/encuestas.php`
+  (6 preguntas con tipos `escala` (1-5), `texto` (libre) y `binario` (Sí/No)). Esto es justo lo que
+  el Punto 1 de abajo debe resolver: pasar esas preguntas a una plantilla editable y guardable.
+- `app/Http/Controllers/EncuestaController.php` — `show()`/`store()` públicos (sin login, acceso
+  por token): leen las preguntas de `config('encuestas.preguntas')` y renderizan
+  `Encuestas/Responder.vue` (look exacto: preguntas tipo escala = 5 botones 1-5, binario = botones
+  Sí/No, texto = textarea). Al completarse, renderiza `Encuestas/Gracias.vue`.
+- `app/Http/Controllers/Admin/EventoController.php::enviarEncuestas(Evento $evento)` — ya existe:
+  recorre los participantes APROBADOS de ese evento (tabla `evento_usuario`), crea una
+  `EncuestaSatisfaccion` por participante que no la tenga ya, y envía `EncuestaSatisfaccionMail`.
+  Esto vive en el panel de Eventos (ruta `admin.eventos.enviar-encuestas`), no en el de Encuestas.
+- `app/Mail/EncuestaSatisfaccionMail.php` — Mailable que renderiza la vista Blade
+  `resources/views/mail/encuesta-satisfaccion.blade.php` con el link `route('encuestas.responder',
+  $token)`. El TEXTO de este correo (asunto/cuerpo) además ya es editable por separado en
+  Admin > Super Admin > Plantillas de correo (`PlantillaCorreo` con `clave = 'encuesta_satisfaccion'`)
+  — eso es la REDACCIÓN del correo, NO las preguntas de la encuesta. No confundir ambos sistemas;
+  este prompt es sobre las preguntas/estructura de la encuesta, no sobre el texto del correo.
+- `app/Http/Controllers/Admin/EncuestaAdminController.php` + `resources/js/Pages/Admin/Encuestas/
+  Index.vue` — página actual en Admin > Encuestas: solo una tabla con filtro por evento, 3
+  contadores simples (total/respondidas/pendientes) y botón de exportar a Excel
+  (`app/Exports/EncuestasExport.php`). No hay constructor de plantilla, no hay botón de prueba, no
+  hay métricas por pregunta, no hay acordeón.
+- Menú admin: `resources/js/Layouts/AdminLayout.vue` línea 41, ya existe el ítem "Encuestas" →
+  `admin.encuestas.index`. Todo lo nuevo de este prompt debe vivir dentro de esa misma página
+  (o subpáginas enlazadas desde ahí), tal como se pidió.
+
+
+===========================================================================
+PUNTO 1 — Plantilla de encuesta editable y guardable
+===========================================================================
+1A. Migración — nueva tabla de plantillas + columna de trazabilidad
+------------------------------------------------------------------------
+php artisan make:migration create_encuesta_plantillas_table
+
+```php
+public function up(): void
+{
+    Schema::create('encuesta_plantillas', function (Blueprint $table) {
+        $table->id();
+        $table->string('nombre');
+        $table->text('descripcion')->nullable();
+        $table->json('preguntas'); // [{ "id": "...", "tipo": "escala|texto|binario", "texto": "..." }, ...]
+        $table->boolean('activa')->default(false);
+        $table->timestamps();
+    });
+
+    Schema::table('encuestas_satisfaccion', function (Blueprint $table) {
+        $table->foreignId('encuesta_plantilla_id')->nullable()
+              ->after('tipo')->constrained('encuesta_plantillas')->nullOnDelete();
+    });
+
+    Schema::table('encuesta_respuestas', function (Blueprint $table) {
+        $table->string('tipo')->nullable()->after('pregunta'); // guarda el tipo de pregunta al momento de responder
+    });
+}
+
+public function down(): void
+{
+    Schema::table('encuesta_respuestas', function (Blueprint $table) {
+        $table->dropColumn('tipo');
+    });
+    Schema::table('encuestas_satisfaccion', function (Blueprint $table) {
+        $table->dropConstrainedForeignId('encuesta_plantilla_id');
+    });
+    Schema::dropIfExists('encuesta_plantillas');
+}
+```
+
+Guardar el `tipo` de cada pregunta también en `encuesta_respuestas` (no solo en la plantilla) es
+clave para que las métricas del Punto 4 sigan siendo correctas incluso si después se edita o
+reemplaza la plantilla activa — la respuesta histórica conserva con qué tipo de pregunta se contestó.
+
+1B. Modelo
+------------
+app/Models/EncuestaPlantilla.php (nuevo):
+```php
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class EncuestaPlantilla extends Model
+{
+    protected $table = 'encuesta_plantillas';
+
+    protected $fillable = ['nombre', 'descripcion', 'preguntas', 'activa'];
+
+    protected function casts(): array
+    {
+        return [
+            'preguntas' => 'array',
+            'activa'    => 'boolean',
+        ];
+    }
+
+    public function encuestasEnviadas()
+    {
+        return $this->hasMany(EncuestaSatisfaccion::class);
+    }
+}
+```
+
+Agregar a `app/Models/EncuestaSatisfaccion.php`:
+- `'encuesta_plantilla_id'` al `$fillable`.
+- Relación: `public function plantilla() { return $this->belongsTo(EncuestaPlantilla::class, 'encuesta_plantilla_id'); }`
+
+1C. Backend — CRUD de plantillas
+------------------------------------
+Agregar estos métodos a `app/Http/Controllers/Admin/EncuestaAdminController.php` (no crear otro
+controlador, para mantener todo bajo el mismo apartado de Encuestas):
+
+```php
+public function plantillas()
+{
+    return Inertia::render('Admin/Encuestas/Plantillas', [
+        'plantillas' => EncuestaPlantilla::orderByDesc('created_at')->get(),
+    ]);
+}
+
+public function guardarPlantilla(Request $request)
+{
+    $data = $request->validate([
+        'id'                => 'nullable|exists:encuesta_plantillas,id',
+        'nombre'            => 'required|string|max:150',
+        'descripcion'       => 'nullable|string|max:500',
+        'preguntas'         => 'required|array|min:1',
+        'preguntas.*.id'    => 'required|string|max:80',
+        'preguntas.*.tipo'  => 'required|in:escala,texto,binario',
+        'preguntas.*.texto' => 'required|string|max:500',
+    ]);
+
+    EncuestaPlantilla::updateOrCreate(['id' => $data['id'] ?? null], [
+        'nombre'      => $data['nombre'],
+        'descripcion' => $data['descripcion'] ?? null,
+        'preguntas'   => $data['preguntas'],
+    ]);
+
+    return back()->with('success', 'Plantilla guardada correctamente.');
+}
+
+public function activarPlantilla(EncuestaPlantilla $plantilla)
+{
+    EncuestaPlantilla::query()->update(['activa' => false]);
+    $plantilla->update(['activa' => true]);
+    return back()->with('success', "Plantilla \"{$plantilla->nombre}\" activada. Se usará en los próximos envíos.");
+}
+
+public function eliminarPlantilla(EncuestaPlantilla $plantilla)
+{
+    if ($plantilla->activa) {
+        return back()->withErrors(['error' => 'No puedes eliminar la plantilla activa. Activa otra primero.']);
+    }
+    $plantilla->delete();
+    return back()->with('success', 'Plantilla eliminada.');
+}
+```
+
+Importar `App\Models\EncuestaPlantilla` en ese controlador.
+
+Rutas nuevas (junto a las de `admin.encuestas.*` en routes/web.php, dentro del mismo grupo admin):
+```php
+Route::get('/encuestas/plantillas',            [EncuestaAdminController::class, 'plantillas'])->name('encuestas.plantillas');
+Route::post('/encuestas/plantillas',           [EncuestaAdminController::class, 'guardarPlantilla'])->name('encuestas.plantillas.guardar');
+Route::post('/encuestas/plantillas/{plantilla}/activar',  [EncuestaAdminController::class, 'activarPlantilla'])->name('encuestas.plantillas.activar');
+Route::delete('/encuestas/plantillas/{plantilla}', [EncuestaAdminController::class, 'eliminarPlantilla'])->name('encuestas.plantillas.eliminar');
+```
+
+1D. Frontend — constructor de plantilla
+--------------------------------------------
+Nuevo archivo: resources/js/Pages/Admin/Encuestas/Plantillas.vue
+- Lista de plantillas existentes (tarjetas o tabla simple) con badge "Activa" en la que tenga
+  `activa = true`, y botones "Activar" / "Editar" / "Eliminar" por cada una.
+- Un formulario (puede ser un modal o una sección que se abre al crear/editar) con:
+  - Input "Nombre de la plantilla" y "Descripción" (opcional).
+  - Lista dinámica de preguntas: cada fila tiene un input de texto para la pregunta, un select de
+    tipo (`Escala 1-5`, `Texto libre`, `Sí/No`), botón eliminar fila, y botones ↑/↓ para reordenar.
+  - Botón "+ Agregar pregunta" que agrega una fila vacía con un id generado (`pregunta_` + timestamp
+    o similar, slug simple).
+  - Botón "Guardar plantilla" → `router.post(route('admin.encuestas.plantillas.guardar'), form)`.
+  - Reutilizar la apariencia de los 3 tipos de pregunta tal cual se ven en
+    `resources/js/Pages/Encuestas/Responder.vue` (líneas 70-107) como vista previa en vivo debajo
+    del formulario, para que el admin vea cómo se va a ver la encuesta real antes de guardar.
+- Agregar un botón "Plantillas de encuesta" en `Admin/Encuestas/Index.vue` que lleve a esta página
+  (`<Link :href="route('admin.encuestas.plantillas')">`).
+
+1E. Que la encuesta real use la plantilla activa, con respaldo
+--------------------------------------------------------------------
+En `app/Http/Controllers/EncuestaController.php`:
+```php
+public function show(string $token)
+{
+    $encuesta = EncuestaSatisfaccion::with(['evento', 'user', 'plantilla'])
+        ->where('token', $token)->firstOrFail();
+
+    if ($encuesta->completada()) {
+        return Inertia::render('Encuestas/Gracias', ['evento' => $encuesta->evento?->only(['nombre'])]);
+    }
+
+    $preguntas = $encuesta->plantilla?->preguntas ?? config('encuestas.preguntas');
+
+    return Inertia::render('Encuestas/Responder', [
+        'encuesta'  => $encuesta->only(['id', 'tipo', 'token']),
+        'evento'    => $encuesta->evento?->only(['nombre', 'sector_economico']),
+        'usuario'   => $encuesta->user?->only(['name']),
+        'preguntas' => $preguntas,
+    ]);
+}
+
+public function store(Request $request, string $token)
+{
+    $encuesta = EncuestaSatisfaccion::where('token', $token)->firstOrFail();
+    if ($encuesta->completada()) {
+        return back()->withErrors(['error' => 'Esta encuesta ya fue respondida.']);
+    }
+
+    $preguntas = $encuesta->plantilla?->preguntas ?? config('encuestas.preguntas');
+
+    foreach ($preguntas as $pregunta) {
+        $respuesta = $request->input($pregunta['id']);
+        if ($respuesta !== null && $respuesta !== '') {
+            EncuestaRespuesta::create([
+                'encuesta_satisfaccion_id' => $encuesta->id,
+                'pregunta'                 => $pregunta['texto'],
+                'tipo'                     => $pregunta['tipo'],
+                'respuesta'                => (string) $respuesta,
+            ]);
+        }
+    }
+
+    $encuesta->update(['completada_at' => now()]);
+    return Inertia::render('Encuestas/Gracias', ['evento' => $encuesta->evento?->only(['nombre'])]);
+}
+```
+Así, si todavía no se ha creado/activado ninguna plantilla, sigue funcionando igual que hoy
+(usa `config('encuestas.preguntas')`); en cuanto haya una plantilla activa, se usa esa.
+
+
+===========================================================================
+PUNTO 2 — Enviar por correo desde el apartado de Encuestas
+===========================================================================
+IMPORTANTE — decisión de diseño: guardar una plantilla NO dispara el envío automático a nadie,
+porque la encuesta solo tiene sentido enviada a los participantes de un evento específico (no hay
+una lista general de destinatarios). Lo que pide el punto 2 es que, una vez guardada la plantilla,
+se pueda enviar por correo para que la gente responda — eso ya existe como acción manual
+(`enviarEncuestas` en el panel de Eventos); lo que falta es que esa misma acción también esté
+disponible directamente en el apartado de Encuestas, no solo en Eventos, como se pidió en el punto 4.
+
+En `app/Http/Controllers/Admin/EventoController.php::enviarEncuestas()` (línea ~136), al crear cada
+`EncuestaSatisfaccion`, agregar la plantilla activa:
+```php
+$plantillaActivaId = \App\Models\EncuestaPlantilla::where('activa', true)->value('id');
+// ...dentro del create():
+$encuesta = EncuestaSatisfaccion::create([
+    'evento_id'             => $evento->id,
+    'user_id'               => $p->user_id,
+    'tipo'                  => $p->tipo,
+    'token'                 => Str::random(40),
+    'encuesta_plantilla_id' => $plantillaActivaId,
+]);
+```
+
+En `app/Http/Controllers/Admin/EncuestaAdminController.php::index()`, agregar el método que reutiliza
+exactamente esa misma lógica (no la duplicación: llamar al método del EventoController o extraer un
+trait/servicio compartido `EncuestaEnvioService::enviarParaEvento(Evento $evento): int` usado por
+ambos controladores, para no tener dos copias de la misma lógica de envío):
+
+```php
+public function enviarParaEvento(Request $request)
+{
+    $request->validate(['evento_id' => 'required|exists:eventos,id']);
+    $evento = Evento::findOrFail($request->evento_id);
+    $enviados = app(\App\Services\EncuestaEnvioService::class)->enviarParaEvento($evento);
+    return back()->with('success', "Encuestas enviadas a {$enviados} participante(s).");
+}
+```
+Crear `app/Services/EncuestaEnvioService.php` con el método `enviarParaEvento(Evento $evento): int`
+que contiene la lógica que hoy está en `EventoController::enviarEncuestas()` (moverla ahí), y hacer
+que tanto `EventoController::enviarEncuestas()` como este nuevo método de `EncuestaAdminController`
+llamen a ese servicio.
+
+Ruta nueva:
+```php
+Route::post('/encuestas/enviar-evento', [EncuestaAdminController::class, 'enviarParaEvento'])->name('encuestas.enviar-evento');
+```
+
+En `Admin/Encuestas/Index.vue`, agregar junto al filtro de evento existente un botón
+"Enviar encuestas a este evento" (usa el mismo `eventoSeleccionado` del filtro) que llama a esa ruta
+con confirmación previa (`confirm('¿Enviar la encuesta a todos los participantes aprobados de este evento que aún no la han recibido?')`).
+
+
+===========================================================================
+PUNTO 3 — Botón de prueba (enviar a un correo manual)
+===========================================================================
+3A. Migración — permitir encuestas de prueba sin evento/usuario real
+--------------------------------------------------------------------------
+php artisan make:migration add_prueba_fields_to_encuestas_satisfaccion_table
+
+```php
+public function up(): void
+{
+    Schema::table('encuestas_satisfaccion', function (Blueprint $table) {
+        $table->boolean('es_prueba')->default(false)->after('encuesta_plantilla_id');
+        $table->string('email_prueba')->nullable()->after('es_prueba');
+    });
+
+    // evento_id y user_id deben volverse nullable para permitir encuestas de prueba sin
+    // participante real. Requiere doctrine/dbal instalado (composer require doctrine/dbal --dev
+    // si "change()" falla).
+    Schema::table('encuestas_satisfaccion', function (Blueprint $table) {
+        $table->foreignId('evento_id')->nullable()->change();
+        $table->foreignId('user_id')->nullable()->change();
+    });
+}
+
+public function down(): void
+{
+    Schema::table('encuestas_satisfaccion', function (Blueprint $table) {
+        $table->dropColumn(['es_prueba', 'email_prueba']);
+    });
+}
+```
+Nota: si el proyecto no tiene `doctrine/dbal`, instalarlo solo para esta migración
+(`composer require doctrine/dbal --dev`) o, alternativamente, dropear y recrear las columnas
+`evento_id`/`user_id` como nullable manualmente (dropForeign + dropColumn + agregar de nuevo con
+`->nullable()` + `->constrained()`).
+
+Agregar `'es_prueba'` y `'email_prueba'` al `$fillable` de `EncuestaSatisfaccion`.
+
+3B. Backend — endpoint de prueba
+-------------------------------------
+En `EncuestaAdminController.php`:
+```php
+public function enviarPrueba(Request $request)
+{
+    $request->validate(['email' => 'required|email']);
+
+    $plantillaActivaId = EncuestaPlantilla::where('activa', true)->value('id');
+
+    $encuesta = EncuestaSatisfaccion::create([
+        'evento_id'             => null,
+        'user_id'               => null,
+        'tipo'                  => 'comprador', // valor neutro, solo para satisfacer el enum
+        'token'                 => Str::random(40),
+        'encuesta_plantilla_id' => $plantillaActivaId,
+        'es_prueba'             => true,
+        'email_prueba'          => $request->email,
+    ]);
+
+    Mail::to($request->email)->send(new EncuestaSatisfaccionMail($encuesta->load('plantilla'), esPrueba: true));
+
+    return back()->with('success', "Encuesta de prueba enviada a {$request->email}.");
+}
+```
+
+Ruta: `Route::post('/encuestas/enviar-prueba', [EncuestaAdminController::class, 'enviarPrueba'])->name('encuestas.enviar-prueba');`
+
+En `app/Mail/EncuestaSatisfaccionMail.php`, agregar el parámetro opcional y reflejarlo en el asunto
+para que sea evidente que es una prueba:
+```php
+public function __construct(
+    public EncuestaSatisfaccion $encuesta,
+    public bool $esPrueba = false,
+) {}
+
+public function envelope(): Envelope
+{
+    return new Envelope(
+        subject: ($this->esPrueba ? '[PRUEBA] ' : '') . 'Tu opinión importa — Encuesta de satisfacción Impúlsate'
+    );
+}
+```
+
+En `EncuestaController::show()`, cuando `$encuesta->es_prueba` sea true y no haya `evento`/`user`,
+el saludo debe verse bien igualmente (ya usa `?->` así que no rompe, simplemente no muestra nombre
+de evento ni "Hola, ..."). Opcional: en `Encuestas/Responder.vue`, si `usuario` es null mostrar un
+saludo genérico tipo "Hola" en vez de omitirlo — no es obligatorio, es cosmético.
+
+3C. Frontend — botón de prueba
+------------------------------------
+En `Admin/Encuestas/Index.vue`, agregar una tarjeta/sección "Probar el flujo de la encuesta":
+```html
+<div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 flex flex-wrap items-end gap-3">
+    <div class="flex-1 min-w-[220px]">
+        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Enviar encuesta de prueba a</label>
+        <input v-model="emailPrueba" type="email" placeholder="tu-correo@ejemplo.com"
+            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500" />
+    </div>
+    <button @click="enviarPrueba" :disabled="!emailPrueba"
+        class="px-4 py-2 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
+        Enviar prueba
+    </button>
+</div>
+```
+```js
+const emailPrueba = ref('');
+const enviarPrueba = () => {
+    router.post(route('admin.encuestas.enviar-prueba'), { email: emailPrueba.value }, {
+        preserveScroll: true,
+        onSuccess: () => { emailPrueba.value = ''; },
+    });
+};
+```
+
+
+===========================================================================
+PUNTO 4 — Métricas y acordeón de últimas 10 respondidas, dentro de Admin > Encuestas
+===========================================================================
+4A. Backend — ampliar EncuestaAdminController::index()
+--------------------------------------------------------------------------
+```php
+public function index(Request $request)
+{
+    $eventoId = $request->get('evento_id');
+
+    $base = EncuestaSatisfaccion::where('es_prueba', false);
+    if ($eventoId) { $base->where('evento_id', $eventoId); }
+
+    $totalEnviadas   = (clone $base)->count();
+    $totalRespondidas = (clone $base)->whereNotNull('completada_at')->count();
+    $tasaRespuesta    = $totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0;
+
+    // Promedio por pregunta tipo "escala" y % de "Sí" en preguntas tipo "binario"
+    $respuestasQuery = EncuestaRespuesta::query()
+        ->whereHas('encuesta', function ($q) use ($eventoId) {
+            $q->where('es_prueba', false);
+            if ($eventoId) { $q->where('evento_id', $eventoId); }
+        });
+
+    $metricasEscala = (clone $respuestasQuery)->where('tipo', 'escala')
+        ->selectRaw('pregunta, AVG(CAST(respuesta AS DECIMAL(3,1))) as promedio, COUNT(*) as total')
+        ->groupBy('pregunta')->get();
+
+    $metricasBinario = (clone $respuestasQuery)->where('tipo', 'binario')
+        ->selectRaw("pregunta, SUM(CASE WHEN respuesta = 'Sí' THEN 1 ELSE 0 END) as positivas, COUNT(*) as total")
+        ->groupBy('pregunta')->get()
+        ->map(fn ($r) => ['pregunta' => $r->pregunta, 'porcentaje_si' => $r->total > 0 ? round($r->positivas * 100 / $r->total, 1) : 0]);
+
+    $ultimasRespondidas = EncuestaSatisfaccion::with(['evento', 'user', 'respuestas'])
+        ->where('es_prueba', false)
+        ->whereNotNull('completada_at')
+        ->when($eventoId, fn ($q) => $q->where('evento_id', $eventoId))
+        ->orderByDesc('completada_at')
+        ->take(10)
+        ->get()
+        ->map(fn ($e) => [
+            'id'            => $e->id,
+            'evento'        => $e->evento?->nombre,
+            'usuario'       => $e->user?->name,
+            'tipo'          => $e->tipo,
+            'completada_at' => $e->completada_at->format('d/m/Y H:i'),
+            'respuestas'    => $e->respuestas->map(fn ($r) => ['pregunta' => $r->pregunta, 'respuesta' => $r->respuesta])->values(),
+        ]);
+
+    $encuestas = $base->with(['evento', 'user'])->orderByDesc('created_at')->paginate(50)->through(/* igual que hoy */);
+    $eventos = Evento::orderByDesc('created_at')->get(['id', 'nombre']);
+
+    return Inertia::render('Admin/Encuestas/Index', [
+        'encuestas'          => $encuestas,
+        'eventos'            => $eventos,
+        'filtroEvento'       => $eventoId,
+        'metricas'           => [
+            'total_enviadas'    => $totalEnviadas,
+            'total_respondidas' => $totalRespondidas,
+            'tasa_respuesta'    => $tasaRespuesta,
+            'escala'            => $metricasEscala,
+            'binario'           => $metricasBinario,
+        ],
+        'ultimasRespondidas' => $ultimasRespondidas,
+    ]);
+}
+```
+
+4B. Frontend — tarjetas de métricas + acordeón
+----------------------------------------------------
+En `Admin/Encuestas/Index.vue`, sustituir/ampliar los "Stats rápidos" actuales (línea 67-81) por:
+- Las 3 tarjetas actuales (total/respondidas/pendientes) más una 4ª con "Tasa de respuesta %".
+- Una sección "Promedio por pregunta" con una barra o número grande por cada pregunta tipo escala
+  (ej. "¿Cómo calificarías...? → 4.2 / 5").
+- Una sección "Preguntas Sí/No" con el porcentaje de "Sí" por pregunta binaria.
+
+Acordeón de últimas 10 respondidas (nueva sección, debajo de las métricas):
+```html
+<div class="space-y-2">
+    <h3 class="text-sm font-bold text-gray-900 dark:text-white">Últimas 10 encuestas respondidas</h3>
+    <div v-for="enc in ultimasRespondidas" :key="enc.id"
+        class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+        <button @click="abiertas.includes(enc.id) ? abiertas.splice(abiertas.indexOf(enc.id), 1) : abiertas.push(enc.id)"
+            class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+            <div>
+                <span class="font-semibold text-gray-900 dark:text-white text-sm">{{ enc.usuario ?? 'Sin nombre' }}</span>
+                <span class="text-xs text-gray-400 ml-2">{{ enc.evento ?? '—' }} · {{ enc.completada_at }}</span>
+            </div>
+            <svg class="w-4 h-4 text-gray-400 transition-transform" :class="abiertas.includes(enc.id) ? 'rotate-180' : ''"
+                fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+            </svg>
+        </button>
+        <div v-if="abiertas.includes(enc.id)" class="px-4 pb-4 space-y-2 border-t border-gray-100 dark:border-gray-800 pt-3">
+            <div v-for="(r, idx) in enc.respuestas" :key="idx">
+                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ r.pregunta }}</p>
+                <p class="text-sm text-gray-800 dark:text-gray-200">{{ r.respuesta }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+```
+```js
+const abiertas = ref([]);
+defineProps({ /* agregar */ metricas: Object, ultimasRespondidas: Array });
+```
+
+
+===========================================================================
+DEPLOY
+===========================================================================
+1. php artisan make:migration create_encuesta_plantillas_table (1A)
+2. php artisan make:migration add_prueba_fields_to_encuestas_satisfaccion_table (3A)
+3. Crear app/Models/EncuestaPlantilla.php, app/Services/EncuestaEnvioService.php
+4. npm run build
+5. git add -A && git commit -m "feat: plantilla de encuestas, envío de prueba, métricas y acordeón en Admin > Encuestas" && git push
+6. SSH servidor: git pull && composer install --no-dev --optimize-autoloader && npm run build && php artisan migrate --force && php artisan optimize:clear
+7. Verificación:
+   a. Crear una plantilla nueva con 2-3 preguntas de cada tipo, guardarla y activarla.
+   b. Usar el botón de prueba con tu propio correo, confirmar que llega, que el link funciona y
+      que al responder aparece en "Últimas 10 respondidas" o se excluye según se decidió (debe
+      excluirse de métricas/acordeón reales por ser `es_prueba = true`, confirmar que sí se excluye).
+   c. Enviar encuestas reales a un evento desde el apartado de Encuestas (no solo desde Eventos) y
+      confirmar que llegan y que al responder sí entran a las métricas y al acordeón.
+   d. Confirmar que un evento con encuestas creadas ANTES de este cambio (sin `encuesta_plantilla_id`)
+      sigue funcionando con las preguntas de `config/encuestas.php` sin romperse.

@@ -1,0 +1,465 @@
+PROMPT PARA CLAUDE CODE — 4 fixes: Super-admin, Registro proveedores/compradores, Perfil obligatorio, Texto "Mesa de Networking"
+=======================================================================================================================
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3 + Tailwind, darkMode 'class')
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo.
+
+Aplicar los 4 puntos en orden. Cada uno es independiente, se puede hacer en commits separados.
+
+
+===========================================================================
+PUNTO 1 — Dejar diegomtr8@gmail.com correctamente como super-admin
+===========================================================================
+
+PROBLEMA ENCONTRADO
+--------------------
+Existen DOS scripts que tocan esta cuenta y se contradicen entre sí:
+
+1. database/seeders/SuperAdminSeeder.php
+   → Crea/actualiza al usuario con roles admin + super-admin, password "Realmadrid1".
+   Esto es correcto, pero es un seeder: solo se aplica si alguien lo corre manualmente.
+
+2. tmp_create_diego.php (archivo suelto en la raíz del proyecto, NO es un seeder de Laravel)
+   → Busca al usuario por email; si ya existe, le asigna ADEMÁS los roles 'cliente' y
+     'restaurantero', y le fuerza active_role='comprador' y perfil_completo=true.
+   Si este script se ejecutó después del seeder, la cuenta de Diego terminó con 4 roles
+   (admin, super-admin, cliente, restaurantero) y active_role='comprador', en vez de ser
+   limpiamente un super-admin.
+
+ACCIÓN A REALIZAR
+------------------
+1. Crear un comando Artisan de limpieza (uso único): app/Console/Commands/FijarSuperAdmin.php
+
+```php
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\User;
+use Illuminate\Console\Command;
+use Spatie\Permission\Models\Role;
+
+class FijarSuperAdmin extends Command
+{
+    protected $signature = 'usuario:fijar-superadmin {email=diegomtr8@gmail.com}';
+    protected $description = 'Deja una cuenta limpiamente como admin + super-admin, quitando roles de cliente/restaurantero si los tiene';
+
+    public function handle()
+    {
+        $email = $this->argument('email');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        $user = User::where('email', $email)->first();
+        if (!$user) {
+            $this->error("No existe ningún usuario con el correo {$email}");
+            return 1;
+        }
+
+        $adminRole      = Role::firstOrCreate(['name' => 'admin']);
+        $superAdminRole = Role::firstOrCreate(['name' => 'super-admin']);
+
+        // Quitar roles que no le corresponden a un super-admin
+        foreach (['cliente', 'restaurantero'] as $rolIndebido) {
+            if ($user->hasRole($rolIndebido)) {
+                $user->removeRole($rolIndebido);
+                $this->info("Rol '{$rolIndebido}' removido.");
+            }
+        }
+
+        if (!$user->hasRole('admin'))       { $user->assignRole($adminRole); }
+        if (!$user->hasRole('super-admin')) { $user->assignRole($superAdminRole); }
+
+        $user->forceFill([
+            'active_role'      => null,
+            'rol_seleccionado' => true,
+            'perfil_completo'  => true,
+            'acepta_aviso_at'  => $user->acepta_aviso_at ?? now(),
+        ])->save();
+
+        $this->info("Listo. {$user->name} ({$user->email}) ahora tiene roles: " . implode(', ', $user->getRoleNames()->toArray()));
+        return 0;
+    }
+}
+```
+
+2. Eliminar el archivo tmp_create_diego.php del proyecto (ya cumplió su propósito y es la
+   fuente del conflicto; no debe quedar en el repositorio, mucho menos en producción donde
+   cualquiera con acceso a la URL podría ejecutarlo si no se ha borrado del servidor).
+
+3. Verificar que User::isAdmin() (o el método que use el resto del código) considere también
+   'super-admin', y revisar EnsureIsSuperAdmin para confirmar que su chequeo es
+   `hasRole('super-admin')` (no debe verse afectado por este cambio).
+
+EJECUCIÓN EN PRODUCCIÓN (una sola vez, por SSH)
+-------------------------------------------------
+   php artisan usuario:fijar-superadmin diegomtr8@gmail.com
+   → Debe reportar los roles removidos (si los tenía) y confirmar admin + super-admin.
+
+Si la contraseña actual no es "Realmadrid1" y se desea forzarla, correr también:
+   php artisan tinker
+   >>> $u = \App\Models\User::where('email','diegomtr8@gmail.com')->first();
+   >>> $u->password = \Illuminate\Support\Facades\Hash::make('Realmadrid1');
+   >>> $u->save();
+(Esto es opcional — solo si Diego ya no recuerda la contraseña actual de esa cuenta.)
+
+VERIFICACIÓN
+------------
+1. Login con diegomtr8@gmail.com → debe ir directo a /admin sin pasar por aviso de
+   privacidad, selección de rol, ni completar perfil.
+2. En el panel admin, confirmar acceso a las secciones exclusivas de super-admin
+   (Usuarios, Plantillas de correo, Publicidad).
+3. Confirmar que esta cuenta YA NO aparece como proveedor ni comprador en ningún listado
+   público (al no tener roles cliente/restaurantero).
+
+
+===========================================================================
+PUNTO 2 — Registro de proveedores (que aparezcan en Solicitudes) + revisión de compradores
+===========================================================================
+
+PROVEEDORES — "tengo 7 proveedores registrados" pero Solicitudes aparece vacío
+---------------------------------------------------------------------------------
+CAUSA RAÍZ (confirmada en el código)
+Existen DOS sistemas paralelos y desincronizados para "proveedor inscrito en un evento":
+
+  SISTEMA A — campo directo `restauranteros.edicion_id`
+    Se asigna automáticamente, SIN crear ningún registro en evento_usuario, en:
+    1. app/Http/Controllers/Auth/SeleccionarRolController.php (método crearPerfilProveedor)
+    2. app/Http/Controllers/CompletarPerfilController.php (método agregarRol)
+    3. app/Http/Controllers/Admin/RestauranteroAdminController.php (método store)
+    4. app/Http/Controllers/Auth/RegistroProveedorController.php (dos lugares)
+
+    Este es el campo que usa EventoController::index() para el contador:
+      Evento::withCount(['citas', 'restauranteros'])
+    donde Evento::restauranteros() = hasMany(Restaurantero::class, 'edicion_id')
+
+  SISTEMA B — tabla pivote `evento_usuario` (evento_id, user_id, tipo, estado)
+    Solo se llena cuando el usuario presiona explícitamente "Registrarme a este evento"
+    en app/Http/Controllers/EventoRegistroController.php::registrarProveedor()
+
+    Este es el ÚNICO origen de datos de
+    app/Http/Controllers/Admin/EventoSolicitudesController.php::index()
+
+  Resultado: los proveedores que tienen edicion_id asignado (cuentan en el badge del
+  Sistema A) pero nunca pasaron por el flujo de "registrarme al evento" no existen en
+  evento_usuario (Sistema B), por eso Solicitudes los muestra vacíos en las 3 columnas.
+
+SOLUCIÓN — 2 partes: backfill de datos existentes + sincronizar ambos sistemas hacia adelante
+--------------------------------------------------------------------------------------------------
+
+PARTE 1 — Backfill (recuperar los proveedores faltantes)
+Crear un comando Artisan: app/Console/Commands/SincronizarEventoUsuario.php
+
+```php
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Restaurantero;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+
+class SincronizarEventoUsuario extends Command
+{
+    protected $signature = 'evento:sincronizar-proveedores';
+    protected $description = 'Crea registros faltantes en evento_usuario para restauranteros con edicion_id asignado';
+
+    public function handle()
+    {
+        $restauranteros = Restaurantero::whereNotNull('edicion_id')
+            ->whereNotNull('user_id')
+            ->get();
+
+        $creados = 0;
+        $omitidos = 0;
+
+        foreach ($restauranteros as $r) {
+            $existe = DB::table('evento_usuario')
+                ->where('evento_id', $r->edicion_id)
+                ->where('user_id', $r->user_id)
+                ->where('tipo', 'proveedor')
+                ->exists();
+
+            if ($existe) {
+                $omitidos++;
+                continue;
+            }
+
+            // Si el proveedor ya está aprobado/activo en su perfil, se considera
+            // implícitamente aprobado en el evento. Si no, queda pendiente para
+            // que el admin lo revise manualmente.
+            $estado = $r->aprobado ? 'aprobado' : 'pendiente';
+
+            DB::table('evento_usuario')->insert([
+                'evento_id'     => $r->edicion_id,
+                'user_id'       => $r->user_id,
+                'tipo'          => 'proveedor',
+                'estado'        => $estado,
+                'respondido_at' => $estado === 'aprobado' ? now() : null,
+                'created_at'    => $r->created_at ?? now(),
+                'updated_at'    => now(),
+            ]);
+
+            $creados++;
+        }
+
+        $this->info("Listo: {$creados} registros creados en evento_usuario, {$omitidos} ya existían.");
+    }
+}
+```
+
+Ejecutar una sola vez en producción (vía SSH):
+   php artisan evento:sincronizar-proveedores
+
+Esto hará que los proveedores existentes con edicion_id asignado aparezcan inmediatamente
+en la pantalla de Solicitudes (en "Aprobados" si ya tienen restaurantero.aprobado=true, o
+en "Pendientes" si no han sido aprobados aún por el admin).
+
+PARTE 2 — Sincronizar ambos sistemas hacia adelante (evitar que vuelva a pasar)
+En cada uno de los 4 lugares donde se asigna `edicion_id` directamente, agregar también
+la creación del registro correspondiente en `evento_usuario`.
+
+Agregar este método estático en app/Models/Evento.php (agregar
+`use Illuminate\Support\Facades\DB;` si no existe en el archivo):
+
+```php
+public static function registrarProveedorEnEventoActivo(int $userId, bool $aprobadoAutomatico = false): void
+{
+    $evento = self::activo();
+    if (!$evento) return;
+
+    $existe = DB::table('evento_usuario')
+        ->where('evento_id', $evento->id)
+        ->where('user_id', $userId)
+        ->where('tipo', 'proveedor')
+        ->exists();
+
+    if ($existe) return;
+
+    DB::table('evento_usuario')->insert([
+        'evento_id'     => $evento->id,
+        'user_id'       => $userId,
+        'tipo'          => 'proveedor',
+        'estado'        => $aprobadoAutomatico ? 'aprobado' : 'pendiente',
+        'respondido_at' => $aprobadoAutomatico ? now() : null,
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+}
+```
+
+Llamar a este método inmediatamente después de cada `Restaurantero::create([...'edicion_id'...])`
+en los 4 controladores:
+
+1. app/Http/Controllers/Auth/SeleccionarRolController.php (método crearPerfilProveedor):
+   ```php
+   \App\Models\Evento::registrarProveedorEnEventoActivo($user->id, aprobadoAutomatico: false);
+   ```
+
+2. app/Http/Controllers/CompletarPerfilController.php (método agregarRol):
+   Mismo patrón después de crear $restaurantero.
+
+3. app/Http/Controllers/Admin/RestauranteroAdminController.php (método store):
+   Como este lo crea el ADMIN directamente, se considera aprobado automáticamente:
+   ```php
+   \App\Models\Evento::registrarProveedorEnEventoActivo($user->id, aprobadoAutomatico: true);
+   ```
+
+4. app/Http/Controllers/Auth/RegistroProveedorController.php (ambos lugares con edicion_id):
+   Mismo patrón que el punto 1 (aprobadoAutomatico: false), después de crear el Restaurantero.
+
+COMPRADORES — revisado, NO tienen el mismo problema
+------------------------------------------------------
+Se revisó el flujo de selección de rol "comprador" (SeleccionarRolController::store,
+rama `comprador`/`ambos`) y el de agregar rol desde perfil (CompletarPerfilController::agregarRol).
+Ninguno de los dos crea ni modifica ningún campo equivalente a `edicion_id` para compradores:
+solo asignan el rol Spatie 'cliente' y marcan `active_role`/`rol_seleccionado`. El único lugar
+que inserta en `evento_usuario` para compradores es `EventoRegistroController::registrarComprador()`,
+que es correcto y consistente con lo que lee `EventoSolicitudesController`.
+
+Conclusión: los compradores NO tienen el bug de desincronización. No se requiere ningún
+cambio de código para compradores — solo dejar esta verificación documentada.
+
+VERIFICACIÓN (incluir en el checklist de pruebas)
+----------------------------------------------------
+1. Backfill corrido en producción, los proveedores existentes aparecen en Solicitudes.
+2. Proveedor nuevo se registra → aparece de inmediato en Solicitudes > Pendientes.
+3. Comprador nuevo se registra a un evento (botón "Registrarme a este evento") → aparece
+   de inmediato en Solicitudes > Pendientes (esto ya funcionaba, solo confirmar que sigue
+   funcionando después de los cambios del punto 1 de este mismo bloque).
+4. El contador "X proveedores" en /admin/eventos sigue funcionando.
+
+
+===========================================================================
+PUNTO 3 — Hacer obligatorio completar el perfil
+===========================================================================
+
+SITUACIÓN ACTUAL
+------------------
+Existe app/Http/Middleware/EnsureProfileComplete.php con la lógica correcta (redirige a
+`perfil.completar` si `!perfil_completo` y no es admin), pero en bootstrap/app.php solo está
+registrado como alias (`profile.complete`), NO está en el grupo global `web`. Por eso hoy
+NO es obligatorio: un usuario puede seguir navegando sin completar su perfil.
+
+CAMBIO A REALIZAR
+-------------------
+Archivo: bootstrap/app.php
+
+Agregar EnsureProfileComplete al arreglo `web(append: [...])`, DESPUÉS de EnsureAvisoAceptado
+(el orden de ejecución debe ser: aviso de privacidad → selección de rol → perfil completo):
+
+```php
+$middleware->web(append: [
+    \App\Http\Middleware\HandleInertiaRequests::class,
+    \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+    \App\Http\Middleware\EnsureRolSeleccionado::class,
+    \App\Http\Middleware\EnsureAvisoAceptado::class,
+    \App\Http\Middleware\EnsureProfileComplete::class,   // ← LÍNEA NUEVA
+]);
+```
+
+IMPORTANTE — evitar un tercer deadlock (ya se arregló uno entre aviso y rol, no repetir el error)
+-----------------------------------------------------------------------------------------------------
+Actualizar app/Http/Middleware/EnsureProfileComplete.php para que SOLO se aplique una vez que
+el usuario ya aceptó el aviso Y ya seleccionó rol (si no, podría chocar con esos dos middlewares
+en casos donde un usuario nuevo todavía no pasa por ninguno de los pasos previos). Código
+actualizado:
+
+```php
+<?php
+
+namespace App\Http\Middleware;
+
+use Closure;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class EnsureProfileComplete
+{
+    public function handle(Request $request, Closure $next): Response
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return $next($request);
+        }
+
+        if ($user->hasRole('admin') || $user->hasRole('super-admin')) {
+            return $next($request);
+        }
+
+        // Esperar a que el usuario haya pasado por aviso de privacidad y selección de rol
+        // antes de exigir el perfil completo, para no generar otro loop de redirecciones.
+        if (is_null($user->acepta_aviso_at) || !$user->rol_seleccionado) {
+            return $next($request);
+        }
+
+        if ($user->perfil_completo) {
+            return $next($request);
+        }
+
+        if ($request->routeIs(
+            'perfil.completar',
+            'perfil.completar.store',
+            'perfil.necesidades',
+            'logout',
+            'verification.*',
+            'password.*'
+        )) {
+            return $next($request);
+        }
+
+        return redirect()->route('perfil.completar');
+    }
+}
+```
+
+Quitar el alias duplicado `'profile.complete' => ...` de bootstrap/app.php si ya no se usa en
+ninguna ruta explícita (buscar `->middleware('profile.complete')` en routes/web.php antes de
+quitarlo; si no aparece en ningún lado, es seguro eliminarlo para no dejar código muerto).
+
+VERIFICACIÓN
+------------
+1. Usuario nuevo (Google o email): aviso → rol → completar perfil → dashboard. Cada paso
+   debe ser obligatorio y en ese orden, sin loops.
+2. Usuario existente con perfil_completo=false: al iniciar sesión debe ir directo a
+   completar-perfil (ya tiene aviso aceptado y rol seleccionado).
+3. Usuario existente con perfil_completo=true: login normal, sin interrupciones.
+4. Admin / super-admin: sin interrupciones en ningún caso.
+5. Cerrar sesión (logout) debe funcionar sin quedar atrapado por este middleware.
+
+
+===========================================================================
+PUNTO 4 — Quitar "30 min" de "Mesa de Networking"
+===========================================================================
+
+UBICACIÓN EXACTA
+------------------
+Archivo: resources/js/Pages/Restauranteros/Show.vue
+
+Computed property (líneas 66-69):
+```js
+const duracionTexto = computed(() => {
+    const min = props.evento?.tiempo_entre_citas_minutos ?? 30;
+    return `${min} minutos · Sin costo · Gobierno de Yucatán`;
+});
+```
+
+Se usa en 2 lugares del mismo archivo, debajo del título "Mesa de Networking":
+- Línea 234-235 (header del modal de agendar cita)
+- Línea 435-436 (panel de información del servicio)
+
+CAMBIO A REALIZAR
+-------------------
+Quitar la duración del texto visible, dejando solo el resto de la información (no se debe
+tocar `duracion_minutos` en la base de datos ni en los Servicios — ese valor sigue siendo
+necesario para calcular los horarios disponibles de citas, esto es solo un cambio de texto
+visible al usuario):
+
+```js
+const duracionTexto = computed(() => {
+    return 'Sin costo · Gobierno de Yucatán';
+});
+```
+
+(Si en el futuro ya no se usa `tiempo_entre_citas_minutos` en ningún otro lado de este
+archivo, está bien dejar de leerlo en este computed; no afecta el resto del componente,
+que sigue usando `props.evento?.tiempo_entre_citas_minutos` directamente para construir
+los horarios del calendario más abajo.)
+
+NO TOCAR (para no romper el sistema de citas)
+------------------------------------------------
+- El campo `duracion_minutos = 30` en los registros de Servicio (creado en
+  SeleccionarRolController, CompletarPerfilController, RestauranteroAdminController,
+  RegistroProveedorController, RolesAndPermissionsSeeder, DemoDataSeeder) debe seguir
+  existiendo igual, sin cambios — es el valor que define cada cuánto se generan los
+  espacios de cita.
+- No es necesario tocar esos 6 archivos de backend; el cambio es 100% de presentación
+  en el Vue.
+
+VERIFICACIÓN
+------------
+1. Abrir el perfil de cualquier proveedor (/proveedores/{id}) → el modal y el panel de
+   "Mesa de Networking" ya NO deben mostrar la duración en minutos, solo
+   "Sin costo · Gobierno de Yucatán".
+2. Confirmar que el calendario de horarios disponibles sigue funcionando exactamente igual
+   (la cuadrícula de horas sigue usando los 30 minutos reales, esto no debe cambiar).
+
+
+===========================================================================
+DEPLOY (aplica a los 4 puntos juntos)
+===========================================================================
+1. npm run build
+2. git add -A
+3. git commit -m "fix: super-admin limpio, sync proveedores/compradores, perfil obligatorio, texto Mesa de Networking"
+4. git push
+5. SSH Hostinger:
+   git pull
+   composer install --no-dev --optimize-autoloader
+   npm run build   (si el build no se subió ya compilado)
+   php artisan optimize:clear
+   php artisan config:cache
+   php artisan route:cache
+   php artisan usuario:fijar-superadmin diegomtr8@gmail.com
+   php artisan evento:sincronizar-proveedores   ← IMPORTANTE: correr una sola vez
+6. Borrar tmp_create_diego.php del servidor si sigue ahí (puede comprobarse con
+   `ls tmp_create_diego.php` por SSH; si existe, `rm tmp_create_diego.php`).
+7. Verificar en producción los 4 puntos según las listas de verificación de cada sección.

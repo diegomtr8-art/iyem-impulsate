@@ -1,0 +1,568 @@
+====================================================================
+PROMPT: FIX CORREOS + ELIMINAR DEL EVENTO
+====================================================================
+Stack: Laravel 11 · Inertia.js · Vue 3 · Tailwind CSS (darkMode:'class')
+Color primario: guinda #8b1028 — NUNCA azul/indigo
+====================================================================
+
+CONTEXTO GENERAL
+----------------
+Sistema de Encuentros de Negocios con eventos donde proveedores y
+compradores se registran y esperan aprobación del admin.
+
+Tabla pivot: evento_usuario (evento_id, user_id, tipo, estado, motivo_rechazo, respondido_at)
+Estados: pendiente | aprobado | rechazado
+
+CAMBIO 1 — CORREGIR BOTONES CTA EN CORREOS
+===========================================
+
+PROBLEMA
+--------
+Las plantillas de correo tienen URLs incorrectas que causan server error
+cuando el usuario hace click desde su email.
+
+Causa raíz: la ruta real del panel de proveedores es /proveedor/panel
+(prefix 'proveedor' en web.php), pero las plantillas usaban
+/restaurantero/panel que NO existe como ruta — dispara 500.
+
+FIX: Usar url('/') para todos los CTAs de correo. La página de inicio es
+pública, nunca dispara 500, y desde ahí el usuario puede iniciar sesión
+y navegar a su panel. Es el único CTA seguro para correos donde el
+usuario puede o no estar autenticado.
+
+ARCHIVO 1: resources/views/mail/proveedor-aprobado.blade.php
+------------------------------------------------------------
+Cambiar SOLO el href del botón CTA:
+
+ANTES:
+    <a href="{{ url('/restaurantero/panel') }}"
+       style="display:inline-block;background:#8b1028;color:#fff;...">
+        Ir a mi panel
+    </a>
+
+DESPUÉS:
+    <a href="{{ url('/') }}"
+       style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+        Ir a la plataforma
+    </a>
+
+No cambiar nada más en este archivo.
+
+ARCHIVO 2: resources/views/mail/proveedor-rechazado.blade.php
+-------------------------------------------------------------
+Este archivo NO tiene botón CTA. Agregar uno ANTES del cierre
+de la celda td que contiene el mensaje de "puedes actualizar...":
+
+Encontrar esta línea:
+    <p style="margin:0;font-size:14px;color:#6b7280;">
+        Puedes actualizar tu perfil y volver a solicitar la revisión.
+    </p>
+
+Reemplazar con:
+    <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
+        Puedes actualizar tu perfil y volver a solicitar la revisión.
+    </p>
+    <div style="text-align:center;">
+        <a href="{{ url('/') }}"
+           style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+            Ir a la plataforma
+        </a>
+    </div>
+
+ARCHIVO 3: resources/views/mail/evento-solicitud-aprobada.blade.php
+--------------------------------------------------------------------
+Si este archivo ya existe (lo crea el PROMPT_SOLICITUDES_EVENTO_CORREOS.txt
+previo), corregir todos los hrefs de botones CTA:
+
+Buscar cualquier href que contenga:
+  - url('/restaurantero/panel')
+  - url('/restaurantero')
+  - url('/user/dashboard')
+  - url('/mi-panel')
+  - route(...)
+
+Reemplazarlos TODOS con: url('/')
+
+Si el archivo NO existe todavía, crearlo con este contenido completo:
+
+    <?php /** @var \App\Models\User $user */ ?>
+    <?php /** @var \App\Models\Evento $evento */ ?>
+    <?php /** @var string $tipo */ ?>
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"><title>¡Aprobado al evento!</title></head>
+    <body style="margin:0;padding:0;background:#f9fafb;font-family:'Segoe UI',Arial,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#8b1028,#45060f);padding:32px 40px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+            <p style="color:#fbc4cd;margin:8px 0 0;font-size:14px;">Instituto Yucateco de Emprendedores</p>
+        </td></tr>
+        <tr><td style="padding:32px 40px;text-align:center;">
+            <div style="font-size:56px;margin-bottom:16px;">🎉</div>
+            <h2 style="color:#111827;font-size:22px;font-weight:800;margin:0 0 12px;">¡Fuiste aprobado!</h2>
+            <p style="color:#6b7280;font-size:15px;margin:0 0 8px;">
+                Hola, <strong>{{ $user->name }}</strong>.
+            </p>
+            <p style="color:#6b7280;font-size:15px;margin:0 0 24px;">
+                Tu solicitud para participar en el evento
+                <strong style="color:#111827;">{{ $evento->nombre }}</strong>
+                como <strong style="color:#15803d;">{{ $tipo === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>
+                ha sido <strong style="color:#15803d;">aprobada</strong>.
+            </p>
+            @if($tipo === 'proveedor')
+            <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">
+                Ya apareces en el listado de proveedores y los compradores podrán agendar citas contigo.
+            </p>
+            @else
+            <p style="color:#6b7280;font-size:14px;margin:0 0 24px;">
+                Ya puedes ingresar a la plataforma y agendar citas con los proveedores registrados.
+            </p>
+            @endif
+            <a href="{{ url('/') }}"
+               style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+                Ir a la plataforma
+            </a>
+        </td></tr>
+        <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>
+        </td></tr>
+    </table>
+    </td></tr>
+    </table>
+    </body>
+    </html>
+
+ARCHIVO 4: resources/views/mail/evento-solicitud-rechazada.blade.php
+--------------------------------------------------------------------
+Mismo criterio que el archivo 3. Si ya existe, corregir hrefs a url('/').
+Si NO existe, crearlo:
+
+    <?php /** @var \App\Models\User $user */ ?>
+    <?php /** @var \App\Models\Evento $evento */ ?>
+    <?php /** @var string $tipo */ ?>
+    <?php /** @var string $motivo */ ?>
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"><title>Solicitud no aprobada</title></head>
+    <body style="margin:0;padding:0;background:#f9fafb;font-family:'Segoe UI',Arial,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+    <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+        <tr><td style="background:linear-gradient(135deg,#8b1028,#45060f);padding:32px 40px;text-align:center;">
+            <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+            <p style="color:#fbc4cd;margin:8px 0 0;font-size:14px;">Instituto Yucateco de Emprendedores</p>
+        </td></tr>
+        <tr><td style="padding:32px 40px;">
+            <p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{ $user->name }}</strong></p>
+            <p style="margin:0 0 20px;font-size:15px;color:#6b7280;">
+                Gracias por tu interés en participar en
+                <strong>{{ $evento->nombre }}</strong>
+                como {{ $tipo === 'proveedor' ? 'proveedor' : 'comprador' }}.
+                Lamentablemente, en esta ocasión tu solicitud no fue aprobada.
+            </p>
+            @if($motivo)
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin-bottom:20px;">
+                <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Motivo</p>
+                    <p style="margin:0;font-size:14px;color:#374151;">{{ $motivo }}</p>
+                </td></tr>
+            </table>
+            @endif
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:24px;">
+                <tr><td style="padding:16px 20px;">
+                    <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#6b7280;font-weight:600;">¿Qué puedes hacer?</p>
+                    <p style="margin:0;font-size:14px;color:#374151;">
+                        @if($tipo === 'proveedor')
+                        Puedes completar o actualizar tu perfil de proveedor y volver a postularte al evento desde tu panel.
+                        @else
+                        Puedes actualizar tu información de perfil y volver a postularte al evento desde tu panel.
+                        @endif
+                    </p>
+                </td></tr>
+            </table>
+            <div style="text-align:center;">
+                <a href="{{ url('/') }}"
+                   style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+                    Ir a la plataforma
+                </a>
+            </div>
+        </td></tr>
+        <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>
+        </td></tr>
+    </table>
+    </td></tr>
+    </table>
+    </body>
+    </html>
+
+VERIFICAR MAIL CLASSES
+----------------------
+Verificar que app/Mail/EventoSolicitudAprobadaMail.php y
+app/Mail/EventoSolicitudRechazadaMail.php existan y apunten a los
+blade templates correctos. Si no existen, crearlos:
+
+app/Mail/EventoSolicitudAprobadaMail.php:
+    <?php
+    namespace App\Mail;
+    use App\Models\Evento;
+    use App\Models\User;
+    use Illuminate\Bus\Queueable;
+    use Illuminate\Mail\Mailable;
+    use Illuminate\Mail\Mailables\Content;
+    use Illuminate\Mail\Mailables\Envelope;
+    use Illuminate\Queue\SerializesModels;
+
+    class EventoSolicitudAprobadaMail extends Mailable
+    {
+        use Queueable, SerializesModels;
+
+        public function __construct(
+            public User $user,
+            public Evento $evento,
+            public string $tipo,
+        ) {}
+
+        public function envelope(): Envelope
+        {
+            return new Envelope(subject: '¡Tu solicitud fue aprobada! — ' . $this->evento->nombre);
+        }
+
+        public function content(): Content
+        {
+            return new Content(view: 'mail.evento-solicitud-aprobada');
+        }
+    }
+
+app/Mail/EventoSolicitudRechazadaMail.php:
+    <?php
+    namespace App\Mail;
+    use App\Models\Evento;
+    use App\Models\User;
+    use Illuminate\Bus\Queueable;
+    use Illuminate\Mail\Mailable;
+    use Illuminate\Mail\Mailables\Content;
+    use Illuminate\Mail\Mailables\Envelope;
+    use Illuminate\Queue\SerializesModels;
+
+    class EventoSolicitudRechazadaMail extends Mailable
+    {
+        use Queueable, SerializesModels;
+
+        public function __construct(
+            public User $user,
+            public Evento $evento,
+            public string $tipo,
+            public string $motivo,
+        ) {}
+
+        public function envelope(): Envelope
+        {
+            return new Envelope(subject: 'Resultado de tu solicitud — ' . $this->evento->nombre);
+        }
+
+        public function content(): Content
+        {
+            return new Content(view: 'mail.evento-solicitud-rechazada');
+        }
+    }
+
+
+CAMBIO 2 — FUNCIONALIDAD "ELIMINAR DEL EVENTO"
+===============================================
+
+Esta función permite al admin eliminar a un usuario ya APROBADO del
+evento, con motivo requerido. Si el usuario tiene citas activas, se
+le advierte y sus citas se cancelan al eliminar. Después puede
+volver a postularse (re-apply ya funciona en EventoRegistroController).
+
+PASO 2A — AGREGAR citas_activas AL MAPEAR EN EventoSolicitudesController
+-------------------------------------------------------------------------
+Archivo: app/Http/Controllers/Admin/EventoSolicitudesController.php
+
+En el método index(), dentro del closure $mapear, agregar el campo
+citas_activas al final de la estructura. Hay dos casos:
+
+Para proveedores (tipo === 'proveedor'): contar citas donde
+restaurantero_id = restaurantero->id y estado NOT IN ['cancelada','rechazada']
+
+Para compradores (tipo === 'comprador'): contar citas donde
+cliente_id = user->id y estado NOT IN ['cancelada','rechazada']
+
+Reemplazar la línea de cierre de la estructura $mapear ($mapear = fn($reg) => [...];)
+para que incluya este campo adicional al final del array retornado:
+
+    'citas_activas' => (function () use ($users, $reg) {
+        if (!isset($users[$reg->user_id])) return 0;
+        $u = $users[$reg->user_id];
+        if ($reg->tipo === 'proveedor') {
+            $r = $u->restaurantero;
+            if (!$r) return 0;
+            return \App\Models\Cita::where('restaurantero_id', $r->id)
+                ->whereNotIn('estado', ['cancelada', 'rechazada'])
+                ->count();
+        }
+        return \App\Models\Cita::where('cliente_id', $u->id)
+            ->whereNotIn('estado', ['cancelada', 'rechazada'])
+            ->count();
+    })(),
+
+PASO 2B — NUEVO MÉTODO eliminar() EN EventoSolicitudesController
+----------------------------------------------------------------
+Agregar este método al final de la clase, antes del cierre }:
+
+    public function eliminar(Evento $evento, User $user, Request $request)
+    {
+        $request->validate([
+            'motivo_eliminacion' => 'required|string|max:500',
+        ]);
+
+        $registro = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $user->id)
+            ->where('estado', 'aprobado')
+            ->first();
+
+        if (!$registro) {
+            return back()->withErrors(['error' => 'Registro no encontrado o no está aprobado.']);
+        }
+
+        // Cancelar citas activas del usuario en el sistema
+        if ($registro->tipo === 'proveedor') {
+            $restaurantero = $user->restaurantero;
+            if ($restaurantero) {
+                \App\Models\Cita::where('restaurantero_id', $restaurantero->id)
+                    ->whereNotIn('estado', ['cancelada', 'rechazada', 'completada'])
+                    ->update(['estado' => 'cancelada']);
+            }
+        } else {
+            \App\Models\Cita::where('cliente_id', $user->id)
+                ->whereNotIn('estado', ['cancelada', 'rechazada', 'completada'])
+                ->update(['estado' => 'cancelada']);
+        }
+
+        // Eliminar el registro del evento para que pueda re-postularse
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $user->id)
+            ->delete();
+
+        // Notificar al usuario
+        $tipoTexto = $registro->tipo === 'proveedor' ? 'como proveedor ' : '';
+        Notificacion::crear(
+            $user->id,
+            'solicitud_rechazada',
+            'Eliminado del evento',
+            'Has sido eliminado ' . $tipoTexto . 'del evento "' . $evento->nombre . '". Motivo: ' . $request->motivo_eliminacion . '. Puedes volver a postularte.'
+        );
+
+        return back()->with('success', 'Usuario eliminado del evento.');
+    }
+
+PASO 2C — NUEVA RUTA EN web.php
+--------------------------------
+Archivo: routes/web.php
+
+Dentro del grupo de eventos (prefix 'eventos'), después de la ruta
+solicitudes.revertir, agregar:
+
+    Route::post('/{evento}/solicitudes/{user}/eliminar', [EventoSolicitudesController::class, 'eliminar'])->name('solicitudes.eliminar');
+
+La sección quedará así:
+    Route::post('/{evento}/solicitudes/{user}/aprobar',  [EventoSolicitudesController::class, 'aprobar'])->name('solicitudes.aprobar');
+    Route::post('/{evento}/solicitudes/{user}/rechazar', [EventoSolicitudesController::class, 'rechazar'])->name('solicitudes.rechazar');
+    Route::post('/{evento}/solicitudes/{user}/revertir', [EventoSolicitudesController::class, 'revertirPendiente'])->name('solicitudes.revertir');
+    Route::post('/{evento}/solicitudes/{user}/eliminar', [EventoSolicitudesController::class, 'eliminar'])->name('solicitudes.eliminar');
+    Route::post('/{evento}/solicitudes/aprobar-todos',   [EventoSolicitudesController::class, 'aprobarTodos'])->name('solicitudes.aprobar-todos');
+
+PASO 2D — ACTUALIZAR Solicitudes.vue
+-------------------------------------
+Archivo: resources/js/Pages/Admin/Eventos/Solicitudes.vue
+
+En el bloque <script setup>, agregar después de la función revertir():
+
+    // Modal de eliminación
+    const modalEliminar = ref(false);
+    const solicitudAEliminar = ref(null);
+    const motivoEliminacion = ref('');
+
+    const abrirModalEliminar = (solicitud) => {
+        solicitudAEliminar.value = solicitud;
+        motivoEliminacion.value = '';
+        modalEliminar.value = true;
+    };
+
+    const cerrarModalEliminar = () => {
+        modalEliminar.value = false;
+        solicitudAEliminar.value = null;
+        motivoEliminacion.value = '';
+    };
+
+    const confirmarEliminar = () => {
+        if (!motivoEliminacion.value.trim()) return;
+        procesando.value = true;
+        procesandoId.value = solicitudAEliminar.value?.id;
+        router.post(
+            route('admin.eventos.solicitudes.eliminar', {
+                evento: props.evento.id,
+                user: solicitudAEliminar.value.user_id
+            }),
+            { motivo_eliminacion: motivoEliminacion.value },
+            {
+                onFinish: () => {
+                    procesando.value = false;
+                    procesandoId.value = null;
+                    cerrarModalEliminar();
+                },
+                preserveScroll: true,
+            }
+        );
+    };
+
+En el bloque <template>, dentro de la pestaña "Aprobados" (tabActiva === 'aprobados'),
+en cada tarjeta de usuario aprobado, agregar un botón "Eliminar del evento" junto a
+los controles existentes. Buscar el área donde se renderizan las tarjetas de aprobados
+y agregar el botón:
+
+    <button
+        @click="abrirModalEliminar(solicitud)"
+        class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+               bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400
+               border border-red-200 dark:border-red-800
+               hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+        </svg>
+        Eliminar del evento
+    </button>
+
+Al final del template (antes del cierre </AdminLayout>), agregar el modal de eliminación:
+
+    <!-- Modal Eliminar del Evento -->
+    <Teleport to="body">
+        <div v-if="modalEliminar"
+             class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+             @click.self="cerrarModalEliminar">
+            <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md">
+                <!-- Header -->
+                <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+                    <h3 class="text-base font-bold text-gray-900 dark:text-white">
+                        Eliminar del evento
+                    </h3>
+                    <button @click="cerrarModalEliminar"
+                            class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                        <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <!-- Body -->
+                <div class="p-5 space-y-4">
+                    <!-- Usuario -->
+                    <p class="text-sm text-gray-700 dark:text-gray-300">
+                        Vas a eliminar a
+                        <strong>{{ solicitudAEliminar?.user?.name }}</strong>
+                        del evento como
+                        <strong>{{ solicitudAEliminar?.tipo === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>.
+                        El usuario podrá volver a postularse.
+                    </p>
+
+                    <!-- Alerta de citas -->
+                    <div v-if="solicitudAEliminar?.citas_activas > 0"
+                         class="flex gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20
+                                border border-amber-200 dark:border-amber-700">
+                        <svg class="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"
+                             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round"
+                                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                        </svg>
+                        <div>
+                            <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                                Este usuario tiene {{ solicitudAEliminar.citas_activas }} cita{{ solicitudAEliminar.citas_activas !== 1 ? 's' : '' }} activa{{ solicitudAEliminar.citas_activas !== 1 ? 's' : '' }}.
+                            </p>
+                            <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                                Al eliminar al usuario, sus citas serán canceladas automáticamente.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Motivo -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Motivo de eliminación <span class="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            v-model="motivoEliminacion"
+                            rows="3"
+                            placeholder="Escribe el motivo por el que se elimina al usuario del evento..."
+                            class="w-full rounded-xl border border-gray-300 dark:border-gray-600
+                                   bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                                   px-4 py-2.5 text-sm
+                                   focus:ring-2 focus:ring-[#8b1028] focus:border-transparent
+                                   placeholder:text-gray-400 resize-none">
+                        </textarea>
+                    </div>
+                </div>
+                <!-- Footer -->
+                <div class="flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
+                    <button @click="cerrarModalEliminar"
+                            class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600
+                                   text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                        Cancelar
+                    </button>
+                    <button @click="confirmarEliminar"
+                            :disabled="!motivoEliminacion.trim() || procesando"
+                            class="px-4 py-2 text-sm font-semibold rounded-lg
+                                   bg-red-600 hover:bg-red-700 text-white transition-colors
+                                   disabled:opacity-50 disabled:cursor-not-allowed">
+                        {{ procesando && procesandoId === solicitudAEliminar?.id ? 'Eliminando...' : 'Eliminar del evento' }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Teleport>
+
+
+CAMBIO 3 — DEPLOY A PRODUCCIÓN
+================================
+
+No hay migraciones nuevas. Solo PHP, Vue y Blade.
+
+Ejecutar en el servidor de producción (en C:\xampp\htdocs\citas o la
+ruta donde esté el proyecto):
+
+    npm run build
+    php artisan config:clear
+    php artisan config:cache
+    php artisan route:clear
+    php artisan route:cache
+    php artisan view:clear
+    php artisan optimize
+
+Si hay queue workers corriendo (para correos en cola):
+    php artisan queue:restart
+
+VERIFICACIÓN POST-DEPLOY
+--------------------------
+1. Pedir la aprobación de un proveedor de prueba → debe llegar correo
+   con botón "Ir a la plataforma" → al hacer click debe abrir la página
+   de inicio sin server error.
+
+2. Rechazar a un proveedor de prueba → correo llega con motivo y botón
+   "Ir a la plataforma" → mismo resultado.
+
+3. En Solicitudes de un evento, pestaña Aprobados → debe aparecer el
+   botón "Eliminar del evento" en cada tarjeta.
+
+4. Si el usuario tiene citas activas, al abrir el modal debe aparecer
+   la alerta amarilla con el conteo de citas.
+
+5. Al confirmar eliminación → usuario desaparece de Aprobados → sus
+   citas quedan en estado 'cancelada' → puede volver a postularse.
+
+====================================================================
+FIN DEL PROMPT
+====================================================================

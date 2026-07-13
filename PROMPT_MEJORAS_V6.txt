@@ -1,0 +1,250 @@
+PROMPT PARA CLAUDE CODE - IMPULSATE V6 (Detalles finales)
+==========================================
+Proyecto: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Ruta: C:\xampp\htdocs\citas
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo/blue-*.
+Texto en español con acentos correctos. Modo claro y oscuro. Responsivo (375px, tablet, desktop).
+
+CONTEXTO RELEVANTE
+------------------
+- Welcome.vue (resources/js/Pages/Welcome.vue): sección "¿Cómo funciona?" usa el array `pasos` (línea ~132). Actualmente tiene 4 pasos. El subtítulo dice "Cuatro simples pasos...".
+- Footer en Welcome.vue (~línea 942-1033): ya tiene secciones Marca, Navegación, Sitios Aliados y Contacto. El bloque inferior tiene copyright y crédito de desarrollador.
+- Restaurantero tiene campo `productos_top` (JSON array en la tabla `restauranteros`, cast a `array` en el modelo) que contiene los nombres/items de los productos del proveedor — este es el listado que se muestra en Restauranteros/Show.vue.
+- Modelo `Cita` (app/Models/Cita.php): fillable incluye: restaurantero_id, servicio_id, cliente_id, inicio, fin, estado, notas. NO tiene campo de productos de interés aún.
+- Formulario de agendado en resources/js/Pages/Restauranteros/Show.vue: `useForm({ restaurantero_id, fecha, hora, notas })` — el formulario se envía a `route('citas.store')` que está en CitaPublicaController::store().
+- CitaPublicaController::store() valida y usa `'notas' => 'nullable|string|max:1000'`.
+- La prop `restaurantero` que llega a Show.vue incluye el array `productos_top` (verificar que RestauranteroPublicoController::show() lo incluya en los datos que pasa; si no, agregar `productos_top` al array de datos).
+
+==========================================
+CAMBIO 1: Agregar paso "Selección de Evento" en "¿Cómo funciona?"
+==========================================
+En resources/js/Pages/Welcome.vue:
+
+1. Localizar el array `pasos` (~línea 132). Actualmente tiene 4 elementos:
+   - Regístrate gratis
+   - Elige un proveedor
+   - Agenda tu cita
+   - Haz networking
+
+2. Insertar un NUEVO paso en la posición 2 (índice 1), entre "Regístrate gratis" y "Elige un proveedor":
+   ```js
+   {
+       titulo: 'Selección de Evento',
+       descripcion: 'Únete al evento activo de networking. Cada evento reúne a proveedores y compradores del mismo sector para maximizar las oportunidades de negocio.',
+       path: 'M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zm4.5-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z',
+   },
+   ```
+   (Si el SVG path de arriba no se ve bien en el contexto visual, usar el path de calendario/evento que ya existe en el proyecto o uno similar de Heroicons - lo importante es que sea temáticamente relacionado con un evento/calendario.)
+
+3. El array final debe quedar con 5 pasos en este orden:
+   1. Regístrate gratis
+   2. Selección de Evento  ← NUEVO
+   3. Elige un proveedor
+   4. Agenda tu cita
+   5. Haz networking
+
+4. Actualizar el subtítulo de la sección (línea ~709):
+   - ANTES: "Cuatro simples pasos para comenzar a hacer networking empresarial en Yucatán."
+   - DESPUÉS: "Cinco simples pasos para comenzar a hacer networking empresarial en Yucatán."
+
+5. Verificar que el renderizado de los pasos (el `v-for` sobre `pasos` con numeración visual 1,2,3...) se actualice automáticamente. Si la numeración está hardcodeada en el template, ajustar para que use el índice `i + 1` dinámicamente.
+
+==========================================
+CAMBIO 2: Aviso de Privacidad — página y footer
+==========================================
+
+PARTE A — Crear la página del Aviso de Privacidad
+
+1. Crear la vista: `resources/js/Pages/AvisoPrivacidad.vue`
+   - Diseño: misma identidad visual que Welcome.vue (navbar con logo, misma paleta guinda, footer igual). Puede reutilizar partes del layout de Welcome o usar el componente de navbar existente.
+   - La página es pública (sin autenticación).
+   - Contenido completo del aviso (transcribir textualmente del PDF proporcionado):
+
+   TÍTULO: AVISO DE PRIVACIDAD INTEGRAL
+   SUBTÍTULO: Solicitud de participación en bazares, ferias y exposiciones para artesanos y emprendedores — Dirección de Innovación y Competitividad Empresarial
+
+   RESPONSABLE: El Instituto Yucateco de Emprendedores (IYEM), con domicilio en Avenida Principal Industrias No Contaminantes, Tablaje Catastral 13613, Colonia Sodzil Norte, C.P. 97110, Mérida, Yucatán, México...
+
+   SECCIONES (mostrar como encabezados h2/h3 con texto corrido, estilo profesional-gubernamental):
+   - ¿Qué datos personales recabamos y para qué fines?
+     Finalidades primarias:
+     • Verificar la identidad y autenticidad de los participantes mediante los documentos oficiales proporcionados.
+     • Evaluar, seleccionar y asignar espacios de participación en el bazar, feria o exposición, conforme a criterios institucionales.
+     • Establecer comunicación directa con las personas participantes para informar sobre fechas, requisitos, logística y seguimiento del evento.
+     Finalidades secundarias:
+     • Generación de informes estadísticos institucionales.
+     • Análisis de carácter institucional.
+     • Elaboración y difusión de publicaciones en redes sociales oficiales, medios institucionales.
+     • La promoción de convocatorias, programas o actividades organizadas por el Instituto.
+     Para las finalidades señaladas, se recaban los siguientes datos personales:
+     Datos identificativos: Nombre completo, Fecha de nacimiento, Edad, Sexo, Domicilio, Datos de identificación oficial vigente, CURP, RFC.
+     Datos de contacto: Teléfono particular, Correo electrónico, Redes sociales del negocio.
+     Datos del negocio: Nombre del negocio, Tipo de producto que produce, Foto del producto.
+     Datos sensibles (origen): Municipio, Localidad, Si es persona maya hablante.
+   - Fundamento legal para el tratamiento de sus datos personales.
+     El tratamiento se realiza con fundamento en el artículo 5 fracciones I, IX, XIV, XV, XVI, XIX y XXVII, del Decreto 229/1999 por el que se crea el Instituto Yucateco de Emprendedores, publicado en el Diario Oficial del Gobierno del Estado el 17 de noviembre de 1999, cuya última reforma es del 31 de enero de 2022.
+   - Transferencia de datos personales.
+     No se realizarán transferencias de datos personales, salvo aquéllas que sean necesarias para atender requerimientos de información de una autoridad competente, y en los casos legalmente previstos en los que no se requiere consentimiento del titular (auditorías, fiscalizaciones, remisión de reportes a instancias gubernamentales).
+   - ¿Dónde puedo ejercer mis derechos ARCO?
+     Derechos de acceso, rectificación, cancelación u oposición conforme al artículo 16 párrafo segundo de la Constitución Política de los Estados Unidos Mexicanos, Título Tercero de la Ley General de Protección de Datos Personales en Posesión de Sujetos Obligados, y artículo 54 de la Ley de Protección de Datos Personales en Posesión de Sujetos Obligados del Estado de Yucatán.
+     Unidad de Transparencia: mismas oficinas del IYEM, lunes a viernes 9:00 a 15:00 horas.
+     Correo: solicitudes.iyem@transparenciayucatan.org.mx
+     Plataforma Nacional de Transparencia: https://www.plataformadetransparencia.org.mx
+     Trámites ARCO: https://iyem.yucatan.gob.mx/transparencia/
+   - Domicilio de la Unidad de Transparencia.
+     Avenida Principal Industrias No Contaminantes, Tablaje Catastral 13613, Colonia Sodzil Norte, C.P. 97110, Mérida, Yucatán, México. Lunes a viernes 9:00 a 15:00 horas.
+     Teléfono: 9994615676 ext 29266. Correo: solicitudes.iyem@transparenciayucatan.org.mx
+   - Cambios al aviso de privacidad.
+     Los cambios se harán del conocimiento en los medios oficiales del IYEM: https://iyem.yucatan.gob.mx/transparencia/
+   - Última fecha de actualización: 08 de junio de 2026.
+
+   Diseño de la vista:
+   - Usar prosa limpia, sin exceso de cards ni elementos decorativos — el contenido legal debe ser fácil de leer.
+   - Encabezados con color guinda, texto gris oscuro/claro según modo.
+   - Breadcrumb opcional: "Inicio → Aviso de Privacidad".
+   - Botón/link "Volver al inicio" al final.
+
+2. Crear el controlador (simple, sin modelo): `AvisoPrivacidadController.php`
+   ```php
+   public function index() {
+       return Inertia::render('AvisoPrivacidad');
+   }
+   ```
+
+3. Registrar la ruta pública en routes/web.php (sin middleware de auth):
+   ```php
+   Route::get('/aviso-de-privacidad', [AvisoPrivacidadController::class, 'index'])->name('aviso.privacidad');
+   ```
+
+PARTE B — Agregar link en el footer de Welcome.vue
+
+1. Localizar la sección "Navegación" del footer (~línea 962-969).
+2. Agregar un nuevo `<li>` con el link al aviso de privacidad:
+   ```html
+   <li>
+     <Link :href="route('aviso.privacidad')"
+           class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">
+       Aviso de Privacidad
+     </Link>
+   </li>
+   ```
+3. También agregar en la barra de copyright inferior (junto al texto de © y "Desarrollado por...") un link pequeño separado por " · ":
+   ```html
+   <Link :href="route('aviso.privacidad')"
+         class="text-xs text-gray-400 dark:text-gray-500 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">
+     Aviso de Privacidad
+   </Link>
+   ```
+
+==========================================
+CAMBIO 3: Selección de productos de interés al agendar cita
+==========================================
+Cuando el comprador abre el modal de "Agendar cita" en la página del proveedor (Restauranteros/Show.vue), ANTES del campo de notas, mostrar la pregunta "¿En qué productos estás interesado?" con los productos del proveedor para selección múltiple.
+
+PARTE A — Backend
+
+1. Migración: agregar columna `productos_interes` (json, nullable) a la tabla `citas`.
+   ```php
+   $table->json('productos_interes')->nullable()->after('notas');
+   ```
+
+2. Agregar `productos_interes` al `$fillable` y `$casts` del modelo `Cita`:
+   ```php
+   protected $fillable = [..., 'productos_interes'];
+   protected $casts = [..., 'productos_interes' => 'array'];
+   ```
+
+3. En `CitaPublicaController::store()`:
+   - Agregar validación: `'productos_interes' => 'nullable|array'`, `'productos_interes.*' => 'string|max:255'`.
+   - Incluir `productos_interes` en el `Cita::create([...])` (ya existente, solo agregar el campo).
+
+4. En `RestauranteroPublicoController::show()`: verificar que el array de datos que se pasa a la vista incluya `productos_top` del restaurantero. Si actualmente se pasa el objeto `$restaurantero` con `->only([...])` (por privacidad del CAMBIO 3 de V3), asegurarse de que `productos_top` esté en la lista permitida (es información pública de catálogo de productos).
+
+5. En el panel de administración de citas (`Admin/CitaAdminController` y su vista) y en el panel del proveedor (`RestauranteroCitasController` y su vista correspondiente), mostrar el campo `productos_interes` de cada cita donde se muestran los detalles (como texto separado por comas o como lista de badges). Si `productos_interes` es null o vacío, no mostrar nada (el campo es opcional).
+
+PARTE B — Frontend (Show.vue)
+
+En el formulario de agendado (`useForm`):
+1. Agregar `productos_interes: []` al objeto del formulario:
+   ```js
+   const form = useForm({ restaurantero_id: props.restaurantero.id, fecha: '', hora: '', notas: '', productos_interes: [] });
+   ```
+
+2. En el template, ANTES del campo `<textarea>` de notas, agregar la sección de selección de productos. Mostrar esta sección SOLO si `restaurantero.productos_top` existe y tiene al menos 1 elemento:
+   ```html
+   <!-- Productos de interés -->
+   <div v-if="restaurantero.productos_top && restaurantero.productos_top.length > 0" class="mb-4">
+     <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+       ¿En qué productos estás interesado?
+       <span class="text-xs font-normal text-gray-400 ml-1">(Opcional — puedes seleccionar varios)</span>
+     </label>
+     <div class="flex flex-wrap gap-2">
+       <button
+         v-for="producto in restaurantero.productos_top"
+         :key="typeof producto === 'string' ? producto : producto.nombre"
+         type="button"
+         @click="toggleProducto(typeof producto === 'string' ? producto : producto.nombre)"
+         :class="[
+           'px-3 py-1.5 rounded-full text-sm font-medium border transition-all',
+           form.productos_interes.includes(typeof producto === 'string' ? producto : producto.nombre)
+             ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+             : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400 dark:hover:border-guinda-500'
+         ]"
+       >
+         {{ typeof producto === 'string' ? producto : producto.nombre }}
+       </button>
+     </div>
+     <!-- Botones "Seleccionar todos" / "Limpiar selección" -->
+     <div v-if="restaurantero.productos_top.length > 2" class="mt-2 flex gap-3">
+       <button type="button" @click="seleccionarTodosProductos"
+               class="text-xs text-guinda-600 dark:text-guinda-400 hover:underline">
+         Seleccionar todos
+       </button>
+       <button type="button" @click="form.productos_interes = []"
+               class="text-xs text-gray-400 dark:text-gray-500 hover:underline"
+               v-if="form.productos_interes.length > 0">
+         Limpiar selección
+       </button>
+     </div>
+   </div>
+   ```
+
+3. Agregar las funciones helper en `<script setup>`:
+   ```js
+   const toggleProducto = (nombre) => {
+       const idx = form.productos_interes.indexOf(nombre);
+       if (idx === -1) {
+           form.productos_interes.push(nombre);
+       } else {
+           form.productos_interes.splice(idx, 1);
+       }
+   };
+
+   const seleccionarTodosProductos = () => {
+       form.productos_interes = (props.restaurantero.productos_top || []).map(p =>
+           typeof p === 'string' ? p : p.nombre
+       );
+   };
+   ```
+
+4. Resetear `productos_interes: []` en el `onSuccess` del submit (junto al reset de `notas`, `fecha`, `hora`).
+
+5. Mostrar los productos seleccionados en el resumen de confirmación de la cita (si existe un resumen en el modal antes de confirmar): listar los productos seleccionados como texto separado por comas.
+
+PARTE C — Correo de confirmación de cita
+
+En `app/Mail/CitaAgendada.php` y su plantilla Blade/Markdown, incluir los `productos_interes` seleccionados en el cuerpo del correo que reciben tanto el comprador como el proveedor. Mostrar como lista si hay al menos uno seleccionado, o no mostrar la sección si `productos_interes` es null/vacío.
+
+==========================================
+VERIFICACIÓN FINAL
+==========================================
+- [ ] La sección "¿Cómo funciona?" de Welcome.vue muestra 5 pasos correctamente numerados, el subtítulo dice "Cinco simples pasos...".
+- [ ] La página /aviso-de-privacidad carga correctamente en modo claro y oscuro, con todo el contenido del PDF transcrito.
+- [ ] El footer tiene el link "Aviso de Privacidad" en la sección de Navegación y en la barra de copyright inferior.
+- [ ] Al agendar una cita con un proveedor que tiene productos_top, aparece la pregunta de selección múltiple con chips visuales.
+- [ ] Se puede seleccionar uno, varios o todos los productos (botón "Seleccionar todos").
+- [ ] El campo es completamente opcional — se puede agendar sin seleccionar ningún producto.
+- [ ] Los productos seleccionados se guardan en citas.productos_interes (JSON) y se muestran en el panel del proveedor y admin.
+- [ ] El correo de confirmación incluye los productos seleccionados si los hay.
+- [ ] Migración ejecutada correctamente (php artisan migrate).
+- [ ] No incluir deploy — confirmar con el usuario antes de subir a producción.

@@ -3,6 +3,8 @@ import { ref, onMounted, onUnmounted } from 'vue';
 import { usePage, router } from '@inertiajs/vue3';
 import axios from 'axios';
 
+if (typeof window !== 'undefined') console.debug('[build] notificaciones 2026-07-13b');
+
 const notificaciones = ref([]);
 const noLeidas = ref(0);
 const abierto = ref(false);

@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { Link, router } from '@inertiajs/vue3';
+import { Link, router, useForm } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
 
 const props = defineProps({
@@ -8,6 +8,8 @@ const props = defineProps({
     pendientes: Array,
     aprobados: Array,
     rechazados: Array,
+    todosProveedores: { type: Array, default: () => [] },
+    todosCompradores: { type: Array, default: () => [] },
 });
 
 const tabActiva = ref('pendientes');
@@ -150,6 +152,24 @@ const confirmarEliminar = () => {
     );
 };
 
+// Alta manual (sin solicitud previa)
+const formAgregarProveedor = useForm({ restaurantero_id: '' });
+const formAgregarComprador = useForm({ user_id: '' });
+
+const agregarProveedor = () => {
+    formAgregarProveedor.post(route('admin.eventos.solicitudes.agregar-proveedor', props.evento.id), {
+        preserveScroll: true,
+        onSuccess: () => { formAgregarProveedor.reset(); },
+    });
+};
+
+const agregarComprador = () => {
+    formAgregarComprador.post(route('admin.eventos.solicitudes.agregar-comprador', props.evento.id), {
+        preserveScroll: true,
+        onSuccess: () => { formAgregarComprador.reset(); },
+    });
+};
+
 const formatFecha = (fecha) => {
     if (!fecha) return '—';
     return new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -221,6 +241,49 @@ const formatFechaCorta = (fecha) => {
                             {{ rechazados.length }}
                         </span>
                     </button>
+                </div>
+            </div>
+
+            <!-- ── ALTA MANUAL (sin solicitud previa) ─────────────── -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5">
+                    <h3 class="text-sm font-black text-guinda-800 dark:text-guinda-400 mb-3">➕ Agregar proveedor al evento</h3>
+                    <form @submit.prevent="agregarProveedor" class="flex gap-2 items-start">
+                        <div class="flex-1">
+                            <select v-model="formAgregarProveedor.restaurantero_id"
+                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-guinda-500 transition"
+                                required>
+                                <option value="">— Selecciona un proveedor —</option>
+                                <option v-for="p in todosProveedores" :key="p.id" :value="p.id">{{ p.nombre_restaurante }}</option>
+                            </select>
+                            <p v-if="formAgregarProveedor.errors.error" class="text-xs text-red-600 mt-1">{{ formAgregarProveedor.errors.error }}</p>
+                        </div>
+                        <button type="submit" :disabled="formAgregarProveedor.processing || !formAgregarProveedor.restaurantero_id"
+                            class="px-4 py-2 min-h-[40px] bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors whitespace-nowrap">
+                            Agregar
+                        </button>
+                    </form>
+                    <p v-if="!todosProveedores.length" class="text-xs text-gray-400 mt-2">Todos los proveedores ya tienen un registro en este evento.</p>
+                </div>
+
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5">
+                    <h3 class="text-sm font-black text-guinda-800 dark:text-guinda-400 mb-3">➕ Agregar comprador al evento</h3>
+                    <form @submit.prevent="agregarComprador" class="flex gap-2 items-start">
+                        <div class="flex-1">
+                            <select v-model="formAgregarComprador.user_id"
+                                class="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-guinda-500 transition"
+                                required>
+                                <option value="">— Selecciona un comprador —</option>
+                                <option v-for="c in todosCompradores" :key="c.id" :value="c.id">{{ c.nombre_empresa || c.name }}</option>
+                            </select>
+                            <p v-if="formAgregarComprador.errors.error" class="text-xs text-red-600 mt-1">{{ formAgregarComprador.errors.error }}</p>
+                        </div>
+                        <button type="submit" :disabled="formAgregarComprador.processing || !formAgregarComprador.user_id"
+                            class="px-4 py-2 min-h-[40px] bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors whitespace-nowrap">
+                            Agregar
+                        </button>
+                    </form>
+                    <p v-if="!todosCompradores.length" class="text-xs text-gray-400 mt-2">Todos los usuarios ya tienen un registro en este evento.</p>
                 </div>
             </div>
 

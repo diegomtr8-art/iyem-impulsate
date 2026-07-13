@@ -46,7 +46,7 @@ class HandleInertiaRequests extends Middleware
                         'id', 'name', 'email', 'telefono', 'curp', 'rfc',
                         'municipio', 'nombre_empresa', 'sitio_web',
                         'active_role', 'rol_seleccionado', 'necesidades',
-                        'perfil_completo', 'email_verified_at', 'profile_photo_url',
+                        'perfil_completo', 'es_restaurantero', 'email_verified_at', 'profile_photo_url',
                         'acepta_aviso_at', 'camara_asociacion', 'nombre_establecimiento',
                     ]),
                     [

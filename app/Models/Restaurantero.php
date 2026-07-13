@@ -111,6 +111,77 @@ class Restaurantero extends Model
         static::saving(function ($r) {
             $r->perfil_completo = $r->calcularPerfilCompleto();
         });
+
+        static::saved(function ($r) {
+            // El guard !$r->rechazado evita que un rechazo manual del admin (que en la
+            // misma actualización pone aprobado=false) sea revertido instantáneamente
+            // por este mismo hook cuando el perfil ya estaba completo.
+            if ($r->perfil_completo && !$r->aprobado && !$r->rechazado) {
+                $r->autoAprobar();
+            }
+        });
+    }
+
+    /**
+     * Perfil completo = aprobado automático (sin revisión manual del admin).
+     * Vincula al evento activo con estado='aprobado' en evento_usuario.
+     */
+    protected function autoAprobar(): void
+    {
+        $evento = Evento::activo();
+
+        $this->forceFill([
+            'aprobado'       => true,
+            'rechazado'      => false,
+            'motivo_rechazo' => null,
+            'activo'         => true,
+            'edicion_id'     => $evento?->id ?? $this->edicion_id,
+        ])->saveQuietly();
+
+        if ($this->user && !$this->user->perfil_completo) {
+            $this->user->update(['perfil_completo' => true]);
+        }
+
+        if ($evento) {
+            $registro = \Illuminate\Support\Facades\DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $this->user_id)
+                ->where('tipo', 'proveedor')
+                ->first();
+
+            if (!$registro) {
+                \Illuminate\Support\Facades\DB::table('evento_usuario')->insert([
+                    'evento_id'     => $evento->id,
+                    'user_id'       => $this->user_id,
+                    'tipo'          => 'proveedor',
+                    'estado'        => 'aprobado',
+                    'respondido_at' => now(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+            } elseif ($registro->estado !== 'aprobado') {
+                \Illuminate\Support\Facades\DB::table('evento_usuario')
+                    ->where('id', $registro->id)
+                    ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+            }
+        }
+
+        if ($this->user?->email) {
+            try {
+                \Illuminate\Support\Facades\Mail::to($this->user->email)->send(new \App\Mail\ProveedorAprobado($this));
+            } catch (\Exception $e) {}
+        }
+
+        if ($this->user) {
+            Notificacion::crear(
+                $this->user->id,
+                'solicitud_aprobada',
+                '🎉 ¡Perfil completo y aprobado!',
+                $evento
+                    ? "Tu perfil está completo y fuiste aprobado automáticamente en el evento \"{$evento->nombre}\". Ya apareces en el directorio de proveedores."
+                    : 'Tu perfil está completo y fue aprobado automáticamente.'
+            );
+        }
     }
 
     public function calcularPerfilCompleto(): bool

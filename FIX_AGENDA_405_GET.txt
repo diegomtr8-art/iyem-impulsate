@@ -1,0 +1,443 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — FIX AGENDA: 405 Method Not Allowed
+El botón "Aceptar" del correo da error 405 porque la ruta es POST
+pero los links de email siempre hacen GET.
+Archivo: FIX_AGENDA_405_GET.txt
+================================================================================
+
+PROBLEMA:
+  URL del error: impulsate.iyemyucatan.com/agenda/aceptar/{token}
+  Error: 405 Method Not Allowed
+  
+  Causa: Las rutas agenda.aceptar y agenda.rechazar están definidas como
+  Route::post(...), pero los botones del correo son links <a href="...">,
+  que el navegador abre con GET. Laravel rechaza la petición con 405.
+
+  Los links de email SIEMPRE son GET — nunca POST. Hay que cambiar las
+  rutas a GET y el controller debe manejar GET.
+
+OBJETIVO:
+  1. Cambiar rutas a GET para que los links del correo funcionen
+  2. Verificar que al aceptar se crean las citas en el sistema
+  3. Verificar que las citas aparecen en /mi-panel del comprador
+  4. Verificar que al rechazar el admin recibe notificación visible
+  5. Deploy
+
+LEE TODOS LOS ARCHIVOS ANTES DE MODIFICAR.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — routes/web.php: cambiar POST a GET en las rutas públicas de agenda
+════════════════════════════════════════════════════════════════════════════════
+
+Busca el bloque de rutas de agenda pública. Debe verse así actualmente:
+
+    Route::prefix('agenda')->name('agenda.')->group(function () {
+        Route::get('/propuesta/{token}',  [..., 'ver']);
+        Route::post('/aceptar/{token}',   [..., 'aceptar']);   // ← PROBLEMA
+        Route::post('/rechazar/{token}',  [..., 'rechazar']);  // ← PROBLEMA
+    });
+
+Cámbialo a:
+
+    Route::prefix('agenda')->name('agenda.')->group(function () {
+        Route::get('/propuesta/{token}',  [AgendaPublicaController::class, 'ver'])->name('ver');
+        Route::get('/aceptar/{token}',    [AgendaPublicaController::class, 'aceptar'])->name('aceptar');
+        Route::get('/rechazar/{token}',   [AgendaPublicaController::class, 'rechazar'])->name('rechazar');
+    });
+
+IMPORTANTE: Estas rutas deben estar FUERA de cualquier grupo con middleware
+'auth' o 'verified'. El comprador abre el link sin estar logueado en el server.
+Verifica que no estén dentro de Route::middleware(['auth'])->group(...).
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — AgendaPublicaController.php: método aceptar() con GET
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: app/Http/Controllers/AgendaPublicaController.php
+
+El método aceptar() ya existe. Verifica que:
+  a) Acepta Request como parámetro (o sin parámetro, no es necesario para GET)
+  b) Protege contra doble-click (si ya fue respondida, muestra mensaje)
+  c) Crea las citas correctamente
+  d) Redirige a la página de confirmación
+
+Reemplaza el método aceptar() completo por:
+
+    public function aceptar(string $token)
+    {
+        $propuesta = AgendaPropuesta::where('token', $token)
+            ->with([
+                'citas.proveedor',
+                'comprador:id,name,nombre_empresa,email',
+                'evento:id,nombre,fecha_inicio',
+            ])
+            ->firstOrFail();
+
+        // Si ya fue respondida (protección contra doble-click y reenvío)
+        if (!$propuesta->esPendiente()) {
+            return Inertia::render('Agenda/Gracias', [
+                'tipo'         => $propuesta->estado,
+                'propuesta'    => $propuesta,
+                'yaRespondida' => true,
+            ]);
+        }
+
+        \DB::transaction(function () use ($propuesta) {
+            $propuesta->update([
+                'estado'        => 'aceptada',
+                'respondida_at' => now(),
+            ]);
+
+            foreach ($propuesta->citas as $citaPropuesta) {
+                // LEE app/Models/Cita.php antes de ejecutar este bloque.
+                // Ajusta los nombres de campo según tu modelo real.
+                // Campos comunes: restaurantero_id, cliente_id, inicio, fin, estado
+                // También puede llamarse: hora_inicio, hora_fin, fecha, user_id
+                
+                \App\Models\Cita::create([
+                    'evento_id'        => $propuesta->evento_id,
+                    'restaurantero_id' => $citaPropuesta->restaurantero_id,
+                    'cliente_id'       => $propuesta->user_id,
+                    'inicio'           => $citaPropuesta->slot_inicio,
+                    'fin'              => $citaPropuesta->slot_fin,
+                    'estado'           => 'confirmada',
+                ]);
+
+                // Notificar al proveedor
+                $proveedorUserId = $citaPropuesta->proveedor?->user_id;
+                if ($proveedorUserId && class_exists(\App\Models\Notificacion::class)) {
+                    $nombreComprador = $propuesta->comprador->nombre_empresa
+                                      ?? $propuesta->comprador->name;
+                    \App\Models\Notificacion::crear(
+                        $proveedorUserId,
+                        'cita_confirmada',
+                        '¡Nueva cita confirmada!',
+                        'El comprador "' . $nombreComprador . '" confirmó una cita contigo a las ' .
+                        \Carbon\Carbon::parse($citaPropuesta->slot_inicio)->format('H:i') .
+                        ' el 21 de julio.'
+                    );
+                }
+            }
+
+            // Notificar al comprador
+            if (class_exists(\App\Models\Notificacion::class)) {
+                \App\Models\Notificacion::crear(
+                    $propuesta->user_id,
+                    'agenda_aceptada',
+                    '¡Agenda confirmada!',
+                    'Has confirmado tu agenda de citas para el evento "' .
+                    $propuesta->evento->nombre . '". Revisa tus citas en tu panel.'
+                );
+            }
+        });
+
+        return Inertia::render('Agenda/Gracias', [
+            'tipo'         => 'aceptada',
+            'propuesta'    => $propuesta->load([
+                'citas.proveedor:id,nombre,foto',
+                'evento:id,nombre,fecha_inicio',
+            ]),
+            'yaRespondida' => false,
+        ]);
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 3 — AgendaPublicaController.php: método rechazar() con GET
+════════════════════════════════════════════════════════════════════════════════
+
+Reemplaza el método rechazar() completo por:
+
+    public function rechazar(string $token)
+    {
+        $propuesta = AgendaPropuesta::where('token', $token)
+            ->with(['comprador:id,name,nombre_empresa', 'evento:id,nombre'])
+            ->firstOrFail();
+
+        // Protección contra doble-click
+        if (!$propuesta->esPendiente()) {
+            return Inertia::render('Agenda/Gracias', [
+                'tipo'         => $propuesta->estado,
+                'propuesta'    => $propuesta,
+                'yaRespondida' => true,
+            ]);
+        }
+
+        $propuesta->update([
+            'estado'        => 'rechazada',
+            'respondida_at' => now(),
+        ]);
+
+        $nombreComprador = $propuesta->comprador->nombre_empresa
+                           ?? $propuesta->comprador->name;
+
+        // Notificar a TODOS los admins
+        $admins = \App\Models\User::role(['admin', 'super-admin'])->get();
+        foreach ($admins as $admin) {
+            if (class_exists(\App\Models\Notificacion::class)) {
+                \App\Models\Notificacion::crear(
+                    $admin->id,
+                    'agenda_rechazada',
+                    '⚠️ Agenda rechazada — re-propuesta necesaria',
+                    'El comprador "' . $nombreComprador . '" rechazó su propuesta de agenda ' .
+                    'para el evento "' . $propuesta->evento->nombre . '". ' .
+                    'Ve a Admin → Agenda para generar una nueva propuesta.'
+                );
+            }
+        }
+
+        // Notificar al comprador que su rechazo fue registrado
+        if (class_exists(\App\Models\Notificacion::class)) {
+            \App\Models\Notificacion::crear(
+                $propuesta->user_id,
+                'agenda_rechazada',
+                'Propuesta rechazada registrada',
+                'Recibimos tu respuesta. El equipo de IMPULSATE te contactará pronto ' .
+                'para generarte una nueva propuesta de agenda.'
+            );
+        }
+
+        return Inertia::render('Agenda/Gracias', [
+            'tipo'         => 'rechazada',
+            'propuesta'    => $propuesta,
+            'yaRespondida' => false,
+        ]);
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 4 — Agenda/Gracias.vue: mostrar citas al aceptar + mensaje al rechazar
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: resources/js/Pages/Agenda/Gracias.vue
+
+Crea o reemplaza con esta versión completa:
+
+<script setup>
+import { Head } from '@inertiajs/vue3';
+
+const props = defineProps({
+    tipo:         String,   // 'aceptada' | 'rechazada'
+    propuesta:    Object,
+    yaRespondida: Boolean,
+});
+
+const nombreComprador = props.propuesta?.comprador?.nombre_empresa
+                     ?? props.propuesta?.comprador?.name
+                     ?? 'Comprador';
+</script>
+
+<template>
+    <Head title="Respuesta a propuesta — IMPULSATE" />
+
+    <div class="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12">
+        <div class="w-full max-w-lg">
+
+            <!-- Logo -->
+            <div class="text-center mb-8">
+                <img src="/images/logo_impulsate.png" alt="IMPULSATE"
+                    class="h-10 w-auto mx-auto mb-2"
+                    onerror="this.style.display='none'" />
+                <h1 class="text-2xl font-black text-guinda-800 dark:text-white">IMPULSATE</h1>
+                <p class="text-xs text-gray-400">IYEM Yucatán</p>
+            </div>
+
+            <!-- YA FUE RESPONDIDA ANTES -->
+            <div v-if="yaRespondida"
+                class="bg-white rounded-3xl shadow-lg border border-gray-200 p-8 text-center">
+                <div class="text-5xl mb-4">ℹ️</div>
+                <h2 class="text-lg font-bold text-gray-700 mb-2">Esta propuesta ya fue respondida</h2>
+                <p class="text-sm text-gray-500">
+                    Esta propuesta de agenda ya tiene una respuesta registrada.
+                    Si tienes dudas, escríbenos a
+                    <a href="mailto:impulsate@iyemyucatan.com"
+                        class="text-guinda-700 font-semibold underline">
+                        impulsate@iyemyucatan.com
+                    </a>
+                </p>
+            </div>
+
+            <!-- ACEPTADA -->
+            <div v-else-if="tipo === 'aceptada'"
+                class="bg-white rounded-3xl shadow-lg border border-green-200 p-8">
+                <div class="text-center mb-6">
+                    <div class="text-6xl mb-4">✅</div>
+                    <h2 class="text-xl font-black text-green-700 mb-2">¡Agenda confirmada!</h2>
+                    <p class="text-sm text-gray-600 leading-relaxed">
+                        Hola, <strong>{{ nombreComprador }}</strong>. Has aceptado tu agenda de citas
+                        para el <strong>{{ propuesta?.evento?.nombre }}</strong>.
+                    </p>
+                </div>
+
+                <!-- Lista de citas confirmadas -->
+                <div v-if="propuesta?.citas?.length"
+                    class="bg-green-50 border border-green-200 rounded-2xl overflow-hidden mb-6">
+                    <div class="px-4 py-2.5 bg-green-100 border-b border-green-200">
+                        <p class="text-xs font-bold text-green-700 uppercase tracking-wide">
+                            Tus citas confirmadas — 21 de julio de 2026
+                        </p>
+                    </div>
+                    <div v-for="cita in propuesta.citas" :key="cita.id"
+                        class="flex items-center justify-between px-4 py-3
+                               border-b border-green-100 last:border-0">
+                        <span class="text-xs font-bold text-gray-500 w-24 flex-shrink-0">
+                            {{ $filters?.formatHora(cita.slot_inicio) ?? cita.slot_inicio?.substring(11,16) }}
+                            –
+                            {{ cita.slot_fin?.substring(11,16) }}
+                        </span>
+                        <span class="text-sm font-semibold text-gray-800 flex-1 ml-3">
+                            {{ cita.proveedor?.nombre ?? '—' }}
+                        </span>
+                        <span class="text-xs font-bold text-green-700 bg-green-100
+                                     px-2 py-0.5 rounded-full flex-shrink-0">
+                            Confirmada
+                        </span>
+                    </div>
+                </div>
+
+                <p class="text-xs text-gray-500 text-center mb-4">
+                    Recibirás un recordatorio antes del evento.<br>
+                    Revisa tus citas en tu panel de usuario.
+                </p>
+
+                <a href="/mi-panel"
+                    class="block w-full py-3 text-center bg-guinda-800 hover:bg-guinda-700
+                           text-white font-bold rounded-xl text-sm transition-colors">
+                    Ver mis citas en Mi Panel →
+                </a>
+            </div>
+
+            <!-- RECHAZADA -->
+            <div v-else-if="tipo === 'rechazada'"
+                class="bg-white rounded-3xl shadow-lg border border-amber-200 p-8 text-center">
+                <div class="text-6xl mb-4">🔄</div>
+                <h2 class="text-xl font-black text-amber-700 mb-2">Hemos recibido tu respuesta</h2>
+                <p class="text-sm text-gray-600 leading-relaxed mb-6">
+                    Has rechazado la propuesta de agenda.<br>
+                    El equipo de <strong>IMPULSATE</strong> recibió una notificación y
+                    te contactará pronto para generarte una nueva propuesta.
+                </p>
+                <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 text-left mb-4">
+                    <p class="text-xs text-amber-700 leading-relaxed">
+                        Si tienes preferencia de horario o de proveedores específicos,
+                        puedes escribirnos a:<br>
+                        <strong>
+                            <a href="mailto:impulsate@iyemyucatan.com"
+                                class="underline">impulsate@iyemyucatan.com</a>
+                        </strong>
+                    </p>
+                </div>
+                <p class="text-xs text-gray-400">
+                    impulsate.iyemyucatan.com · Programa Gubernamental Yucatán
+                </p>
+            </div>
+
+        </div>
+    </div>
+</template>
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 5 — Verificar que las citas aparecen en /mi-panel del comprador
+════════════════════════════════════════════════════════════════════════════════
+
+Busca el controller que sirve /mi-panel (ruta user.dashboard).
+Verifica que en el query de citas para el comprador se filtra por cliente_id:
+
+    // Busca algo como:
+    $citas = Cita::where('cliente_id', $user->id)
+        ->with(['restaurantero:id,nombre,foto', 'evento:id,nombre'])
+        ->orderBy('inicio')
+        ->get();
+
+    // O puede ser:
+    $citas = Cita::where('user_id', $user->id)->...
+
+Lee el modelo Cita.php para saber el nombre exacto del campo del comprador.
+Si el campo se llama 'user_id' en vez de 'cliente_id', ajusta el query.
+
+Si las citas ya se muestran en /mi-panel (solo verifica que el query usa
+el campo correcto según tu modelo Cita), no es necesario cambiar nada aquí.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 6 — Admin/Agenda/Index.vue: mostrar notificación de rechazo
+════════════════════════════════════════════════════════════════════════════════
+
+En la vista de lista de propuestas del admin (/admin/agenda), la fila de
+una propuesta rechazada debe mostrar claramente que fue rechazada y que
+se notificó al admin.
+
+En la columna "Estado" para propuestas rechazadas, usa:
+
+    <div v-if="propuesta.estado === 'rechazada'">
+        <span class="badge bg-red-100 text-red-700 border border-red-200
+                     text-xs font-bold px-2.5 py-1 rounded-full">
+            ❌ Rechazada
+        </span>
+        <p class="text-xs text-red-500 mt-1">Notificación enviada a admins</p>
+    </div>
+
+En la columna "Acciones" para rechazadas, muestra el botón de re-propuesta:
+
+    <button v-if="propuesta.estado === 'rechazada'"
+        @click="$inertia.visit(route('admin.agenda.crear'))"
+        class="px-3 py-1.5 bg-guinda-800 text-white text-xs font-bold
+               rounded-lg hover:bg-guinda-700 transition-colors">
+        🔄 Nueva propuesta
+    </button>
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN COMPLETA DEL FLUJO
+════════════════════════════════════════════════════════════════════════════════
+
+1. CREAR Y ENVIAR PROPUESTA:
+   a) Ve a /admin/agenda/crear
+   b) Selecciona un comprador aprobado en el evento
+   c) Asigna 2-3 proveedores a distintos slots
+   d) Haz clic en "Enviar propuesta"
+   e) Verifica que el correo llega al email del comprador
+
+2. PROBAR ACEPTAR (caso principal del bug reportado):
+   a) Abre el correo recibido
+   b) Haz clic en "✅ Sí, acepto la agenda"
+   c) La URL debe ser: /agenda/aceptar/{token}
+   d) Verifica que ya NO sale el error 405
+   e) Verifica que muestra la pantalla "Gracias / Agenda confirmada"
+   f) Verifica que se crean filas en la tabla 'citas' en BD:
+      SELECT * FROM citas WHERE cliente_id = [id del comprador]
+   g) Entra a /mi-panel con el usuario comprador
+   h) Verifica que las citas aparecen en su panel
+
+3. PROBAR RECHAZAR:
+   a) Crea otra propuesta nueva y envíala
+   b) Abre el correo y haz clic en "❌ No acepto"
+   c) Verifica que muestra pantalla "Hemos recibido tu respuesta"
+   d) Entra al admin y verifica que en /admin/agenda la propuesta
+      aparece como "Rechazada"
+   e) Verifica que los admins recibieron la notificación en el sistema
+
+4. DOBLE CLICK (protección):
+   a) Usa el mismo link de aceptar por segunda vez
+   b) Debe mostrar "Esta propuesta ya fue respondida" (sin crear citas duplicadas)
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    # En el servidor:
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # Solo hay cambios en PHP y Vue — no hay migraciones nuevas
+    
+    # Compilar assets (cambió Gracias.vue)
+    npm run build
+
+    # Regenerar caché de rutas (cambiaron las rutas de POST a GET)
+    php artisan route:cache
+    php artisan optimize
+
+    # Verificar que las rutas quedaron como GET:
+    php artisan route:list | grep agenda
+    # Debe mostrar: GET agenda/aceptar/{token}
+    # Debe mostrar: GET agenda/rechazar/{token}
+
+================================================================================
+FIN DEL PROMPT — FIX 405 AGENDA
+================================================================================

@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Mockup — Flujo de Encuestas Impúlsate (previsualización, no funcional)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          guinda: {
+            50:'#fef2f4',100:'#fde6ea',200:'#fbc4cd',300:'#f89aa9',400:'#f36178',
+            500:'#eb2d4e',600:'#c8113b',700:'#a80e31',800:'#8b1028',900:'#710d21',950:'#45060f'
+          }
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .tab-btn.active { background:#8b1028; color:#fff; }
+  .step-line { background: linear-gradient(90deg,#8b1028,#f89aa9); }
+</style>
+</head>
+<body class="bg-gray-100 text-gray-900">
+
+<div class="max-w-6xl mx-auto px-4 py-6">
+
+  <!-- Banner aviso -->
+  <div class="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-xl px-4 py-2 mb-4 text-center font-medium">
+    Vista previa estática (mockup) — solo para revisar el diseño antes de implementar y desplegar. No es funcional.
+  </div>
+
+  <h1 class="text-2xl font-black mb-1">Flujo de Encuestas — Impúlsate</h1>
+  <p class="text-sm text-gray-500 mb-6">De crear la plantilla → enviar → responder → ver resultados en Admin</p>
+
+  <!-- Línea de pasos -->
+  <div class="flex items-center mb-8 overflow-x-auto pb-2">
+    <template id="steps-data"></template>
+    <div class="flex items-center gap-1 min-w-max">
+      <div class="flex flex-col items-center w-28">
+        <div class="w-9 h-9 rounded-full bg-guinda-800 text-white flex items-center justify-center font-bold text-sm">1</div>
+        <span class="text-[11px] text-center mt-1 font-medium">Crear plantilla</span>
+      </div>
+      <div class="h-0.5 w-10 step-line"></div>
+      <div class="flex flex-col items-center w-28">
+        <div class="w-9 h-9 rounded-full bg-guinda-800 text-white flex items-center justify-center font-bold text-sm">2</div>
+        <span class="text-[11px] text-center mt-1 font-medium">Enviar / Probar</span>
+      </div>
+      <div class="h-0.5 w-10 step-line"></div>
+      <div class="flex flex-col items-center w-28">
+        <div class="w-9 h-9 rounded-full bg-guinda-800 text-white flex items-center justify-center font-bold text-sm">3</div>
+        <span class="text-[11px] text-center mt-1 font-medium">Correo recibido</span>
+      </div>
+      <div class="h-0.5 w-10 step-line"></div>
+      <div class="flex flex-col items-center w-28">
+        <div class="w-9 h-9 rounded-full bg-guinda-800 text-white flex items-center justify-center font-bold text-sm">4</div>
+        <span class="text-[11px] text-center mt-1 font-medium">Responde encuesta</span>
+      </div>
+      <div class="h-0.5 w-10 step-line"></div>
+      <div class="flex flex-col items-center w-28">
+        <div class="w-9 h-9 rounded-full bg-guinda-800 text-white flex items-center justify-center font-bold text-sm">5</div>
+        <span class="text-[11px] text-center mt-1 font-medium">Gracias</span>
+      </div>
+      <div class="h-0.5 w-10 step-line"></div>
+      <div class="flex flex-col items-center w-28">
+        <div class="w-9 h-9 rounded-full bg-guinda-800 text-white flex items-center justify-center font-bold text-sm">6</div>
+        <span class="text-[11px] text-center mt-1 font-medium">Métricas en Admin</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex gap-2 mb-4 flex-wrap">
+    <button class="tab-btn active text-xs font-semibold px-3 py-2 rounded-lg border border-guinda-800" onclick="showTab('plantilla')">1. Plantilla</button>
+    <button class="tab-btn text-xs font-semibold px-3 py-2 rounded-lg border border-gray-300 text-gray-600" onclick="showTab('admin')">2. Admin Encuestas (envío + prueba)</button>
+    <button class="tab-btn text-xs font-semibold px-3 py-2 rounded-lg border border-gray-300 text-gray-600" onclick="showTab('correo')">3. Correo recibido</button>
+    <button class="tab-btn text-xs font-semibold px-3 py-2 rounded-lg border border-gray-300 text-gray-600" onclick="showTab('responder')">4. Pantalla de respuesta</button>
+    <button class="tab-btn text-xs font-semibold px-3 py-2 rounded-lg border border-gray-300 text-gray-600" onclick="showTab('metricas')">5/6. Métricas + acordeón</button>
+  </div>
+
+  <!-- ===================== TAB 1: PLANTILLA ===================== -->
+  <div id="tab-plantilla" class="tab-content space-y-4">
+    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h2 class="font-bold text-gray-900">Plantillas de encuesta</h2>
+          <p class="text-xs text-gray-500">Crea y guarda el cuestionario que se enviará a los participantes</p>
+        </div>
+        <button class="px-3 py-2 bg-guinda-800 text-white text-xs font-semibold rounded-xl">+ Nueva plantilla</button>
+      </div>
+
+      <div class="flex gap-3 mb-5">
+        <div class="flex-1 border border-emerald-200 bg-emerald-50 rounded-xl px-4 py-3">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-sm text-gray-900">Encuesta General 2026</span>
+            <span class="text-[10px] font-bold uppercase bg-emerald-600 text-white px-2 py-0.5 rounded-full">Activa</span>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">6 preguntas · usada desde el 10/06/2026</p>
+        </div>
+        <div class="flex-1 border border-gray-200 rounded-xl px-4 py-3 opacity-70">
+          <div class="flex items-center justify-between">
+            <span class="font-semibold text-sm text-gray-700">Borrador — versión corta</span>
+            <button class="text-[10px] font-bold uppercase border border-guinda-700 text-guinda-700 px-2 py-0.5 rounded-full">Activar</button>
+          </div>
+          <p class="text-xs text-gray-400 mt-1">3 preguntas · sin usar todavía</p>
+        </div>
+      </div>
+
+      <div class="border-t border-gray-100 pt-4">
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wide mb-3">Editor de plantilla</p>
+        <input class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mb-3" value="Encuesta General 2026" placeholder="Nombre de la plantilla">
+
+        <div class="space-y-2">
+          <!-- pregunta escala -->
+          <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-2">
+            <span class="text-gray-300 cursor-move text-xs">⠿</span>
+            <input class="flex-1 text-sm border-0 bg-transparent" value="¿Cómo calificarías tu experiencia general en el evento?">
+            <select class="text-xs border border-gray-200 rounded px-2 py-1 bg-white"><option selected>Escala 1-5</option><option>Texto libre</option><option>Sí/No</option></select>
+            <button class="text-gray-400 hover:text-red-500 text-xs px-1">✕</button>
+          </div>
+          <!-- pregunta texto -->
+          <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-2">
+            <span class="text-gray-300 cursor-move text-xs">⠿</span>
+            <input class="flex-1 text-sm border-0 bg-transparent" value="¿Qué podríamos mejorar para futuros eventos?">
+            <select class="text-xs border border-gray-200 rounded px-2 py-1 bg-white"><option>Escala 1-5</option><option selected>Texto libre</option><option>Sí/No</option></select>
+            <button class="text-gray-400 hover:text-red-500 text-xs px-1">✕</button>
+          </div>
+          <!-- pregunta binaria -->
+          <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg p-2">
+            <span class="text-gray-300 cursor-move text-xs">⠿</span>
+            <input class="flex-1 text-sm border-0 bg-transparent" value="¿Recomendarías participar en futuros eventos de Impúlsate?">
+            <select class="text-xs border border-gray-200 rounded px-2 py-1 bg-white"><option>Escala 1-5</option><option>Texto libre</option><option selected>Sí/No</option></select>
+            <button class="text-gray-400 hover:text-red-500 text-xs px-1">✕</button>
+          </div>
+        </div>
+
+        <button class="mt-3 text-xs font-semibold text-guinda-700 border border-guinda-200 rounded-lg px-3 py-1.5">+ Agregar pregunta</button>
+
+        <div class="flex justify-end gap-2 mt-5 border-t border-gray-100 pt-4">
+          <button class="px-4 py-2 text-xs font-semibold text-gray-600 border border-gray-300 rounded-xl">Cancelar</button>
+          <button class="px-4 py-2 text-xs font-semibold text-white bg-guinda-800 rounded-xl">Guardar plantilla</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 2: ADMIN ENCUESTAS ===================== -->
+  <div id="tab-admin" class="tab-content space-y-4 hidden">
+    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-3">Enviar encuestas a un evento</h2>
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Evento</label>
+          <select class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+            <option>Encuentro de Negocios Junio 2026</option>
+          </select>
+        </div>
+        <button class="px-4 py-2 bg-guinda-800 text-white text-sm font-semibold rounded-xl">Enviar encuestas a participantes</button>
+      </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <h2 class="font-bold text-gray-900 mb-1">Probar el flujo de la encuesta</h2>
+      <p class="text-xs text-gray-500 mb-3">Envíate la encuesta a tu propio correo para revisar cómo se ve, sin afectar las métricas reales.</p>
+      <div class="flex flex-wrap items-end gap-3">
+        <div class="flex-1 min-w-[220px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Enviar encuesta de prueba a</label>
+          <input class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50" value="diegomtr8@gmail.com">
+        </div>
+        <button class="px-4 py-2 bg-guinda-800 text-white text-sm font-semibold rounded-xl">Enviar prueba</button>
+      </div>
+      <div class="mt-3 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-lg px-3 py-2">
+        Encuesta de prueba enviada a diegomtr8@gmail.com.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 3: CORREO ===================== -->
+  <div id="tab-correo" class="tab-content hidden">
+    <div class="max-w-md mx-auto bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+      <div class="bg-gray-50 border-b border-gray-200 px-4 py-2 text-xs text-gray-500">
+        <p><span class="font-semibold text-gray-700">De:</span> Encuentro de Negocios Impulsate &lt;impulsate@iyemyucatan.com&gt;</p>
+        <p><span class="font-semibold text-gray-700">Asunto:</span> [PRUEBA] Tu opinión importa — Encuesta de satisfacción Impúlsate</p>
+      </div>
+      <div class="p-6 text-center">
+        <div class="w-10 h-10 bg-guinda-800 text-white rounded-xl flex items-center justify-center font-black mx-auto mb-3">IM</div>
+        <h3 class="font-bold text-gray-900">¡Gracias por participar!</h3>
+        <p class="text-sm text-gray-500 mt-2">Tu opinión nos ayuda a mejorar futuros encuentros de negocios. Tómate 2 minutos para responder esta breve encuesta.</p>
+        <button class="mt-4 px-5 py-2.5 bg-guinda-800 text-white text-sm font-bold rounded-xl">Responder encuesta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 4: RESPONDER ===================== -->
+  <div id="tab-responder" class="tab-content hidden">
+    <div class="max-w-md mx-auto">
+      <div class="text-center mb-4">
+        <h3 class="text-lg font-black text-gray-900">Encuesta de Satisfacción</h3>
+        <p class="text-guinda-700 font-semibold text-sm">Encuentro de Negocios Junio 2026</p>
+      </div>
+      <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 bg-guinda-50">
+          <p class="text-xs text-guinda-700 font-medium">Por favor responde las siguientes preguntas. Tu opinión nos ayuda a mejorar.</p>
+        </div>
+        <div class="px-5 py-5 space-y-5">
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">1. ¿Cómo calificarías tu experiencia general en el evento?</label>
+            <div class="flex gap-2">
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-gray-200 text-gray-600">1</button>
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-gray-200 text-gray-600">2</button>
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-gray-200 text-gray-600">3</button>
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-guinda-800 bg-guinda-800 text-white">4</button>
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-gray-200 text-gray-600">5</button>
+            </div>
+            <div class="flex justify-between text-[11px] text-gray-400 mt-1 px-0.5"><span>Muy malo</span><span>Excelente</span></div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">2. ¿Recomendarías participar en futuros eventos de Impúlsate?</label>
+            <div class="flex gap-3">
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-guinda-800 bg-guinda-800 text-white">Sí</button>
+              <button class="flex-1 py-2 rounded-xl text-sm font-bold border-2 border-gray-200 text-gray-600">No</button>
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-semibold text-gray-800 mb-2">3. ¿Qué podríamos mejorar para futuros eventos?</label>
+            <textarea rows="3" class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2" placeholder="Escribe tu respuesta aquí...">Más tiempo entre citas para platicar con calma.</textarea>
+          </div>
+        </div>
+        <div class="px-5 py-4 border-t border-gray-100 bg-gray-50">
+          <button class="w-full py-3 bg-guinda-800 text-white font-bold text-sm rounded-xl">Enviar encuesta</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== TAB 5/6: METRICAS ===================== -->
+  <div id="tab-metricas" class="tab-content space-y-4 hidden">
+
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="bg-white border border-gray-200 rounded-2xl p-4 text-center">
+        <div class="text-2xl font-black text-guinda-700">128</div>
+        <div class="text-xs text-gray-500 mt-0.5">Enviadas</div>
+      </div>
+      <div class="bg-white border border-emerald-200 rounded-2xl p-4 text-center">
+        <div class="text-2xl font-black text-emerald-600">94</div>
+        <div class="text-xs text-gray-500 mt-0.5">Respondidas</div>
+      </div>
+      <div class="bg-white border border-amber-200 rounded-2xl p-4 text-center">
+        <div class="text-2xl font-black text-amber-600">34</div>
+        <div class="text-xs text-gray-500 mt-0.5">Pendientes</div>
+      </div>
+      <div class="bg-white border border-guinda-200 rounded-2xl p-4 text-center">
+        <div class="text-2xl font-black text-guinda-800">73.4%</div>
+        <div class="text-xs text-gray-500 mt-0.5">Tasa de respuesta</div>
+      </div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+      <h3 class="font-bold text-gray-900 text-sm mb-3">Promedio por pregunta (escala 1-5)</h3>
+      <div class="space-y-3">
+        <div>
+          <div class="flex justify-between text-xs mb-1"><span class="text-gray-600">¿Cómo calificarías tu experiencia general?</span><span class="font-bold text-guinda-700">4.3 / 5</span></div>
+          <div class="h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-guinda-800 rounded-full" style="width:86%"></div></div>
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1"><span class="text-gray-600">¿La organización y logística fue adecuada?</span><span class="font-bold text-guinda-700">4.6 / 5</span></div>
+          <div class="h-2 bg-gray-100 rounded-full overflow-hidden"><div class="h-full bg-guinda-800 rounded-full" style="width:92%"></div></div>
+        </div>
+      </div>
+      <h3 class="font-bold text-gray-900 text-sm mt-5 mb-3">Preguntas Sí/No</h3>
+      <div class="flex justify-between text-xs"><span class="text-gray-600">¿Recomendarías participar en futuros eventos?</span><span class="font-bold text-emerald-600">91% Sí</span></div>
+    </div>
+
+    <div class="bg-white border border-gray-200 rounded-2xl shadow-sm">
+      <h3 class="font-bold text-gray-900 text-sm px-5 pt-4 pb-2">Últimas 10 encuestas respondidas</h3>
+      <div id="acordeon" class="divide-y divide-gray-100">
+        <div class="acc-item">
+          <button class="acc-btn w-full flex items-center justify-between px-5 py-3 text-left hover:bg-gray-50">
+            <div><span class="font-semibold text-gray-900 text-sm">María Pérez</span><span class="text-xs text-gray-400 ml-2">Encuentro Junio 2026 · 22/06/2026 14:02</span></div>
+            <svg class="acc-icon w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div class="acc-body hidden px-5 pb-4 space-y-2 text-sm">
+            <div><p class="text-xs font-medium text-gray-500">¿Cómo calificarías tu experiencia general?</p><p class="text-gray-800">5</p></div>
+            <div><p class="text-xs font-medium text-gray-500">¿Recomendarías participar en futuros eventos?</p><p class="text-gray-800">Sí</p></div>
+          </div>
+        </div>
+        <div class="acc-item">
+          <button class="acc-btn w-full flex items-center justify-between px-5 py-3 text-left hover:bg-gray-50">
+            <div><span class="font-semibold text-gray-900 text-sm">Carlos Uc</span><span class="text-xs text-gray-400 ml-2">Encuentro Junio 2026 · 22/06/2026 11:47</span></div>
+            <svg class="acc-icon w-4 h-4 text-gray-400 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div class="acc-body hidden px-5 pb-4 space-y-2 text-sm">
+            <div><p class="text-xs font-medium text-gray-500">¿Qué podríamos mejorar para futuros eventos?</p><p class="text-gray-800">Más espacio para estacionarse.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showTab(name) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+    document.getElementById('tab-' + name).classList.remove('hidden');
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.classList.remove('active','border-guinda-800');
+      b.classList.add('border-gray-300','text-gray-600');
+    });
+    event.target.classList.add('active','border-guinda-800');
+    event.target.classList.remove('border-gray-300','text-gray-600');
+  }
+  document.querySelectorAll('.acc-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const body = btn.nextElementSibling;
+      const icon = btn.querySelector('.acc-icon');
+      body.classList.toggle('hidden');
+      icon.classList.toggle('rotate-180');
+    });
+  });
+</script>
+
+</body>
+</html>

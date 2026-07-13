@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Flujo de Registro — Impulsate</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8f7f5; color: #1a1a1a; }
+
+  /* ── Header ── */
+  .page-header {
+    background: #8b1028; color: white; padding: 28px 40px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .page-header h1 { font-size: 22px; font-weight: 700; }
+  .page-header p  { font-size: 13px; opacity: .8; margin-top: 4px; }
+  .logo-dot { width: 40px; height: 40px; background: rgba(255,255,255,.15);
+    border-radius: 10px; display: flex; align-items: center; justify-content: center;
+    font-size: 20px; flex-shrink: 0; }
+
+  /* ── Layout two columns ── */
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: calc(100vh - 96px); }
+
+  /* ── Column headers ── */
+  .col-header {
+    padding: 20px 32px; font-size: 13px; font-weight: 700;
+    letter-spacing: .05em; text-transform: uppercase; border-bottom: 2px solid;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .col-actual  { background: #fef2f2; color: #b91c1c; border-color: #fca5a5; }
+  .col-correcto{ background: #f0fdf4; color: #15803d; border-color: #86efac; }
+
+  .col-actual .pill  { background:#fee2e2; color:#b91c1c; padding:3px 10px; border-radius:99px; font-size:11px; }
+  .col-correcto .pill{ background:#dcfce7; color:#15803d; padding:3px 10px; border-radius:99px; font-size:11px; }
+
+  /* ── Column body ── */
+  .col-body { padding: 28px 32px 40px; border-right: 1px solid #e5e7eb; }
+  .col-body:last-child { border-right: none; }
+
+  /* ── Steps ── */
+  .steps { display: flex; flex-direction: column; gap: 0; }
+
+  .step {
+    display: flex; gap: 16px; position: relative;
+  }
+  .step:not(:last-child)::after {
+    content: ''; position: absolute; left: 20px; top: 48px;
+    width: 2px; bottom: -4px; background: #e5e7eb;
+  }
+  .step.bad:not(:last-child)::after  { background: #fca5a5; }
+  .step.good:not(:last-child)::after { background: #86efac; }
+  .step.warn:not(:last-child)::after { background: #fde68a; }
+
+  .step + .step { margin-top: 8px; }
+
+  .step-icon {
+    width: 40px; height: 40px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; flex-shrink: 0; position: relative; z-index: 1;
+    border: 2px solid transparent;
+  }
+  .step.neutral .step-icon { background: #f3f4f6; border-color: #d1d5db; }
+  .step.bad     .step-icon { background: #fee2e2; border-color: #fca5a5; }
+  .step.good    .step-icon { background: #dcfce7; border-color: #86efac; }
+  .step.warn    .step-icon { background: #fef3c7; border-color: #fde68a; }
+  .step.info    .step-icon { background: #eff6ff; border-color: #93c5fd; }
+
+  .step-body { flex: 1; padding: 10px 0 24px; }
+  .step-title {
+    font-size: 14px; font-weight: 700; color: #111;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .step-title .tag {
+    font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 99px;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  .tag-bad   { background: #fee2e2; color: #b91c1c; }
+  .tag-good  { background: #dcfce7; color: #15803d; }
+  .tag-warn  { background: #fef3c7; color: #92400e; }
+  .tag-info  { background: #eff6ff; color: #1d4ed8; }
+  .tag-auto  { background: #f3e8ff; color: #7e22ce; }
+
+  .step-desc { font-size: 13px; color: #4b5563; margin-top: 5px; line-height: 1.55; }
+  .step-url  { font-size: 11px; color: #9ca3af; margin-top: 4px; font-family: monospace; }
+
+  /* ── Screen mockup ── */
+  .screen {
+    margin-top: 12px; border-radius: 10px; overflow: hidden;
+    border: 1px solid #e5e7eb; background: white;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .screen-bar {
+    background: #f9fafb; border-bottom: 1px solid #f0f0f0;
+    padding: 7px 12px; display: flex; align-items: center; gap: 6px;
+  }
+  .screen-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .screen-url {
+    flex: 1; background: #f3f4f6; border-radius: 4px;
+    padding: 3px 8px; font-size: 10px; color: #6b7280; font-family: monospace;
+  }
+  .screen-body { padding: 14px 16px; }
+
+  /* ── Modal mockup ── */
+  .modal-wrap {
+    position: relative; background: rgba(0,0,0,.45); border-radius: 8px;
+    padding: 24px; margin-top: 12px;
+  }
+  .modal-box {
+    background: white; border-radius: 14px; padding: 20px;
+    max-width: 320px; margin: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  }
+  .modal-title { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 6px; }
+  .modal-text  { font-size: 12px; color: #6b7280; margin-bottom: 12px; line-height: 1.5; }
+  .modal-link  {
+    display: block; text-align: center; border: 1px solid #c8a0aa;
+    color: #8b1028; padding: 7px; border-radius: 8px; font-size: 12px;
+    font-weight: 600; margin-bottom: 10px; text-decoration: none;
+  }
+  .modal-check { display: flex; align-items: center; gap: 7px; margin-bottom: 14px; }
+  .modal-check input { accent-color: #8b1028; width: 14px; height: 14px; }
+  .modal-check label { font-size: 12px; color: #374151; }
+  .modal-btns { display: flex; gap: 8px; }
+  .btn-cancel  {
+    flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 8px;
+    font-size: 12px; font-weight: 600; color: #6b7280; background: white; cursor: pointer;
+  }
+  .btn-confirm {
+    flex: 1; padding: 8px; border-radius: 8px;
+    font-size: 12px; font-weight: 600; color: white;
+    background: #8b1028; cursor: pointer; border: none;
+  }
+  .btn-confirm.disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── Badge / chip ── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 600;
+  }
+  .badge-pending { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+  .badge-ok      { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+  .badge-auto    { background: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
+
+  /* ── Alert box ── */
+  .alert {
+    border-radius: 10px; padding: 14px 16px; font-size: 13px;
+    display: flex; gap: 10px; align-items: flex-start; margin-top: 12px;
+  }
+  .alert-red    { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .alert-green  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+  .alert-purple { background: #faf5ff; border: 1px solid #e9d5ff; color: #581c87; }
+  .alert-icon   { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .alert strong { display: block; font-weight: 700; margin-bottom: 3px; }
+
+  /* ── Mini form elements ── */
+  .mini-input {
+    width: 100%; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 8px 12px; font-size: 12px; color: #374151; background: #f9fafb;
+    margin-bottom: 8px;
+  }
+  .mini-label { font-size: 11px; font-weight: 600; color: #6b7280; margin-bottom: 4px; display: block; }
+  .mini-btn {
+    width: 100%; padding: 9px; border-radius: 9px;
+    font-size: 13px; font-weight: 700; color: white;
+    background: #8b1028; border: none; cursor: pointer;
+  }
+  .mini-radio-group { display: flex; gap: 8px; margin-bottom: 10px; }
+  .mini-radio {
+    flex: 1; border: 1px solid #e5e7eb; border-radius: 9px;
+    padding: 10px 8px; text-align: center; font-size: 11px; font-weight: 600;
+    color: #374151; cursor: pointer;
+  }
+  .mini-radio.active { border-color: #8b1028; background: #fff1f2; color: #8b1028; }
+
+  /* ── Event card ── */
+  .event-card {
+    border: 2px solid #86efac; border-radius: 12px; padding: 14px;
+    margin-top: 6px; background: white;
+  }
+  .event-card-title { font-size: 13px; font-weight: 700; color: #111; }
+  .event-card-sub   { font-size: 11px; color: #6b7280; margin-top: 2px; }
+  .event-card-phase {
+    display: flex; gap: 4px; margin: 10px 0; align-items: center;
+  }
+  .phase-dot {
+    width: 28px; height: 28px; border-radius: 50%; border: 2px solid;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; flex-shrink: 0;
+  }
+  .phase-dot.active { background: #8b1028; border-color: #8b1028; color: white; }
+  .phase-dot.done   { background: #8b1028; border-color: #8b1028; color: white; }
+  .phase-dot.todo   { background: #f3f4f6; border-color: #d1d5db; color: #9ca3af; }
+  .phase-line { flex: 1; height: 2px; background: #e5e7eb; }
+  .phase-line.done { background: #8b1028; }
+
+  /* ── Divider between columns ── */
+  .vs-divider {
+    grid-column: 1 / -1; background: #f8f7f5;
+    display: flex; align-items: center; justify-content: center;
+    padding: 12px; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;
+  }
+  .vs-badge {
+    background: #1a1a1a; color: white; padding: 5px 18px;
+    border-radius: 99px; font-size: 11px; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+  }
+
+  /* ── Summary footer ── */
+  .summary {
+    grid-column: 1 / -1; padding: 32px 40px;
+    background: white; border-top: 2px solid #e5e7eb;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px;
+  }
+  .summary h3 { font-size: 13px; font-weight: 700; color: #111; margin-bottom: 12px; }
+  .diff-item {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 12px; color: #374151; margin-bottom: 8px; line-height: 1.5;
+  }
+  .diff-item .icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+
+  @media (max-width: 900px) {
+    .columns { grid-template-columns: 1fr; }
+    .summary  { grid-template-columns: 1fr; }
+    .col-body { border-right: none; border-bottom: 1px solid #e5e7eb; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ HEADER ══════════════════════════════════════════════════════════════════ -->
+<div class="page-header">
+  <div class="logo-dot">🚀</div>
+  <div>
+    <h1>Impulsate — Flujo de Registro de Usuarios</h1>
+    <p>Comparativa: flujo actual (con bug de auto-registro) vs flujo correcto esperado · Compradores y Proveedores</p>
+  </div>
+</div>
+
+<!-- ══ COLUMN HEADERS ═══════════════════════════════════════════════════════════ -->
+<div class="columns">
+  <div class="col-header col-actual">
+    ❌ <span>Flujo actual (con bug)</span>
+    <span class="pill">Registro automático sin consentimiento</span>
+  </div>
+  <div class="col-header col-correcto">
+    ✅ <span>Flujo correcto (corregido)</span>
+    <span class="pill">Usuario decide cuándo registrarse al evento</span>
+  </div>
+
+  <!-- ════════════════ PASO 1 ═══════════════════════════════════════════════════ -->
+  <div class="col-body">
+    <div class="steps">
+
+      <!-- P1 -->
+      <div class="step neutral">
+        <div class="step-icon">📝</div>
+        <div class="step-body">
+          <div class="step-title">1. Registro en la plataforma
+            <span class="tag tag-info">Igual en ambos flujos</span>
+          </div>
+          <div class="step-desc">El usuario entra a la landing, hace clic en "Solicitar participación" y llena el formulario de registro con nombre, correo y contraseña.</div>
+          <div class="step-url">/register</div>
+          <div class="screen">
+            <div class="screen-bar">
+              <div class="screen-dot" style="background:#ef4444"></div>
+              <div class="screen-dot" style="background:#f59e0b"></div>
+              <div class="screen-dot" style="background:#22c55e"></div>
+              <div class="screen-url">impulsate.iyemyucatan.com/register</div>
+            </div>
+            <div class="screen-body">
+              <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:#111">Crear cuenta</div>
+              <div class="mini-label">Nombre completo *</div>
+              <div class="mini-input">Juan Pérez García</div>
+              <div class="mini-label">Correo electrónico *</div>
+              <div class="mini-input">juan@empresa.com</div>
+              <div class="mini-label">Contraseña *</div>
+              <div class="mini-input" style="color:#9ca3af">••••••••••</div>
+              <button class="mini-btn">Crear cuenta</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P2 -->
+      <div class="step neutral">
+        <div class="step-icon">🔒</div>
+        <div class="step-body">
+          <div class="step-title">2. Aviso de privacidad
+            <span class="tag tag-info">Igual en ambos flujos</span>
+          </div>
+          <div class="step-desc">Al ingresar por primera vez, el sistema redirige automáticamente a aceptar el Aviso de Privacidad. Sin aceptarlo, no puede continuar.</div>
+          <div class="step-url">/aceptar-aviso</div>
+        </div>
+      </div>
+
+      <!-- P3 -->
+      <div class="step neutral">
+        <div class="step-icon">👤</div>
+        <div class="step-body">
+          <div class="step-title">3. Completar perfil
+            <span class="tag tag-info">Igual en ambos flujos</span>
+          </div>
+          <div class="step-desc">El middleware detecta que el perfil está incompleto y redirige al formulario. El usuario llena: teléfono, nombre de empresa *, cámara/asociación *.</div>
+          <div class="step-url">/completar-perfil</div>
+        </div>
+      </div>
+
+      <!-- P4 -->
+      <div class="step bad">
+        <div class="step-icon">🎭</div>
+        <div class="step-body">
+          <div class="step-title">4. Seleccionar rol
+            <span class="tag tag-bad">Aquí ocurre el bug</span>
+          </div>
+          <div class="step-desc">El usuario elige: Comprador, Proveedor o Ambos. Al elegir cualquier opción que incluya "Proveedor", el sistema <strong>registra automáticamente</strong> al usuario al evento activo en base de datos, sin que lo sepa.</div>
+          <div class="step-url">/seleccionar-rol</div>
+          <div class="screen">
+            <div class="screen-bar">
+              <div class="screen-dot" style="background:#ef4444"></div>
+              <div class="screen-dot" style="background:#f59e0b"></div>
+              <div class="screen-dot" style="background:#22c55e"></div>
+              <div class="screen-url">impulsate.iyemyucatan.com/seleccionar-rol</div>
+            </div>
+            <div class="screen-body">
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#111">¿Cómo participarás?</div>
+              <div class="mini-radio-group">
+                <div class="mini-radio">🛒<br>Comprador</div>
+                <div class="mini-radio active">🏪<br>Proveedor</div>
+                <div class="mini-radio">🔄<br>Ambos</div>
+              </div>
+              <button class="mini-btn">Continuar →</button>
+            </div>
+          </div>
+          <div class="alert alert-purple" style="margin-top:10px">
+            <div class="alert-icon">🤖</div>
+            <div>
+              <strong>Auto-registro oculto (bug)</strong>
+              En este momento el servidor ejecuta silenciosamente:<br>
+              <code style="font-size:11px;background:#f3e8ff;padding:2px 5px;border-radius:4px">INSERT INTO evento_usuario (estado='pendiente')</code><br>
+              El usuario <strong>nunca vio</strong> la convocatoria, nunca dio su consentimiento explícito.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P5 bug -->
+      <div class="step bad">
+        <div class="step-icon">😱</div>
+        <div class="step-body">
+          <div class="step-title">5. Dashboard — ya aparece "Pendiente"
+            <span class="tag tag-bad">Sorpresa inesperada</span>
+          </div>
+          <div class="step-desc">El usuario llega al dashboard y en la pestaña Eventos ya aparece su estado como "Pendiente de aprobación" — sin haber decidido nada, sin haber leído la convocatoria.</div>
+          <div class="step-url">/mi-panel · /restaurantero/panel</div>
+          <div class="event-card" style="border-color:#fca5a5">
+            <div class="event-card-title">CANIRAC Yucatán 2026</div>
+            <div class="event-card-sub">Restaurantes y alimentos</div>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:8px">
+              <span style="font-size:12px;color:#6b7280">Tu registro como proveedor:</span>
+              <span class="badge badge-pending">⏳ Pendiente de aprobación</span>
+            </div>
+            <div class="alert alert-red" style="margin-top:10px;padding:10px">
+              <div class="alert-icon">❓</div>
+              <div style="font-size:12px">El usuario se pregunta: <em>"¿Cuándo me registré yo al evento?"</em></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /steps -->
+  </div><!-- /col-body actual -->
+
+  <!-- ════════════ COLUMNA CORRECTA ═══════════════════════════════════════════ -->
+  <div class="col-body">
+    <div class="steps">
+
+      <!-- P1 correcto -->
+      <div class="step neutral">
+        <div class="step-icon">📝</div>
+        <div class="step-body">
+          <div class="step-title">1. Registro en la plataforma
+            <span class="tag tag-info">Igual</span>
+          </div>
+          <div class="step-desc">Mismo formulario. El usuario crea su cuenta con nombre, correo y contraseña. Nada cambia aquí.</div>
+          <div class="step-url">/register</div>
+        </div>
+      </div>
+
+      <!-- P2 correcto -->
+      <div class="step neutral">
+        <div class="step-icon">🔒</div>
+        <div class="step-body">
+          <div class="step-title">2. Aviso de privacidad
+            <span class="tag tag-info">Igual</span>
+          </div>
+          <div class="step-desc">Acepta el Aviso de Privacidad obligatorio antes de continuar.</div>
+          <div class="step-url">/aceptar-aviso</div>
+        </div>
+      </div>
+
+      <!-- P3 correcto -->
+      <div class="step neutral">
+        <div class="step-icon">👤</div>
+        <div class="step-body">
+          <div class="step-title">3. Completar perfil
+            <span class="tag tag-info">Igual</span>
+          </div>
+          <div class="step-desc">Llena nombre de empresa * y cámara/asociación * (ahora obligatorios). Esto no lo registra en ningún evento.</div>
+          <div class="step-url">/completar-perfil</div>
+        </div>
+      </div>
+
+      <!-- P4 correcto -->
+      <div class="step good">
+        <div class="step-icon">🎭</div>
+        <div class="step-body">
+          <div class="step-title">4. Seleccionar rol
+            <span class="tag tag-good">Solo asigna el rol</span>
+          </div>
+          <div class="step-desc">El usuario elige Comprador, Proveedor o Ambos. El sistema <strong>únicamente asigna el rol</strong> en la plataforma. No ocurre ningún registro a evento. Si es proveedor, se crea su perfil vacío para que lo complete.</div>
+          <div class="step-url">/seleccionar-rol</div>
+          <div class="screen">
+            <div class="screen-bar">
+              <div class="screen-dot" style="background:#ef4444"></div>
+              <div class="screen-dot" style="background:#f59e0b"></div>
+              <div class="screen-dot" style="background:#22c55e"></div>
+              <div class="screen-url">impulsate.iyemyucatan.com/seleccionar-rol</div>
+            </div>
+            <div class="screen-body">
+              <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:#111">¿Cómo participarás?</div>
+              <div class="mini-radio-group">
+                <div class="mini-radio">🛒<br>Comprador</div>
+                <div class="mini-radio active">🏪<br>Proveedor</div>
+                <div class="mini-radio">🔄<br>Ambos</div>
+              </div>
+              <button class="mini-btn">Continuar →</button>
+            </div>
+          </div>
+          <div class="alert alert-green" style="margin-top:10px">
+            <div class="alert-icon">✅</div>
+            <div style="font-size:12px">Solo se ejecuta <code style="background:#dcfce7;padding:2px 5px;border-radius:4px">assignRole('restaurantero')</code>. Sin tocar <code style="background:#dcfce7;padding:2px 5px;border-radius:4px">evento_usuario</code>.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P5 correcto -->
+      <div class="step good">
+        <div class="step-icon">🏠</div>
+        <div class="step-body">
+          <div class="step-title">5. Dashboard — pestaña Eventos
+            <span class="tag tag-good">El usuario decide</span>
+          </div>
+          <div class="step-desc">El usuario llega al dashboard y ve la pestaña "Eventos". Encuentra el evento activo con el botón de registro. <strong>No hay ningún estado previo</strong> — está en cero.</div>
+          <div class="step-url">/mi-panel · /restaurantero/panel</div>
+          <div class="event-card">
+            <div class="event-card-title">CANIRAC Yucatán 2026</div>
+            <div class="event-card-sub">Restaurantes y alimentos · 15 Jul 2026</div>
+            <div class="event-card-phase">
+              <div class="phase-dot done">✓</div>
+              <div class="phase-line done"></div>
+              <div class="phase-dot active">2</div>
+              <div class="phase-line"></div>
+              <div class="phase-dot todo">3</div>
+              <div class="phase-line"></div>
+              <div class="phase-dot todo">4</div>
+            </div>
+            <div style="margin-top:10px">
+              <button style="padding:9px 18px;background:#8b1028;color:white;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer">
+                Solicitar registro como Proveedor →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P6 correcto — modal convocatoria -->
+      <div class="step good">
+        <div class="step-icon">📋</div>
+        <div class="step-body">
+          <div class="step-title">6. Pop-up de Convocatoria
+            <span class="tag tag-good">Consentimiento explícito</span>
+          </div>
+          <div class="step-desc">Al hacer clic en el botón de registro, aparece el modal. El usuario debe: leer la convocatoria (liga externa) y marcar el checkbox. El botón "Confirmar" está deshabilitado hasta que lo haga.</div>
+          <div class="modal-wrap">
+            <div class="modal-box">
+              <div class="modal-title">Antes de continuar</div>
+              <div class="modal-text">
+                Para registrarte como <strong>proveedor</strong> en <strong>CANIRAC Yucatán 2026</strong> debes haber leído la convocatoria oficial del evento.
+              </div>
+              <a class="modal-link" href="#">📄 Leer la convocatoria ↗</a>
+              <div class="modal-check">
+                <input type="checkbox" id="ch1" />
+                <label for="ch1">He leído la convocatoria del evento.</label>
+              </div>
+              <div class="modal-btns">
+                <button class="btn-cancel">Cancelar</button>
+                <button class="btn-confirm disabled" id="confirmBtn">Confirmar registro</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P7 correcto — pendiente -->
+      <div class="step good">
+        <div class="step-icon">⏳</div>
+        <div class="step-body">
+          <div class="step-title">7. Solicitud enviada — Pendiente de aprobación
+            <span class="tag tag-good">Estado esperado</span>
+          </div>
+          <div class="step-desc">El usuario confirmó con conocimiento. Ahora sí aparece "Pendiente de aprobación" en el dashboard. El admin recibe una notificación. Todo con consentimiento explícito.</div>
+          <div class="event-card">
+            <div class="event-card-title">CANIRAC Yucatán 2026</div>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:#6b7280">Tu registro como proveedor:</span>
+              <span class="badge badge-pending">⏳ Pendiente de aprobación</span>
+            </div>
+            <div style="font-size:11px;color:#9ca3af;margin-top:8px">
+              ✉️ Notificación enviada al administrador · Te avisaremos por correo cuando sea aprobado
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- P8 correcto — aprobado -->
+      <div class="step good">
+        <div class="step-icon">✅</div>
+        <div class="step-body">
+          <div class="step-title">8. Admin aprueba → Aprobado
+            <span class="tag tag-good">Flujo completo</span>
+          </div>
+          <div class="step-desc">El admin revisa la solicitud en el panel de Solicitudes y la aprueba. El usuario recibe correo y notificación. Su estado cambia a "Aprobado".</div>
+          <div class="event-card">
+            <div class="event-card-title">CANIRAC Yucatán 2026</div>
+            <div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;color:#6b7280">Tu registro como proveedor:</span>
+              <span class="badge badge-ok">✓ Aprobado</span>
+            </div>
+            <div style="font-size:11px;color:#15803d;margin-top:8px">
+              ✉️ Correo enviado desde impulsate@iyemyucatan.com
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /steps correcto -->
+  </div><!-- /col-body correcto -->
+
+  <!-- ════════════ FOOTER RESUMEN ══════════════════════════════════════════════ -->
+  <div class="summary">
+
+    <div>
+      <h3>🐛 Bugs corregidos</h3>
+      <div class="diff-item">
+        <span class="icon">🔧</span>
+        <span><strong>SeleccionarRolController.php</strong><br>Eliminado <code>registrarProveedorEnEventoActivo()</code> de <code>crearPerfilProveedor()</code></span>
+      </div>
+      <div class="diff-item">
+        <span class="icon">🔧</span>
+        <span><strong>RegistroProveedorController.php</strong><br>Eliminado en 2 lugares del método <code>store()</code></span>
+      </div>
+      <div class="diff-item">
+        <span class="icon">🔧</span>
+        <span><strong>CompletarPerfilController.php</strong><br>Eliminado de <code>agregarRol()</code></span>
+      </div>
+      <div class="diff-item">
+        <span class="icon">✅</span>
+        <span><strong>Admin\RestauranteroAdminController.php</strong><br>Se mantiene el auto-registro (solo el admin crea proveedores directos, aprobados automáticamente)</span>
+      </div>
+    </div>
+
+    <div>
+      <h3>🔄 Diferencias clave</h3>
+      <div class="diff-item">
+        <span class="icon">❌</span>
+        <span><strong>Antes:</strong> Al seleccionar rol "Proveedor" o "Ambos", el sistema insertaba en <code>evento_usuario</code> silenciosamente — sin modal, sin consentimiento, sin ver la convocatoria.</span>
+      </div>
+      <div class="diff-item">
+        <span class="icon">✅</span>
+        <span><strong>Ahora:</strong> Seleccionar rol solo asigna el rol en la plataforma. El usuario debe ir al Tab Eventos, hacer clic en "Solicitar registro", leer la convocatoria y confirmar con el checkbox.</span>
+      </div>
+      <div class="diff-item">
+        <span class="icon">💡</span>
+        <span><strong>Para compradores:</strong> El auto-registro nunca existió en el código. Si te apareció como registrado, probablemente elegiste "Ambos" (que sí auto-registraba como proveedor).</span>
+      </div>
+    </div>
+
+    <div>
+      <h3>📋 Flujo correcto resumido</h3>
+      <div class="diff-item"><span class="icon">1️⃣</span><span>Registro en la plataforma (<code>/register</code>)</span></div>
+      <div class="diff-item"><span class="icon">2️⃣</span><span>Aceptar Aviso de Privacidad (<code>/aceptar-aviso</code>)</span></div>
+      <div class="diff-item"><span class="icon">3️⃣</span><span>Completar perfil — empresa + cámara obligatorios (<code>/completar-perfil</code>)</span></div>
+      <div class="diff-item"><span class="icon">4️⃣</span><span>Seleccionar rol — solo asigna rol en plataforma (<code>/seleccionar-rol</code>)</span></div>
+      <div class="diff-item"><span class="icon">5️⃣</span><span>Dashboard → Tab Eventos → Ver evento activo</span></div>
+      <div class="diff-item"><span class="icon">6️⃣</span><span>Clic "Solicitar registro" → Pop-up convocatoria → Leer → Check → Confirmar</span></div>
+      <div class="diff-item"><span class="icon">7️⃣</span><span>Estado: <span class="badge badge-pending" style="font-size:10px">⏳ Pendiente</span> · Admin recibe notificación</span></div>
+      <div class="diff-item"><span class="icon">8️⃣</span><span>Admin aprueba → Estado: <span class="badge badge-ok" style="font-size:10px">✓ Aprobado</span> · Correo al usuario</span></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  // Hacer funcionar el checkbox del demo
+  document.getElementById('ch1')?.addEventListener('change', function() {
+    const btn = document.getElementById('confirmBtn');
+    if (this.checked) {
+      btn.classList.remove('disabled');
+      btn.style.cursor = 'pointer';
+    } else {
+      btn.classList.add('disabled');
+      btn.style.cursor = 'not-allowed';
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,756 @@
+================================================================================
+PROMPT: MEJORAS A SOLICITUDES DE EVENTO — PERFIL PÚBLICO + CORREOS + REPOSTULACIÓN
+Proyecto: IMPÚLSATE — Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode:'class')
+Color primario: guinda (#8b1028) — NUNCA azul/indigo
+================================================================================
+
+CONTEXTO TÉCNICO
+─────────────────
+• La tabla `evento_usuario` tiene columnas: evento_id, user_id, tipo ('proveedor'|'comprador'),
+  estado ('pendiente'|'aprobado'|'rechazado'), motivo_rechazo, respondido_at.
+• `EventoSolicitudesController` maneja index(), aprobar(), rechazar(), aprobarTodos(),
+  revertirPendiente(). Las acciones actuales solo crean notificaciones in-app — NO envían email.
+• `EventoRegistroController` ya maneja re-postulación: si estado==='rechazado' y el usuario
+  vuelve a registrarse, resetea a pendiente. El backend funciona, falta UI.
+• `RestauranteroPanelController::index()` ya pasa `mi_registro` con estado y motivo_rechazo
+  en cada evento dentro del array `eventos` props → Panel.vue ya tiene acceso al rechazo.
+• Existen mailables `ProveedorAprobado` y `ProveedorRechazado` pero son para la aprobación
+  GLOBAL del perfil, NO del evento. Se crearán mailables específicos para el evento.
+• SMTP configurado: impulsate@iyemyucatan.com (Gmail/Google Workspace, App Password en .env).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 1 — MODAL "VER PERFIL" → VISTA PÚBLICA COMPLETA EN SOLICITUDES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+El modal "Ver perfil" en Admin/Eventos/Solicitudes.vue ya existe pero muestra una vista
+simplificada de administración. Hay que convertirlo en una réplica del perfil público tal
+como lo vería un comprador, para que el admin evalúe visualmente si el proveedor es apto.
+
+1.1 Controlador — EventoSolicitudesController::index()
+───────────────────────────────────────────────────────
+En el closure $mapear, ampliar el objeto 'restaurantero' para incluir los campos necesarios
+para la vista pública completa. Reemplazar el array de restaurantero dentro del closure:
+
+    'restaurantero' => ($reg->tipo === 'proveedor' && isset($users[$reg->user_id]))
+        ? (function () use ($users, $reg) {
+            $r = $users[$reg->user_id]->restaurantero;
+            if (!$r) return null;
+            return [
+                'id'                    => $r->id,
+                'nombre_restaurante'    => $r->nombre_restaurante,
+                'descripcion'           => $r->descripcion,
+                'categoria'             => $r->categoria,
+                'municipio'             => $r->municipio,
+                'rfc'                   => $r->rfc,
+                'telefono'              => $r->telefono,
+                'sitio_web'             => $r->sitio_web,
+                'redes_sociales'        => $r->redes_sociales,
+                'productos_top'         => $r->productos_top,
+                'logo_path'             => $r->logo_path,
+                'foto_path'             => $r->foto_path,
+                'activo'                => $r->activo,
+                'aprobado'              => $r->aprobado,
+                'perfil_completo'       => $r->perfil_completo,
+                // Condiciones comerciales
+                'acepta_credito'        => $r->acepta_credito,
+                'credito_monto_maximo'  => $r->credito_monto_maximo,
+                'credito_tiempo_cantidad'=> $r->credito_tiempo_cantidad,
+                'credito_tiempo_unidad' => $r->credito_tiempo_unidad,
+                'pago_contraentrega'    => $r->pago_contraentrega,
+                'factura'               => $r->factura,
+                'regimen_fiscal'        => $r->regimen_fiscal,
+                // Logística (nuevos campos)
+                'entrega_domicilio'     => $r->entrega_domicilio,
+                'cobertura_entrega'     => $r->cobertura_entrega,
+                'forma_entrega'         => $r->forma_entrega,
+                // Métricas
+                'created_at'            => $r->created_at,
+                'citas_count'           => \App\Models\Cita::where('restaurantero_id', $r->id)->count(),
+            ];
+        })()
+        : null,
+
+También ampliar el objeto 'user' para compradores con campos adicionales:
+    'user' => isset($users[$reg->user_id]) ? [
+        'id'                => $users[$reg->user_id]->id,
+        'name'              => $users[$reg->user_id]->name,
+        'email'             => $users[$reg->user_id]->email,
+        'telefono'          => $users[$reg->user_id]->telefono,
+        'sitio_web'         => $users[$reg->user_id]->sitio_web,
+        'necesidades'       => $users[$reg->user_id]->necesidades,
+        'empresa_nombre'    => $users[$reg->user_id]->empresa_nombre ?? null,
+        'rfc'               => $users[$reg->user_id]->rfc ?? null,
+        'nombre_empresa'    => $users[$reg->user_id]->nombre_empresa ?? null,
+        'created_at'        => $users[$reg->user_id]->created_at,
+        'citas_historico'   => $citasHistoricoPorUser[$reg->user_id] ?? 0,
+    ] : null,
+
+1.2 Vista — Admin/Eventos/Solicitudes.vue (modal de perfil completo)
+─────────────────────────────────────────────────────────────────────
+Reemplazar el contenido del template del proveedor dentro del modal
+(`<template v-if="solicitudPreview.tipo === 'proveedor' && solicitudPreview.restaurantero">`)
+con la siguiente versión que replica el perfil público:
+
+────────────── inicio bloque Vue ──────────────
+<template v-if="solicitudPreview.tipo === 'proveedor' && solicitudPreview.restaurantero">
+
+    <!-- Badges de estado del perfil -->
+    <div class="flex flex-wrap gap-2 mb-4">
+        <span v-if="solicitudPreview.restaurantero.perfil_completo"
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold
+                   bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400
+                   border border-emerald-300 dark:border-emerald-800">
+            ✓ Perfil completo
+        </span>
+        <span v-else
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold
+                   bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400
+                   border border-amber-300 dark:border-amber-800">
+            ⚠ Perfil incompleto
+        </span>
+        <span v-if="solicitudPreview.restaurantero.aprobado"
+            class="px-2 py-0.5 text-xs font-semibold rounded-full
+                   bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+            ✓ Aprobado globalmente
+        </span>
+        <span v-else
+            class="px-2 py-0.5 text-xs font-semibold rounded-full
+                   bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+            ⚠ Pendiente aprobación global
+        </span>
+    </div>
+
+    <!-- Hero: Logo -->
+    <div class="aspect-video w-full rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 mb-4 flex items-center justify-center">
+        <img v-if="solicitudPreview.restaurantero.logo_path"
+             :src="'/storage/' + solicitudPreview.restaurantero.logo_path"
+             class="w-full h-full object-cover"
+             :alt="solicitudPreview.restaurantero.nombre_restaurante" />
+        <div v-else class="flex flex-col items-center gap-2 text-gray-400 dark:text-gray-600">
+            <svg class="w-14 h-14" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            </svg>
+            <span class="text-xs">Sin logo cargado</span>
+        </div>
+    </div>
+
+    <!-- Nombre y descripción -->
+    <div class="flex flex-wrap gap-1.5 mb-2">
+        <span v-if="solicitudPreview.restaurantero.municipio"
+            class="text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400
+                   border border-guinda-200 dark:border-guinda-500/20 px-3 py-1 rounded-full">
+            📍 {{ solicitudPreview.restaurantero.municipio }}, Yucatán
+        </span>
+        <span v-if="solicitudPreview.restaurantero.categoria"
+            class="text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400
+                   border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full">
+            {{ solicitudPreview.restaurantero.categoria }}
+        </span>
+    </div>
+
+    <h3 class="text-xl font-black text-gray-900 dark:text-white mb-2">
+        {{ solicitudPreview.restaurantero.nombre_restaurante }}
+    </h3>
+
+    <p v-if="solicitudPreview.restaurantero.descripcion"
+       class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+        {{ solicitudPreview.restaurantero.descripcion }}
+    </p>
+
+    <!-- Grid de datos -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm mb-4">
+        <div v-if="solicitudPreview.restaurantero.telefono">
+            <p class="text-xs text-gray-400 dark:text-gray-600">Teléfono</p>
+            <p class="font-medium text-gray-800 dark:text-gray-200">{{ solicitudPreview.restaurantero.telefono }}</p>
+        </div>
+        <div v-if="solicitudPreview.restaurantero.rfc">
+            <p class="text-xs text-gray-400 dark:text-gray-600">RFC</p>
+            <p class="font-medium text-gray-800 dark:text-gray-200">{{ solicitudPreview.restaurantero.rfc }}</p>
+        </div>
+        <div v-if="solicitudPreview.restaurantero.sitio_web">
+            <p class="text-xs text-gray-400 dark:text-gray-600">Sitio web</p>
+            <a :href="solicitudPreview.restaurantero.sitio_web" target="_blank"
+               class="font-medium text-guinda-700 dark:text-guinda-400 hover:underline truncate block max-w-full">
+                {{ solicitudPreview.restaurantero.sitio_web }}
+            </a>
+        </div>
+        <div>
+            <p class="text-xs text-gray-400 dark:text-gray-600">Historial plataforma</p>
+            <p class="font-medium text-gray-800 dark:text-gray-200">
+                {{ solicitudPreview.restaurantero.citas_count ?? 0 }} citas
+            </p>
+        </div>
+    </div>
+
+    <!-- Productos / Servicios -->
+    <div v-if="solicitudPreview.restaurantero.productos_top?.length" class="mb-4">
+        <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+            Productos / Servicios
+        </p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div v-for="(prod, i) in solicitudPreview.restaurantero.productos_top" :key="i"
+                 class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden
+                        bg-white dark:bg-gray-900 shadow-sm">
+                <div v-if="prod.foto_path" class="w-full h-20 overflow-hidden bg-gray-100 dark:bg-gray-800">
+                    <img :src="'/storage/' + prod.foto_path" class="w-full h-full object-cover"
+                         :alt="prod.nombre" />
+                </div>
+                <div v-else class="w-full h-12 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
+                    <span class="text-lg">📦</span>
+                </div>
+                <div class="p-2">
+                    <p class="font-bold text-xs text-gray-900 dark:text-white">
+                        {{ typeof prod === 'string' ? prod : (prod.nombre || '—') }}
+                    </p>
+                    <p v-if="typeof prod !== 'string' && prod.descripcion"
+                       class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
+                        {{ prod.descripcion }}
+                    </p>
+                    <p v-if="prod.capacidad_cantidad"
+                       class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold mt-0.5">
+                        📦 {{ Number(prod.capacidad_cantidad).toLocaleString('es-MX') }} {{ prod.capacidad_unidad }}/mes
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div v-else class="mb-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-xl">
+        <p class="text-xs text-amber-700 dark:text-amber-400 font-medium">
+            ⚠ Sin productos/servicios registrados
+        </p>
+    </div>
+
+    <!-- Condiciones comerciales -->
+    <div v-if="solicitudPreview.restaurantero.acepta_credito || solicitudPreview.restaurantero.pago_contraentrega || solicitudPreview.restaurantero.factura"
+         class="mb-4">
+        <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+            Condiciones comerciales
+        </p>
+        <div class="flex flex-wrap gap-2">
+            <span v-if="solicitudPreview.restaurantero.acepta_credito"
+                class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold
+                       bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                       border border-emerald-200 dark:border-emerald-500/20">
+                ✓ Acepta crédito
+                <span v-if="solicitudPreview.restaurantero.credito_monto_maximo" class="opacity-70">
+                    · máx. ${{ Number(solicitudPreview.restaurantero.credito_monto_maximo).toLocaleString('es-MX') }}
+                </span>
+                <span v-if="solicitudPreview.restaurantero.credito_tiempo_cantidad" class="opacity-70">
+                    · {{ solicitudPreview.restaurantero.credito_tiempo_cantidad }}
+                    {{ solicitudPreview.restaurantero.credito_tiempo_unidad }}
+                </span>
+            </span>
+            <span v-if="solicitudPreview.restaurantero.pago_contraentrega"
+                class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold
+                       bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                       border border-emerald-200 dark:border-emerald-500/20">
+                ✓ Pago contraentrega
+            </span>
+            <span v-if="solicitudPreview.restaurantero.factura"
+                class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold
+                       bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                       border border-emerald-200 dark:border-emerald-500/20">
+                ✓ Emite factura
+                <span v-if="solicitudPreview.restaurantero.regimen_fiscal" class="opacity-70">
+                    · {{ solicitudPreview.restaurantero.regimen_fiscal }}
+                </span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Logística y Distribución -->
+    <div v-if="solicitudPreview.restaurantero.entrega_domicilio !== null && solicitudPreview.restaurantero.entrega_domicilio !== undefined"
+         class="mb-4">
+        <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+            Logística y Distribución
+        </p>
+        <div class="flex flex-wrap gap-2">
+            <span v-if="solicitudPreview.restaurantero.entrega_domicilio"
+                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+                       bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                       border border-emerald-200 dark:border-emerald-500/20">
+                🚚 Entrega a domicilio
+                <span v-if="solicitudPreview.restaurantero.cobertura_entrega" class="opacity-70 capitalize">
+                    · {{ solicitudPreview.restaurantero.cobertura_entrega }}
+                </span>
+                <span v-if="solicitudPreview.restaurantero.forma_entrega" class="opacity-70 capitalize">
+                    · {{ solicitudPreview.restaurantero.forma_entrega }}
+                </span>
+            </span>
+            <span v-else
+                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+                       bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400
+                       border border-gray-200 dark:border-gray-700">
+                📦 Sin entrega a domicilio
+            </span>
+        </div>
+    </div>
+
+    <p class="text-xs text-gray-400 dark:text-gray-600">
+        Registrado en la plataforma: {{ formatFechaCorta(solicitudPreview.restaurantero.created_at) }}
+    </p>
+</template>
+────────────── fin bloque Vue ──────────────
+
+El bloque de compradores y los botones de acción al fondo del modal no cambian.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 2 — CORREO AL RECHAZAR DEL EVENTO (PROVEEDOR Y COMPRADOR)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 Mailable — app/Mail/EventoSolicitudRechazadaMail.php (nuevo archivo)
+─────────────────────────────────────────────────────────────────────────
+<?php
+
+namespace App\Mail;
+
+use App\Models\Evento;
+use App\Models\User;
+use Illuminate\Bus\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class EventoSolicitudRechazadaMail extends Mailable
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public User   $user,
+        public Evento $evento,
+        public string $tipo,    // 'proveedor' | 'comprador'
+        public string $motivo
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            subject: 'Resultado de tu solicitud — ' . $this->evento->nombre . ' · Impulsate'
+        );
+    }
+
+    public function content(): Content
+    {
+        return new Content(
+            view: 'mail.evento-solicitud-rechazada',
+            with: [
+                'nombreUsuario' => $this->user->name,
+                'evento'        => $this->evento,
+                'tipo'          => $this->tipo,
+                'motivo'        => $this->motivo,
+            ]
+        );
+    }
+}
+
+2.2 Blade — resources/views/mail/evento-solicitud-rechazada.blade.php (nuevo archivo)
+───────────────────────────────────────────────────────────────────────────────────────
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>Solicitud no aprobada</title></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+    <!-- Encabezado guinda -->
+    <tr><td style="background:linear-gradient(135deg,#8b1028,#45060f);padding:32px 40px;text-align:center;">
+        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+        <p style="color:#fbc4cd;margin:8px 0 0;font-size:14px;">Instituto Yucateco de Emprendedores</p>
+    </td></tr>
+
+    <!-- Cuerpo -->
+    <tr><td style="padding:32px 40px;">
+
+        <div style="font-size:48px;text-align:center;margin-bottom:16px;">⚠️</div>
+
+        <h2 style="color:#111827;font-size:20px;font-weight:800;margin:0 0 8px;text-align:center;">
+            Solicitud no aprobada
+        </h2>
+
+        <p style="color:#374151;font-size:15px;margin:0 0 20px;">
+            Hola, <strong>{{ $nombreUsuario }}</strong>.<br><br>
+            Tu solicitud para participar
+            @if($tipo === 'proveedor') como <strong>proveedor</strong>
+            @else como <strong>comprador</strong>
+            @endif
+            en el evento <strong style="color:#8b1028;">{{ $evento->nombre }}</strong>
+            no fue aprobada en esta ocasión.
+        </p>
+
+        <!-- Motivo -->
+        <table width="100%" cellpadding="0" cellspacing="0"
+               style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin-bottom:24px;">
+            <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:1px;
+                           color:#9ca3af;font-weight:600;">Motivo del administrador</p>
+                <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">{{ $motivo }}</p>
+            </td></tr>
+        </table>
+
+        @if($tipo === 'proveedor')
+        <!-- Mensaje para proveedor -->
+        <table width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:24px;">
+            <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#166534;">¿Qué puedo hacer?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">
+                    Puedes actualizar tu perfil de proveedor con la información faltante o corregir
+                    lo señalado en el motivo, y <strong>volver a postularte al evento</strong> desde tu panel.
+                </p>
+            </td></tr>
+        </table>
+        <div style="text-align:center;margin-bottom:24px;">
+            <a href="{{ url('/restaurantero/panel') }}"
+               style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;
+                      border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+                Actualizar mi perfil y volver a postularme
+            </a>
+        </div>
+        @else
+        <!-- Mensaje para comprador -->
+        <table width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:24px;">
+            <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#166534;">¿Qué puedo hacer?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">
+                    Puedes actualizar tu información de perfil y <strong>volver a postularte al evento</strong>
+                    desde tu panel de usuario.
+                </p>
+            </td></tr>
+        </table>
+        <div style="text-align:center;margin-bottom:24px;">
+            <a href="{{ url('/user/dashboard') }}"
+               style="display:inline-block;background:#8b1028;color:#fff;padding:14px 28px;
+                      border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+                Ir a mi panel y volver a postularme
+            </a>
+        </div>
+        @endif
+
+    </td></tr>
+
+    <!-- Pie de página -->
+    <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com
+        </p>
+    </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+
+2.3 Controlador — EventoSolicitudesController::rechazar()
+──────────────────────────────────────────────────────────
+Agregar al inicio del archivo los imports:
+    use App\Mail\EventoSolicitudRechazadaMail;
+    use Illuminate\Support\Facades\Mail;
+
+Dentro del método rechazar(), DESPUÉS del DB::table update y ANTES del Notificacion::crear,
+agregar el envío de correo:
+
+    try {
+        Mail::to($user->email)->send(
+            new EventoSolicitudRechazadaMail(
+                $user,
+                $evento,
+                $registro->tipo,
+                $request->motivo_rechazo
+            )
+        );
+    } catch (\Exception $e) {
+        \Log::warning('Error enviando correo de rechazo de evento: ' . $e->getMessage());
+    }
+
+NOTA: El try/catch es esencial para que un fallo de SMTP no rompa la acción del administrador.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 3 — UI DE RE-POSTULACIÓN EN EL PANEL DEL PROVEEDOR/COMPRADOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CONTEXTO: El backend YA funciona. Si el usuario llama a la ruta de registro cuando su estado
+es 'rechazado', EventoRegistroController lo resetea a 'pendiente'. El problema es que el panel
+no muestra visualmente el rechazo ni un botón explícito para re-postularse.
+
+RestauranteroPanelController ya pasa `eventos` con `mi_registro.proveedor` que contiene
+{estado, motivo_rechazo, tipo} proveniente de evento_usuario.
+
+3.1 Panel.vue — resources/js/Pages/Restaurantero/Panel.vue
+────────────────────────────────────────────────────────────
+En la sección donde se muestran los eventos (TabEventos o donde se renderizan las tarjetas
+de evento dentro de props.eventos), agregar para cada evento donde mi_registro.proveedor existe:
+
+Cuando `mi_registro.proveedor.estado === 'rechazado'`, mostrar un banner visible ENCIMA o
+DENTRO de la tarjeta del evento:
+
+────────────── inicio bloque Vue ──────────────
+<!-- Banner de rechazo de evento (visible cuando el proveedor fue rechazado) -->
+<div v-for="ev in eventos" :key="ev.id">
+    <!-- ... (tarjeta de evento existente) ... -->
+
+    <!-- NUEVO: Banner de rechazo -->
+    <div v-if="ev.mi_registro?.proveedor?.estado === 'rechazado'"
+         class="mt-3 border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-950/20
+                rounded-xl p-4 space-y-3">
+        <div>
+            <p class="text-sm font-bold text-red-700 dark:text-red-400 mb-1">
+                ❌ Tu solicitud al evento fue rechazada
+            </p>
+            <p v-if="ev.mi_registro.proveedor.motivo_rechazo"
+               class="text-xs text-red-600 dark:text-red-400/80 leading-relaxed">
+                <span class="font-semibold">Motivo:</span>
+                {{ ev.mi_registro.proveedor.motivo_rechazo }}
+            </p>
+        </div>
+        <div class="border-t border-red-200 dark:border-red-800/30 pt-3">
+            <p class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Actualiza tu perfil con lo indicado y vuelve a postularte:
+            </p>
+            <div class="flex flex-wrap gap-2">
+                <button @click="showPerfilModal = true"
+                    class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
+                           text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
+                    Actualizar mi perfil
+                </button>
+                <button @click="repostularse(ev)"
+                    class="px-4 py-2 bg-guinda-700 hover:bg-guinda-600 text-white
+                           text-xs font-bold rounded-xl transition-colors">
+                    Volver a postularme →
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+────────────── fin bloque Vue ──────────────
+
+Agregar la función `repostularse` en el <script setup>:
+
+    const repostularse = (ev) => {
+        if (!confirm('¿Deseas volver a postularte al evento "' + ev.nombre + '"?')) return;
+        router.post(route('evento.registrar-proveedor', ev.id), {}, {
+            onSuccess: () => { /* la página se recarga con el nuevo estado pendiente */ },
+        });
+    };
+
+NOTA: Esta función llama a la ruta existente `evento.registrar-proveedor` que ya maneja
+el caso rechazado → pendiente en EventoRegistroController.
+
+3.2 Panel de compradores (user/dashboard o ClientePanel.vue)
+────────────────────────────────────────────────────────────
+Aplicar el mismo patrón al panel de compradores. Buscar el componente o página donde
+el comprador ve los eventos (buscar `mi_registro.comprador` o similar), y agregar el banner
+de rechazo correspondiente con botón que llame a `evento.registrar-comprador`.
+
+Si el panel de compradores pasa datos similares del mi_registro, usar:
+    route('evento.registrar-comprador', ev.id)
+con un POST idéntico.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 4 — CORREO AL APROBAR DEL EVENTO (PROVEEDOR Y COMPRADOR)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 Mailable — app/Mail/EventoSolicitudAprobadaMail.php (nuevo archivo)
+────────────────────────────────────────────────────────────────────────
+<?php
+
+namespace App\Mail;
+
+use App\Models\Evento;
+use App\Models\User;
+use Illuminate\Bus\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class EventoSolicitudAprobadaMail extends Mailable
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(
+        public User   $user,
+        public Evento $evento,
+        public string $tipo    // 'proveedor' | 'comprador'
+    ) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            subject: '🎉 ¡Fuiste aprobado al evento ' . $this->evento->nombre . '! — Impulsate'
+        );
+    }
+
+    public function content(): Content
+    {
+        return new Content(
+            view: 'mail.evento-solicitud-aprobada',
+            with: [
+                'nombreUsuario' => $this->user->name,
+                'evento'        => $this->evento,
+                'tipo'          => $this->tipo,
+            ]
+        );
+    }
+}
+
+4.2 Blade — resources/views/mail/evento-solicitud-aprobada.blade.php (nuevo archivo)
+──────────────────────────────────────────────────────────────────────────────────────
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>¡Solicitud aprobada!</title></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
+<tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+    <!-- Encabezado guinda -->
+    <tr><td style="background:linear-gradient(135deg,#8b1028,#45060f);padding:32px 40px;text-align:center;">
+        <h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+        <p style="color:#fbc4cd;margin:8px 0 0;font-size:14px;">Instituto Yucateco de Emprendedores</p>
+    </td></tr>
+
+    <!-- Cuerpo -->
+    <tr><td style="padding:32px 40px;text-align:center;">
+
+        <div style="font-size:56px;margin-bottom:16px;">🎉</div>
+
+        <h2 style="color:#111827;font-size:22px;font-weight:800;margin:0 0 8px;">
+            ¡Fuiste aprobado!
+        </h2>
+
+        <p style="color:#374151;font-size:15px;margin:0 0 8px;">
+            Hola, <strong>{{ $nombreUsuario }}</strong>.
+        </p>
+
+        <p style="color:#374151;font-size:15px;margin:0 0 24px;">
+            Tu solicitud
+            @if($tipo === 'proveedor') como <strong>proveedor</strong>
+            @else como <strong>comprador</strong>
+            @endif
+            para el evento <strong style="color:#8b1028;">{{ $evento->nombre }}</strong>
+            fue <strong style="color:#15803d;">aprobada</strong>. ✓
+        </p>
+
+        @if($tipo === 'proveedor')
+        <!-- Mensaje específico proveedor -->
+        <table width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;
+                      margin-bottom:28px;text-align:left;">
+            <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#166534;">¿Qué sigue?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">
+                    Tu perfil ya aparece en el directorio de proveedores del evento.
+                    Los compradores pueden agendar citas contigo. Asegúrate de tener tus
+                    horarios actualizados en tu panel.
+                </p>
+            </td></tr>
+        </table>
+        <a href="{{ url('/restaurantero/panel') }}"
+           style="display:inline-block;background:#8b1028;color:#fff;padding:14px 32px;
+                  border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+            Ver mi panel de proveedor
+        </a>
+        @else
+        <!-- Mensaje específico comprador -->
+        <table width="100%" cellpadding="0" cellspacing="0"
+               style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;
+                      margin-bottom:28px;text-align:left;">
+            <tr><td style="padding:16px 20px;">
+                <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#166534;">¿Qué sigue?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.6;">
+                    Ya puedes ver el directorio de proveedores y agendar tus citas
+                    de networking con los proveedores que te interesen.
+                </p>
+            </td></tr>
+        </table>
+        <a href="{{ url('/restaurantero') }}"
+           style="display:inline-block;background:#8b1028;color:#fff;padding:14px 32px;
+                  border-radius:10px;text-decoration:none;font-weight:700;font-size:14px;">
+            Ver proveedores y agendar citas
+        </a>
+        @endif
+
+    </td></tr>
+
+    <!-- Pie de página -->
+    <tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+        <p style="margin:0 0 4px;font-size:12px;color:#9ca3af;">
+            Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com
+        </p>
+        <p style="margin:0;font-size:11px;color:#d1d5db;">
+            Instituto Yucateco de Emprendedores · Mérida, Yucatán
+        </p>
+    </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>
+
+4.3 Controlador — EventoSolicitudesController::aprobar()
+─────────────────────────────────────────────────────────
+Agregar import al inicio (si no está ya):
+    use App\Mail\EventoSolicitudAprobadaMail;
+
+Dentro del método aprobar(), DESPUÉS del DB::table update y ANTES del Notificacion::crear,
+agregar:
+
+    try {
+        Mail::to($user->email)->send(
+            new EventoSolicitudAprobadaMail($user, $evento, $registro->tipo)
+        );
+    } catch (\Exception $e) {
+        \Log::warning('Error enviando correo de aprobación de evento: ' . $e->getMessage());
+    }
+
+4.4 Controlador — EventoSolicitudesController::aprobarTodos()
+──────────────────────────────────────────────────────────────
+Dentro del foreach ($pendientes as $reg), DESPUÉS de Notificacion::crear, agregar:
+
+    try {
+        Mail::to($user->email)->send(
+            new EventoSolicitudAprobadaMail($user, $evento, $reg->tipo)
+        );
+    } catch (\Exception $e) {
+        \Log::warning('Correo aprobación masiva fallido para user ' . $user->id . ': ' . $e->getMessage());
+    }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 5 — DEPLOY A PRODUCCIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Este cambio NO requiere migraciones — solo se agregan/modifican archivos PHP, Vue y Blade.
+
+ARCHIVOS MODIFICADOS/CREADOS:
+• app/Mail/EventoSolicitudRechazadaMail.php  (nuevo)
+• app/Mail/EventoSolicitudAprobadaMail.php   (nuevo)
+• app/Http/Controllers/Admin/EventoSolicitudesController.php  (modificado)
+• resources/views/mail/evento-solicitud-rechazada.blade.php  (nuevo)
+• resources/views/mail/evento-solicitud-aprobada.blade.php   (nuevo)
+• resources/js/Pages/Admin/Eventos/Solicitudes.vue  (modificado)
+• resources/js/Pages/Restaurantero/Panel.vue  (modificado)
+• resources/js/Pages/[panel de compradores]  (modificado — buscar el equivalente)
+
+PASOS DE DEPLOY:
+    # 1. Compilar assets Vue
+    npm run build
+
+    # 2. Subir archivos al servidor (FTP/Git/rsync)
+
+    # 3. En el servidor (SSH):
+    php artisan config:clear
+    php artisan config:cache
+    php artisan view:clear
+    php artisan optimize
+    php artisan queue:restart   # si usa queues
+
+NO se necesita php artisan migrate para este prompt.
+
+================================================================================
+FIN DEL PROMPT
+================================================================================

@@ -113,11 +113,27 @@ class EventoSolicitudesController extends Controller
         $aprobados  = $registros->where('estado', 'aprobado')->values()->map($mapear)->values();
         $rechazados = $registros->where('estado', 'rechazado')->values()->map($mapear)->values();
 
+        // Proveedores/compradores que aún no tienen ningún registro (de cualquier estado) en este evento,
+        // para el formulario de alta manual.
+        $userIdsConRegistroProveedor = $registros->where('tipo', 'proveedor')->pluck('user_id');
+        $userIdsConRegistroComprador = $registros->where('tipo', 'comprador')->pluck('user_id');
+
+        $todosProveedores = Restaurantero::whereNotIn('user_id', $userIdsConRegistroProveedor)
+            ->orderBy('nombre_restaurante')
+            ->get(['id', 'nombre_restaurante', 'user_id']);
+
+        $todosCompradores = User::whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin'))
+            ->whereNotIn('id', $userIdsConRegistroComprador)
+            ->orderBy('name')
+            ->get(['id', 'name', 'nombre_empresa']);
+
         return Inertia::render('Admin/Eventos/Solicitudes', [
-            'evento'     => $evento->only(['id', 'nombre', 'activa']),
-            'pendientes' => $pendientes,
-            'aprobados'  => $aprobados,
-            'rechazados' => $rechazados,
+            'evento'           => $evento->only(['id', 'nombre', 'activa']),
+            'pendientes'       => $pendientes,
+            'aprobados'        => $aprobados,
+            'rechazados'       => $rechazados,
+            'todosProveedores' => $todosProveedores,
+            'todosCompradores' => $todosCompradores,
         ]);
     }
 
@@ -287,6 +303,92 @@ class EventoSolicitudesController extends Controller
             ->update(['estado' => 'pendiente', 'motivo_rechazo' => null, 'respondido_at' => null]);
 
         return back()->with('success', 'Solicitud regresada a pendiente.');
+    }
+
+    public function agregarProveedor(Evento $evento, Request $request)
+    {
+        $request->validate([
+            'restaurantero_id' => 'required|exists:restauranteros,id',
+        ]);
+
+        $restaurantero = Restaurantero::findOrFail($request->restaurantero_id);
+
+        $yaRegistrado = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $restaurantero->user_id)
+            ->where('tipo',      'proveedor')
+            ->exists();
+
+        if ($yaRegistrado) {
+            return back()->withErrors(['error' => 'Este proveedor ya está registrado en el evento.']);
+        }
+
+        DB::table('evento_usuario')->insert([
+            'evento_id'     => $evento->id,
+            'user_id'       => $restaurantero->user_id,
+            'tipo'          => 'proveedor',
+            'estado'        => 'aprobado',
+            'respondido_at' => now(),
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        $restaurantero->update(['edicion_id' => $evento->id]);
+
+        $mensaje = 'El equipo de IMPULSATE te agregó directamente como proveedor en el evento "' . $evento->nombre . '". Ya apareces en el listado de proveedores.';
+        Notificacion::crear($restaurantero->user_id, 'solicitud_aprobada', 'Agregado al evento', $mensaje);
+
+        try {
+            Mail::to($restaurantero->user->email)->send(
+                new EventoSolicitudAprobadaMail($restaurantero->user, $evento, 'proveedor')
+            );
+        } catch (\Exception $e) {
+            \Log::warning('Error enviando correo de alta manual de proveedor: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Proveedor "' . $restaurantero->nombre_restaurante . '" agregado al evento correctamente.');
+    }
+
+    public function agregarComprador(Evento $evento, Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $user = User::findOrFail($request->user_id);
+
+        $yaRegistrado = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      'comprador')
+            ->exists();
+
+        if ($yaRegistrado) {
+            return back()->withErrors(['error' => 'Este comprador ya está registrado en el evento.']);
+        }
+
+        DB::table('evento_usuario')->insert([
+            'evento_id'     => $evento->id,
+            'user_id'       => $user->id,
+            'tipo'          => 'comprador',
+            'estado'        => 'aprobado',
+            'respondido_at' => now(),
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        $mensaje = 'El equipo de IMPULSATE te agregó directamente al evento "' . $evento->nombre . '". Ya puedes agendar citas con los proveedores.';
+        Notificacion::crear($user->id, 'solicitud_aprobada', 'Agregado al evento', $mensaje);
+
+        try {
+            Mail::to($user->email)->send(
+                new EventoSolicitudAprobadaMail($user, $evento, 'comprador')
+            );
+        } catch (\Exception $e) {
+            \Log::warning('Error enviando correo de alta manual de comprador: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Comprador "' . ($user->nombre_empresa ?? $user->name) . '" agregado al evento correctamente.');
     }
 
     public function eliminar(Evento $evento, User $user, Request $request)

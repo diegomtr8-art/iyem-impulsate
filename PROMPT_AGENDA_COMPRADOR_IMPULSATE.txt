@@ -1,0 +1,1021 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — IMPULSATE
+MÓDULO AGENDA: FLUJO INVERTIDO (comprador recibe la propuesta)
+Archivo: PROMPT_AGENDA_COMPRADOR_IMPULSATE.txt
+Fecha: Julio 2026
+================================================================================
+
+STACK:  Laravel 11 · Inertia.js · Vue 3 · Tailwind CSS (darkMode:'class')
+Color:  guinda #8B1028 · NUNCA azul/índigo
+Roles:  admin | super-admin | restaurantero | cliente
+Tabla pivote evento: evento_usuario (evento_id, user_id, tipo, estado, respondido_at)
+
+LEE TODOS LOS ARCHIVOS EXISTENTES ANTES DE MODIFICAR.
+Si el módulo Agenda ya existe (tablas, modelos, rutas), modifícalo.
+Si no existe todavía, créalo desde cero con esta especificación.
+
+════════════════════════════════════════════════════════════════════════════════
+CONTEXTO DEL CAMBIO
+════════════════════════════════════════════════════════════════════════════════
+
+FLUJO ANTERIOR (ya NO aplica):
+  Admin selecciona Proveedor → asigna Compradores a slots → envía al Proveedor
+
+FLUJO NUEVO (este prompt):
+  Admin selecciona Comprador → asigna Proveedores a slots → envía al Comprador
+  Comprador acepta  → se crean las citas automáticamente en el sistema
+  Comprador rechaza → el admin recibe notificación para hacer una re-propuesta
+
+REGLA CLAVE: Solo participan en la agenda los usuarios APROBADOS en el evento activo.
+  - Compradores disponibles: evento_usuario WHERE tipo='comprador' AND estado='aprobado'
+  - Proveedores disponibles: evento_usuario WHERE tipo='proveedor' AND estado='aprobado'
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 1 — MIGRACIONES
+════════════════════════════════════════════════════════════════════════════════
+
+Verifica si las tablas agendas_propuestas y agenda_propuesta_citas ya existen.
+
+SI YA EXISTEN — créa una migración de modificación:
+
+    php artisan make:migration update_agendas_propuestas_for_comprador_flow
+
+    public function up(): void
+    {
+        // agendas_propuestas: cambia restaurantero_id por user_id (comprador)
+        Schema::table('agendas_propuestas', function (Blueprint $table) {
+            // Elimina FK y columna antigua si existe
+            if (Schema::hasColumn('agendas_propuestas', 'restaurantero_id')) {
+                $table->dropForeign(['restaurantero_id']);
+                $table->dropColumn('restaurantero_id');
+            }
+            // Agrega user_id (comprador) si no existe
+            if (!Schema::hasColumn('agendas_propuestas', 'user_id')) {
+                $table->foreignId('user_id')
+                      ->after('evento_id')
+                      ->constrained('users')
+                      ->cascadeOnDelete();
+            }
+        });
+
+        // agenda_propuesta_citas: cambia user_id (comprador) por restaurantero_id (proveedor)
+        Schema::table('agenda_propuesta_citas', function (Blueprint $table) {
+            if (Schema::hasColumn('agenda_propuesta_citas', 'user_id')) {
+                $table->dropForeign(['user_id']);
+                $table->dropColumn('user_id');
+            }
+            if (!Schema::hasColumn('agenda_propuesta_citas', 'restaurantero_id')) {
+                $table->foreignId('restaurantero_id')
+                      ->after('agenda_propuesta_id')
+                      ->constrained('restauranteros')
+                      ->cascadeOnDelete();
+            }
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('agendas_propuestas', function (Blueprint $table) {
+            $table->dropForeign(['user_id']);
+            $table->dropColumn('user_id');
+            $table->foreignId('restaurantero_id')->constrained('restauranteros')->cascadeOnDelete();
+        });
+        Schema::table('agenda_propuesta_citas', function (Blueprint $table) {
+            $table->dropForeign(['restaurantero_id']);
+            $table->dropColumn('restaurantero_id');
+            $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+        });
+    }
+
+SI NO EXISTEN — créalas desde cero:
+
+    php artisan make:migration create_agendas_propuestas_table
+    php artisan make:migration create_agenda_propuesta_citas_table
+
+    // agendas_propuestas
+    Schema::create('agendas_propuestas', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('evento_id')->constrained('eventos')->cascadeOnDelete();
+        $table->foreignId('user_id')->constrained('users')->cascadeOnDelete(); // COMPRADOR
+        $table->foreignId('admin_id')->constrained('users')->cascadeOnDelete();
+        $table->enum('estado', ['pendiente','aceptada','rechazada'])->default('pendiente');
+        $table->string('token', 80)->unique()->nullable();
+        $table->timestamp('enviada_at')->nullable();
+        $table->timestamp('respondida_at')->nullable();
+        $table->timestamps();
+        $table->index(['evento_id','user_id']);
+    });
+
+    // agenda_propuesta_citas
+    Schema::create('agenda_propuesta_citas', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('agenda_propuesta_id')
+              ->constrained('agendas_propuestas')->cascadeOnDelete();
+        $table->foreignId('restaurantero_id')
+              ->constrained('restauranteros')->cascadeOnDelete(); // PROVEEDOR
+        $table->dateTime('slot_inicio');
+        $table->dateTime('slot_fin');
+        $table->timestamps();
+        $table->index('agenda_propuesta_id');
+    });
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 2 — MODELOS
+════════════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: app/Models/AgendaPropuesta.php (crea o reemplaza)
+────────────────────────────────────────────────────────────────────────────────
+
+    <?php
+    namespace App\Models;
+
+    use Illuminate\Database\Eloquent\Model;
+    use Illuminate\Database\Eloquent\Relations\BelongsTo;
+    use Illuminate\Database\Eloquent\Relations\HasMany;
+    use Illuminate\Support\Str;
+
+    class AgendaPropuesta extends Model
+    {
+        protected $fillable = [
+            'evento_id', 'user_id', 'admin_id',
+            'estado', 'token', 'enviada_at', 'respondida_at',
+        ];
+
+        protected $casts = [
+            'enviada_at'    => 'datetime',
+            'respondida_at' => 'datetime',
+        ];
+
+        // El COMPRADOR que recibe la propuesta
+        public function comprador(): BelongsTo
+        {
+            return $this->belongsTo(User::class, 'user_id');
+        }
+
+        public function evento(): BelongsTo
+        {
+            return $this->belongsTo(Evento::class);
+        }
+
+        public function admin(): BelongsTo
+        {
+            return $this->belongsTo(User::class, 'admin_id');
+        }
+
+        // Las citas propuestas (proveedor + slot)
+        public function citas(): HasMany
+        {
+            return $this->hasMany(AgendaPropuestaCita::class);
+        }
+
+        public function generarToken(): string
+        {
+            $this->token = Str::random(64);
+            $this->save();
+            return $this->token;
+        }
+
+        public function esPendiente(): bool
+        {
+            return $this->estado === 'pendiente';
+        }
+    }
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: app/Models/AgendaPropuestaCita.php (crea o reemplaza)
+────────────────────────────────────────────────────────────────────────────────
+
+    <?php
+    namespace App\Models;
+
+    use Illuminate\Database\Eloquent\Model;
+    use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+    class AgendaPropuestaCita extends Model
+    {
+        protected $fillable = [
+            'agenda_propuesta_id', 'restaurantero_id', 'slot_inicio', 'slot_fin',
+        ];
+
+        protected $casts = [
+            'slot_inicio' => 'datetime',
+            'slot_fin'    => 'datetime',
+        ];
+
+        public function agenda(): BelongsTo
+        {
+            return $this->belongsTo(AgendaPropuesta::class, 'agenda_propuesta_id');
+        }
+
+        // El PROVEEDOR asignado a este slot
+        public function proveedor(): BelongsTo
+        {
+            return $this->belongsTo(Restaurantero::class, 'restaurantero_id');
+        }
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 3 — CONTROLLER ADMIN: AgendaController.php
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: app/Http/Controllers/Admin/AgendaController.php (crea o reemplaza)
+
+    <?php
+    namespace App\Http\Controllers\Admin;
+
+    use App\Http\Controllers\Controller;
+    use App\Models\AgendaPropuesta;
+    use App\Models\AgendaPropuestaCita;
+    use App\Models\Evento;
+    use App\Models\Restaurantero;
+    use App\Models\User;
+    use Illuminate\Http\Request;
+    use Illuminate\Support\Facades\DB;
+    use Illuminate\Support\Facades\Mail;
+    use Inertia\Inertia;
+
+    class AgendaController extends Controller
+    {
+        // ── LISTA DE PROPUESTAS ──────────────────────────────────────────────
+        public function index()
+        {
+            $propuestas = AgendaPropuesta::with([
+                'comprador:id,name,nombre_empresa,email',
+                'citas.proveedor:id,nombre,foto',
+                'evento:id,nombre',
+            ])
+            ->latest()
+            ->paginate(20);
+
+            return Inertia::render('Admin/Agenda/Index', [
+                'propuestas' => $propuestas,
+            ]);
+        }
+
+        // ── FORMULARIO CREAR ─────────────────────────────────────────────────
+        public function crear()
+        {
+            $evento = Evento::where('activo', true)->latest()->first();
+
+            if (!$evento) {
+                return redirect()->route('admin.agenda.index')
+                    ->with('error', 'No hay un evento activo.');
+            }
+
+            // COMPRADORES aprobados en el evento
+            $compradores = User::whereIn('id', function ($q) use ($evento) {
+                $q->select('user_id')
+                  ->from('evento_usuario')
+                  ->where('evento_id', $evento->id)
+                  ->where('tipo',      'comprador')
+                  ->where('estado',    'aprobado');
+            })
+            ->select('id', 'name', 'nombre_empresa', 'municipio', 'camara_asociacion')
+            ->orderBy('nombre_empresa')->orderBy('name')
+            ->get()
+            ->map(fn($u) => [
+                'id'       => $u->id,
+                'nombre'   => $u->nombre_empresa ?? $u->name,
+                'municipio'=> $u->municipio ?? '',
+                'canirac'  => $u->camara_asociacion === 'CANIRAC',
+            ]);
+
+            // PROVEEDORES aprobados en el evento
+            $proveedores = Restaurantero::whereIn('user_id', function ($q) use ($evento) {
+                $q->select('user_id')
+                  ->from('evento_usuario')
+                  ->where('evento_id', $evento->id)
+                  ->where('tipo',      'proveedor')
+                  ->where('estado',    'aprobado');
+            })
+            ->select('id', 'nombre', 'foto', 'descripcion', 'categoria_id')
+            ->with('categoria:id,nombre')
+            ->orderBy('nombre')
+            ->get()
+            ->map(fn($r) => [
+                'id'        => $r->id,
+                'nombre'    => $r->nombre,
+                'foto'      => $r->foto,
+                'categoria' => $r->categoria->nombre ?? ($r->categoria ?? ''),
+            ]);
+
+            // Slots del día del evento (09:00–17:00, cada 30 min)
+            $fechaEvento = $evento->fecha_inicio
+                ? \Carbon\Carbon::parse($evento->fecha_inicio)->format('Y-m-d')
+                : '2026-07-21';
+
+            $slots = [];
+            $cursor = \Carbon\Carbon::parse($fechaEvento . ' 09:00:00');
+            $limite = \Carbon\Carbon::parse($fechaEvento . ' 17:00:00');
+            while ($cursor->lt($limite)) {
+                $slots[] = [
+                    'inicio' => $cursor->toIso8601String(),
+                    'fin'    => $cursor->copy()->addMinutes(30)->toIso8601String(),
+                    'label'  => $cursor->format('H:i'),
+                ];
+                $cursor->addMinutes(30);
+            }
+
+            return Inertia::render('Admin/Agenda/Crear', [
+                'evento'      => $evento,
+                'compradores' => $compradores,
+                'proveedores' => $proveedores,
+                'slots'       => $slots,
+            ]);
+        }
+
+        // ── GUARDAR PROPUESTA ────────────────────────────────────────────────
+        public function store(Request $request)
+        {
+            $request->validate([
+                'user_id'                    => 'required|exists:users,id',
+                'citas'                      => 'required|array|min:1',
+                'citas.*.restaurantero_id'   => 'required|exists:restauranteros,id',
+                'citas.*.slot_inicio'        => 'required|date',
+                'citas.*.slot_fin'           => 'required|date|after:citas.*.slot_inicio',
+                'enviar'                     => 'boolean',
+            ]);
+
+            $evento = Evento::where('activo', true)->latest()->firstOrFail();
+
+            // Verificar que no exista propuesta pendiente para este comprador
+            $existente = AgendaPropuesta::where('evento_id', $evento->id)
+                ->where('user_id', $request->user_id)
+                ->where('estado', 'pendiente')
+                ->exists();
+
+            if ($existente) {
+                return back()->withErrors([
+                    'error' => 'Este comprador ya tiene una propuesta pendiente de respuesta.'
+                ]);
+            }
+
+            // Verificar que no se repita un proveedor en dos slots de la misma propuesta
+            $restauranteroIds = array_column($request->citas, 'restaurantero_id');
+            if (count($restauranteroIds) !== count(array_unique($restauranteroIds))) {
+                return back()->withErrors([
+                    'error' => 'No puedes asignar el mismo proveedor dos veces en la misma propuesta.'
+                ]);
+            }
+
+            $propuesta = null;
+
+            DB::transaction(function () use ($request, $evento, &$propuesta) {
+                $propuesta = AgendaPropuesta::create([
+                    'evento_id' => $evento->id,
+                    'user_id'   => $request->user_id,
+                    'admin_id'  => auth()->id(),
+                    'estado'    => 'pendiente',
+                ]);
+
+                foreach ($request->citas as $cita) {
+                    AgendaPropuestaCita::create([
+                        'agenda_propuesta_id' => $propuesta->id,
+                        'restaurantero_id'    => $cita['restaurantero_id'],
+                        'slot_inicio'         => $cita['slot_inicio'],
+                        'slot_fin'            => $cita['slot_fin'],
+                    ]);
+                }
+
+                if ($request->boolean('enviar')) {
+                    $this->enviarCorreo($propuesta->load([
+                        'comprador', 'citas.proveedor', 'evento'
+                    ]));
+                }
+            });
+
+            return redirect()->route('admin.agenda.index')
+                ->with('success', 'Propuesta ' . ($request->boolean('enviar') ? 'enviada al comprador.' : 'guardada como borrador.'));
+        }
+
+        // ── ENVIAR CORREO MANUALMENTE ────────────────────────────────────────
+        public function enviar(AgendaPropuesta $agenda)
+        {
+            if (!$agenda->esPendiente()) {
+                return back()->withErrors(['error' => 'Solo se pueden enviar propuestas pendientes.']);
+            }
+
+            $this->enviarCorreo($agenda->load(['comprador', 'citas.proveedor', 'evento']));
+
+            return back()->with('success', 'Correo enviado al comprador.');
+        }
+
+        // ── ELIMINAR ─────────────────────────────────────────────────────────
+        public function destroy(AgendaPropuesta $agenda)
+        {
+            if ($agenda->estado === 'aceptada') {
+                return back()->withErrors(['error' => 'No puedes eliminar una propuesta ya aceptada.']);
+            }
+            $agenda->delete();
+            return back()->with('success', 'Propuesta eliminada.');
+        }
+
+        // ── MÉTODO PRIVADO: ENVÍO DE CORREO ─────────────────────────────────
+        private function enviarCorreo(AgendaPropuesta $propuesta): void
+        {
+            $token      = $propuesta->generarToken();
+            $urlAceptar = route('agenda.aceptar', $token);
+            $urlRechazar= route('agenda.rechazar', $token);
+
+            // Construir lista de citas para el cuerpo del correo
+            $listaCitas = $propuesta->citas->sortBy('slot_inicio')->map(function ($c) {
+                $hora = \Carbon\Carbon::parse($c->slot_inicio)->format('H:i') . ' – ' .
+                        \Carbon\Carbon::parse($c->slot_fin)->format('H:i');
+                return $hora . ' → ' . ($c->proveedor->nombre ?? 'Proveedor');
+            })->join("\n");
+
+            $fechaEvento = $propuesta->evento->fecha_inicio
+                ? \Carbon\Carbon::parse($propuesta->evento->fecha_inicio)
+                    ->locale('es')->isoFormat('D [de] MMMM [de] YYYY')
+                : '21 de julio de 2026';
+
+            $nombreComprador = $propuesta->comprador->nombre_empresa
+                               ?? $propuesta->comprador->name;
+
+            // Usa PlantillaCorreo si existe, o Mailable directo
+            $plantilla = \App\Models\PlantillaCorreo::where('clave', 'agenda_propuesta_comprador')
+                ->where('activo', true)->first();
+
+            if ($plantilla) {
+                $mail = new \App\Mail\PlantillaCorreoMail($plantilla, [
+                    '{{nombre_comprador}}' => $nombreComprador,
+                    '{{nombre_evento}}'    => $propuesta->evento->nombre,
+                    '{{fecha_evento}}'     => $fechaEvento,
+                    '{{lista_citas}}'      => $listaCitas,
+                    '{{url_aceptar}}'      => $urlAceptar,
+                    '{{url_rechazar}}'     => $urlRechazar,
+                ]);
+                Mail::to($propuesta->comprador->email)->send($mail);
+            } else {
+                // Fallback: Mailable directo (ver paso 5)
+                Mail::to($propuesta->comprador->email)
+                    ->send(new \App\Mail\AgendaPropuestaCompradorMail(
+                        $propuesta, $urlAceptar, $urlRechazar
+                    ));
+            }
+
+            $propuesta->update(['enviada_at' => now()]);
+        }
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 4 — CONTROLLER PÚBLICO: AgendaPublicaController.php
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: app/Http/Controllers/AgendaPublicaController.php (crea o reemplaza)
+
+El comprador responde desde el correo con un link de token.
+Si acepta → se crean las citas (una por proveedor asignado)
+Si rechaza → el admin recibe notificación para re-propuesta.
+
+    <?php
+    namespace App\Http\Controllers;
+
+    use App\Models\AgendaPropuesta;
+    use App\Models\Cita;
+    use Illuminate\Support\Facades\DB;
+    use Inertia\Inertia;
+
+    class AgendaPublicaController extends Controller
+    {
+        // Muestra la propuesta al comprador (página pública, sin auth)
+        public function ver(string $token)
+        {
+            $propuesta = AgendaPropuesta::where('token', $token)
+                ->with([
+                    'comprador:id,name,nombre_empresa',
+                    'citas.proveedor:id,nombre,foto,descripcion',
+                    'evento:id,nombre,fecha_inicio',
+                ])
+                ->firstOrFail();
+
+            return Inertia::render('Agenda/Responder', [
+                'propuesta' => $propuesta,
+                'token'     => $token,
+                'yaRespondida' => !$propuesta->esPendiente(),
+            ]);
+        }
+
+        // El COMPRADOR acepta la propuesta
+        public function aceptar(string $token)
+        {
+            $propuesta = AgendaPropuesta::where('token', $token)
+                ->where('estado', 'pendiente')
+                ->with(['citas.proveedor', 'comprador', 'evento'])
+                ->firstOrFail();
+
+            DB::transaction(function () use ($propuesta) {
+                $propuesta->update([
+                    'estado'        => 'aceptada',
+                    'respondida_at' => now(),
+                ]);
+
+                // Crear una Cita por cada proveedor asignado
+                foreach ($propuesta->citas as $citaPropuesta) {
+                    // Lee tu modelo Cita para saber los campos exactos.
+                    // Los campos comunes son:
+                    Cita::create([
+                        'evento_id'        => $propuesta->evento_id,
+                        'restaurantero_id' => $citaPropuesta->restaurantero_id,
+                        'cliente_id'       => $propuesta->user_id,
+                        'inicio'           => $citaPropuesta->slot_inicio,
+                        'fin'              => $citaPropuesta->slot_fin,
+                        'estado'           => 'confirmada',
+                        // Agrega aquí cualquier otro campo requerido en tu modelo Cita
+                    ]);
+
+                    // Notificar al proveedor que tiene una nueva cita confirmada
+                    $proveedor = $citaPropuesta->proveedor;
+                    if ($proveedor && class_exists(\App\Models\Notificacion::class)) {
+                        \App\Models\Notificacion::crear(
+                            $proveedor->user_id,
+                            'cita_confirmada',
+                            '¡Nueva cita confirmada!',
+                            'El comprador ' .
+                            ($propuesta->comprador->nombre_empresa ?? $propuesta->comprador->name) .
+                            ' confirmó su cita contigo el ' .
+                            \Carbon\Carbon::parse($citaPropuesta->slot_inicio)
+                                ->format('d/m/Y H:i') . '.'
+                        );
+                    }
+                }
+
+                // Notificar al comprador
+                if (class_exists(\App\Models\Notificacion::class)) {
+                    \App\Models\Notificacion::crear(
+                        $propuesta->user_id,
+                        'agenda_aceptada',
+                        '¡Agenda confirmada!',
+                        'Has aceptado tu agenda de citas para el evento "' .
+                        $propuesta->evento->nombre . '". Tus citas están confirmadas.'
+                    );
+                }
+            });
+
+            return Inertia::render('Agenda/Gracias', [
+                'tipo'      => 'aceptada',
+                'propuesta' => $propuesta->load(['citas.proveedor', 'evento']),
+            ]);
+        }
+
+        // El COMPRADOR rechaza la propuesta
+        public function rechazar(string $token)
+        {
+            $propuesta = AgendaPropuesta::where('token', $token)
+                ->where('estado', 'pendiente')
+                ->with(['comprador', 'evento'])
+                ->firstOrFail();
+
+            $propuesta->update([
+                'estado'        => 'rechazada',
+                'respondida_at' => now(),
+            ]);
+
+            // Notificar a TODOS los admins sobre el rechazo para re-propuesta
+            $admins = \App\Models\User::role(['admin', 'super-admin'])->get();
+            $nombreComprador = $propuesta->comprador->nombre_empresa
+                               ?? $propuesta->comprador->name;
+
+            foreach ($admins as $admin) {
+                if (class_exists(\App\Models\Notificacion::class)) {
+                    \App\Models\Notificacion::crear(
+                        $admin->id,
+                        'agenda_rechazada',
+                        'Propuesta de agenda rechazada',
+                        'El comprador "' . $nombreComprador . '" rechazó su propuesta de agenda para el evento "' .
+                        $propuesta->evento->nombre . '". Es necesario hacer una re-propuesta.'
+                    );
+                }
+            }
+
+            // Notificar al comprador también
+            if (class_exists(\App\Models\Notificacion::class)) {
+                \App\Models\Notificacion::crear(
+                    $propuesta->user_id,
+                    'agenda_rechazada',
+                    'Propuesta rechazada',
+                    'Has rechazado la propuesta de agenda. El equipo de IMPULSATE te contactará pronto.'
+                );
+            }
+
+            return Inertia::render('Agenda/Gracias', [
+                'tipo'      => 'rechazada',
+                'propuesta' => $propuesta,
+            ]);
+        }
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 5 — MAILABLE DE RESPALDO: AgendaPropuestaCompradorMail.php
+════════════════════════════════════════════════════════════════════════════════
+
+Si no existe la PlantillaCorreo, este Mailable es el fallback.
+
+    php artisan make:mail AgendaPropuestaCompradorMail --markdown=mails.agenda-propuesta-comprador
+
+Archivo: app/Mail/AgendaPropuestaCompradorMail.php
+
+    <?php
+    namespace App\Mail;
+
+    use App\Models\AgendaPropuesta;
+    use Illuminate\Bus\Queueable;
+    use Illuminate\Mail\Mailable;
+    use Illuminate\Queue\SerializesModels;
+
+    class AgendaPropuestaCompradorMail extends Mailable
+    {
+        use Queueable, SerializesModels;
+
+        public function __construct(
+            public AgendaPropuesta $propuesta,
+            public string $urlAceptar,
+            public string $urlRechazar,
+        ) {}
+
+        public function build()
+        {
+            $nombreComprador = $this->propuesta->comprador->nombre_empresa
+                               ?? $this->propuesta->comprador->name;
+
+            return $this
+                ->subject('IMPULSATE: Propuesta de agenda — ' . $this->propuesta->evento->nombre)
+                ->markdown('mails.agenda-propuesta-comprador')
+                ->with([
+                    'nombreComprador' => $nombreComprador,
+                    'evento'          => $this->propuesta->evento,
+                    'citas'           => $this->propuesta->citas->sortBy('slot_inicio'),
+                    'urlAceptar'      => $this->urlAceptar,
+                    'urlRechazar'     => $this->urlRechazar,
+                ]);
+        }
+    }
+
+Archivo: resources/views/mails/agenda-propuesta-comprador.blade.php
+
+    @component('mail::message')
+    # ¡Hola, {{ $nombreComprador }}!
+
+    El equipo de **IMPULSATE** ha preparado una propuesta de agenda de citas
+    para tu participación en el evento **{{ $evento->nombre }}**.
+
+    ## Tu agenda propuesta
+
+    | Horario | Proveedor |
+    |---------|-----------|
+    @foreach($citas as $cita)
+    | {{ \Carbon\Carbon::parse($cita->slot_inicio)->format('H:i') }} – {{ \Carbon\Carbon::parse($cita->slot_fin)->format('H:i') }} | {{ $cita->proveedor->nombre ?? '—' }} |
+    @endforeach
+
+    ¿Aceptas esta propuesta de agenda?
+
+    @component('mail::button', ['url' => $urlAceptar, 'color' => 'success'])
+    ✅ Sí, acepto la agenda
+    @endcomponent
+
+    @component('mail::button', ['url' => $urlRechazar, 'color' => 'error'])
+    ❌ No acepto
+    @endcomponent
+
+    Si tienes dudas escríbenos a impulsate@iyemyucatan.com
+
+    — **Equipo IMPULSATE · IYEM Yucatán**
+
+    <small>Este enlace es de un solo uso y expira en 72 horas.</small>
+    @endcomponent
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 6 — PLANTILLA DE CORREO EN BD (seeder/tinker)
+════════════════════════════════════════════════════════════════════════════════
+
+Agrega (o actualiza) la plantilla en la tabla plantillas_correos:
+
+    \App\Models\PlantillaCorreo::updateOrCreate(
+        ['clave' => 'agenda_propuesta_comprador'],
+        [
+            'nombre'            => 'Propuesta de agenda al comprador',
+            'asunto'            => 'IMPULSATE: Tu agenda de citas — {{nombre_evento}}',
+            'tipo_destinatario' => 'comprador',
+            'es_sistema'        => true,
+            'activo'            => true,
+            'contenido'         => '
+Hola, {{nombre_comprador}}
+
+El equipo de IMPULSATE ha preparado una agenda de citas para tu participación en
+**{{nombre_evento}}** el {{fecha_evento}}.
+
+**Tu agenda propuesta:**
+
+{{lista_citas}}
+
+¿Aceptas esta propuesta de agenda?
+
+Si aceptas, las citas quedarán confirmadas en el sistema.
+Si rechazas, el equipo de IMPULSATE te contactará para hacer una nueva propuesta.
+
+[✅ SÍ, ACEPTO LA AGENDA]({{url_aceptar}})
+
+[❌ NO ACEPTO]({{url_rechazar}})
+
+Este enlace es de un solo uso.
+
+Dudas: impulsate@iyemyucatan.com
+
+— Equipo IMPULSATE · IYEM Yucatán
+            ',
+        ]
+    );
+
+Ejecuta con: php artisan tinker (pega el código arriba)
+O agrégalo a tu seeder de plantillas y ejecuta: php artisan db:seed --class=PlantillasCorreoSeeder --force
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 7 — RUTAS: routes/web.php
+════════════════════════════════════════════════════════════════════════════════
+
+Si ya existen rutas de agenda, REEMPLÁZALAS completamente.
+Si no existen, agrégalas.
+
+    use App\Http\Controllers\Admin\AgendaController;
+    use App\Http\Controllers\AgendaPublicaController;
+
+    // AGENDA — rutas de admin (protegidas)
+    Route::prefix('admin/agenda')
+        ->name('admin.agenda.')
+        ->middleware(['auth', 'verified', 'role:admin|super-admin'])
+        ->group(function () {
+            Route::get('/',               [AgendaController::class, 'index'])->name('index');
+            Route::get('/crear',          [AgendaController::class, 'crear'])->name('crear');
+            Route::post('/',              [AgendaController::class, 'store'])->name('store');
+            Route::post('/{agenda}/enviar', [AgendaController::class, 'enviar'])->name('enviar');
+            Route::delete('/{agenda}',    [AgendaController::class, 'destroy'])->name('destroy');
+        });
+
+    // AGENDA — rutas públicas de respuesta (SIN auth — el token es la clave)
+    // IMPORTANTE: estas rutas deben estar FUERA de cualquier middleware de auth
+    Route::prefix('agenda')->name('agenda.')->group(function () {
+        Route::get('/propuesta/{token}',   [AgendaPublicaController::class, 'ver'])->name('ver');
+        Route::post('/aceptar/{token}',    [AgendaPublicaController::class, 'aceptar'])->name('aceptar');
+        Route::post('/rechazar/{token}',   [AgendaPublicaController::class, 'rechazar'])->name('rechazar');
+    });
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 8 — VUE: Admin/Agenda/Index.vue
+════════════════════════════════════════════════════════════════════════════════
+
+Crea o reemplaza: resources/js/Pages/Admin/Agenda/Index.vue
+
+Props: { propuestas: Object (paginado) }
+
+Tabla con columnas:
+  Comprador | Citas propuestas | Enviada | Respondida | Estado | Acciones
+
+Estados:
+  pendiente (sin enviar) → badge gris    "Borrador"
+  pendiente (enviada)    → badge amber   "⏳ Esperando respuesta"
+  aceptada               → badge green   "✅ Aceptada"
+  rechazada              → badge red     "❌ Rechazada — re-propuesta"
+
+Acciones por estado:
+  - Borrador (no enviada):    botón "📧 Enviar correo" + botón eliminar
+  - Pendiente enviada:        texto "Esperando..." + botón eliminar
+  - Aceptada:                 botón "Ver citas confirmadas"
+  - Rechazada:                botón "🔄 Nueva propuesta" (va a /admin/agenda/crear)
+
+Diferencia visual para rechazadas: fondo rojo suave en la fila, mensaje
+"El comprador rechazó. Haz una re-propuesta." en la celda de estado.
+
+Botón principal: "+ Nueva propuesta" → route('admin.agenda.crear')
+
+Para la columna "Citas propuestas", muestra los nombres de los proveedores
+como chips pequeños con fondo guinda-50.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 9 — VUE: Admin/Agenda/Crear.vue
+════════════════════════════════════════════════════════════════════════════════
+
+Crea o reemplaza: resources/js/Pages/Admin/Agenda/Crear.vue
+
+Props:
+  evento:      Object
+  compradores: Array [{ id, nombre, municipio, canirac }]
+  proveedores: Array [{ id, nombre, foto, categoria }]
+  slots:       Array [{ inicio, fin, label }]
+
+Layout 2 columnas en desktop (1 en móvil):
+  - Col izquierda  (40%): Selector de comprador + lista de proveedores
+  - Col derecha    (60%): Timeline de slots
+
+── SELECTOR DE COMPRADOR ──────────────────────────────────────────────────────
+
+Dropdown con búsqueda:
+  <select> o lista filtrable con input de búsqueda.
+  Muestra nombre, municipio y badge "CANIRAC" si aplica.
+  Solo permite 1 comprador seleccionado a la vez.
+
+── LISTA DE PROVEEDORES ───────────────────────────────────────────────────────
+
+Lista scrolleable (similar al cambio 3 del prompt anterior) con buscador.
+Cada item muestra: avatar/foto, nombre, categoría.
+Click → proveedor queda como "activo para asignar" al próximo slot que se toque.
+Proveedores ya asignados aparecen con ✓ y no se pueden seleccionar de nuevo.
+
+── TIMELINE DE SLOTS ──────────────────────────────────────────────────────────
+
+Misma lógica que el prompt anterior, pero ahora cada slot recibe un PROVEEDOR
+(no un comprador).
+
+    function asignarProveedor(slot) {
+        if (!proveedorActivo.value || yaAsignado(proveedorActivo.value.id)) return;
+        citasAsignadas.value.push({
+            slot_inicio:      slot.inicio,
+            slot_fin:         slot.fin,
+            restaurantero_id: proveedorActivo.value.id,
+            nombreProveedor:  proveedorActivo.value.nombre,
+        });
+        proveedorActivo.value = null;
+    }
+
+── RESUMEN Y BOTONES ──────────────────────────────────────────────────────────
+
+Resumen al pie: lista de "Proveedor → horario" ordenada por hora.
+
+    function guardar(enviar) {
+        router.post(route('admin.agenda.store'), {
+            user_id: compradorSeleccionado.value.id,
+            citas:   citasAsignadas.value,
+            enviar:  enviar,
+        });
+    }
+
+Botones:
+  [💾 Guardar borrador]    [📧 Enviar propuesta al comprador]
+  (disabled si no hay comprador seleccionado o no hay citas asignadas)
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 10 — VUE: Agenda/Responder.vue (página pública para el comprador)
+════════════════════════════════════════════════════════════════════════════════
+
+Crea o reemplaza: resources/js/Pages/Agenda/Responder.vue
+
+Página pública SIN menú de admin. Solo logo IMPULSATE.
+
+Props: { propuesta: Object, token: String, yaRespondida: Boolean }
+
+Contenido:
+  - Saludo al comprador: "Hola, [nombre]!"
+  - Nombre del evento y fecha
+  - Tabla de citas propuestas: Horario | Proveedor | Categoría
+  - Si yaRespondida=true: mensaje "Esta propuesta ya fue respondida." (sin botones)
+  - Si no respondida: 2 botones grandes
+
+BOTÓN ACEPTAR:
+  - Fondo verde · texto "✅ Sí, acepto la agenda"
+  - Al hacer click → loading state + POST a route('agenda.aceptar', token)
+  - Deshabilitar botones durante el submit
+
+BOTÓN RECHAZAR:
+  - Fondo rojo · texto "❌ No acepto esta propuesta"
+  - Al hacer click → confirmación con un diálogo simple (v-if modal)
+    "¿Seguro que rechazas? El equipo de IMPULSATE te contactará para re-programar."
+    [Cancelar] [Confirmar rechazo]
+  - Si confirma → POST a route('agenda.rechazar', token)
+
+Usa useForm de Inertia para los submits:
+    const formAceptar  = useForm({});
+    const formRechazar = useForm({});
+
+    const aceptar = () => formAceptar.post(route('agenda.aceptar', props.token));
+    const rechazar = () => {
+        mostrarConfirmacion.value = false;
+        formRechazar.post(route('agenda.rechazar', props.token));
+    };
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 11 — VUE: Agenda/Gracias.vue (confirmación tras responder)
+════════════════════════════════════════════════════════════════════════════════
+
+Crea o reemplaza: resources/js/Pages/Agenda/Gracias.vue
+
+Props: { tipo: String, propuesta: Object }
+
+Si tipo === 'aceptada':
+  - Ícono ✅ verde
+  - "¡Gracias! Tu agenda de citas ha sido confirmada."
+  - Lista de citas confirmadas (hora → nombre proveedor)
+  - "Recibirás un recordatorio antes del evento."
+
+Si tipo === 'rechazada':
+  - Ícono 🔄 amber
+  - "Hemos recibido tu respuesta."
+  - "El equipo de IMPULSATE te contactará pronto para proponerte una nueva agenda."
+  - "Si tienes dudas: impulsate@iyemyucatan.com"
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 12 — AdminLayout: menú de navegación
+════════════════════════════════════════════════════════════════════════════════
+
+Si no existe todavía, agrega en el sidebar/navbar del admin:
+
+    <NavLink :href="route('admin.agenda.index')"
+        :active="route().current('admin.agenda.*')">
+        📅 Agenda
+    </NavLink>
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 13 — NOTA SOBRE EL MODELO Cita (CRÍTICO)
+════════════════════════════════════════════════════════════════════════════════
+
+LEE app/Models/Cita.php ANTES de escribir el bloque Cita::create() en
+AgendaPublicaController::aceptar().
+
+Los campos que usé (restaurantero_id, cliente_id, inicio, fin, estado) son los
+más comunes, PERO pueden llamarse diferente en tu sistema.
+Busca también: hora_inicio/hora_fin, fecha, user_id, comprador_id.
+Ajusta el Cita::create() con los campos REALES de tu modelo.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN COMPLETA
+════════════════════════════════════════════════════════════════════════════════
+
+1. CREAR PROPUESTA:
+   a) Ve a /admin/agenda/crear
+   b) Los dropdowns de compradores y proveedores solo muestran aprobados en el evento
+   c) Selecciona un comprador
+   d) Busca y selecciona un proveedor en la lista
+   e) Asígnalo a un slot del timeline
+   f) Repite con más proveedores
+   g) Verifica que un proveedor ya asignado no se puede seleccionar de nuevo
+   h) Haz clic en "Guardar borrador" → aparece en /admin/agenda como "Borrador"
+   i) Haz clic en "Enviar propuesta" → aparece como "⏳ Esperando respuesta"
+      + verifica que el correo llegó a la bandeja del comprador
+
+2. ACEPTAR PROPUESTA:
+   a) Abre el correo del comprador
+   b) Verifica que muestra la lista de citas con hora y nombre del proveedor
+   c) Haz clic en "Sí, acepto"
+   d) Verifica que redirige a Agenda/Gracias con tipo='aceptada'
+   e) Verifica en BD: agendas_propuestas.estado = 'aceptada'
+   f) Verifica en BD: se crearon filas en la tabla citas (una por proveedor)
+   g) Verifica en /admin/agenda: estado = "✅ Aceptada"
+   h) Verifica que los proveedores recibieron notificación de nueva cita
+   i) Verifica que el comprador recibió notificación de agenda confirmada
+
+3. RECHAZAR PROPUESTA:
+   a) Abre otra propuesta pendiente (crea una nueva si es necesario)
+   b) Haz clic en "No acepto"
+   c) Verifica que aparece el diálogo de confirmación
+   d) Confirma el rechazo
+   e) Verifica que redirige a Agenda/Gracias con tipo='rechazada'
+   f) Verifica en BD: agendas_propuestas.estado = 'rechazada', NO hay citas creadas
+   g) Verifica en /admin/agenda: estado = "❌ Rechazada — re-propuesta"
+   h) Verifica que los admins recibieron notificación de rechazo
+
+4. RE-PROPUESTA:
+   a) Haz clic en "🔄 Nueva propuesta" en la fila rechazada
+   b) Crea una nueva propuesta para el mismo comprador
+   c) Verifica que permite crear la nueva propuesta (la anterior ya está rechazada)
+
+5. LINK EXPIRADO / YA RESPONDIDO:
+   a) Una vez aceptada, abre de nuevo el link del correo
+   b) Verifica que muestra "Esta propuesta ya fue respondida" sin botones
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY A PRODUCCIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+    # 1. Sube el código al servidor
+    cd /var/www/html/citas
+    git pull origin main          # o sube los archivos manualmente
+
+    # 2. Dependencias PHP
+    composer install --no-dev --optimize-autoloader
+
+    # 3. Migraciones (las nuevas de agenda)
+    php artisan migrate --force
+
+    # 4. Agregar plantilla de correo vía tinker
+    php artisan tinker
+    # Pega el bloque del Paso 6 y presiona Enter
+
+    # 5. Compilar assets Vue
+    npm ci
+    npm run build
+
+    # 6. Limpiar y regenerar caché
+    php artisan optimize
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+
+    # 7. Reiniciar colas (si se usan jobs para correos)
+    php artisan queue:restart
+
+    # 8. Verificar que las rutas públicas de agenda NO tienen middleware auth
+    php artisan route:list | grep agenda
+    # Las rutas agenda.ver, agenda.aceptar, agenda.rechazar no deben tener middleware auth
+
+================================================================================
+FIN DEL PROMPT — AGENDA COMPRADOR
+================================================================================

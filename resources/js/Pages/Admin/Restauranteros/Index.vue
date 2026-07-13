@@ -236,6 +236,10 @@ const formatFecha = (f) => f ? new Date(f).toLocaleDateString('es-MX', { day: 'n
                                     class="text-xs font-medium px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">
                                     Ver
                                 </Link>
+                                <Link :href="route('admin.restauranteros.editar', r.id)"
+                                    class="text-xs font-bold px-3 py-1.5 bg-guinda-50 dark:bg-guinda-900/20 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-800 rounded-lg transition-colors">
+                                    ✏️ Editar
+                                </Link>
                                 <button v-if="r.solicitado_aprobacion_at && !r.aprobado && !r.rechazado"
                                     @click="aprobar(r)"
                                     class="text-xs font-medium px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors">

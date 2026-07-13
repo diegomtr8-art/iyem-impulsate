@@ -11,18 +11,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Inertia\Inertia;
 
 class ProveedorPerfilController extends Controller
 {
-    public function create(Request $request)
+    public function create()
     {
-        $restaurantero = $request->user()->restaurantero;
-
-        return Inertia::render('Restaurantero/CompletarPerfil', [
-            'restaurantero' => $restaurantero,
-            'categorias'    => \App\Models\Restaurantero::categoriasActivas(),
-        ]);
+        // El formulario de completar perfil vive dentro del panel del proveedor
+        // (Restaurantero/Panel.vue), no en una página independiente.
+        return redirect()->route('restaurantero.panel');
     }
 
     public function store(Request $request)
@@ -181,12 +177,6 @@ class ProveedorPerfilController extends Controller
 
         $restaurantero->update($data);
 
-        // Notificar a admins
-        \App\Models\User::role('admin')->each(fn($a) =>
-            Notificacion::crear($a->id, 'info', 'Proveedor requiere aprobación',
-                "{$restaurantero->nombre_restaurante} completó su perfil y espera aprobación.")
-        );
-
         // Crear servicio y horarios si no existen
         if (!$restaurantero->servicios()->exists()) {
             Servicio::create([
@@ -209,6 +199,16 @@ class ProveedorPerfilController extends Controller
             }
         }
 
-        return back()->with('success', 'Perfil enviado para revisión. El administrador lo revisará en breve.');
+        if ($restaurantero->perfil_completo) {
+            \App\Models\User::role('admin')->each(fn($a) =>
+                Notificacion::crear($a->id, 'info', 'Nuevo proveedor con perfil completo',
+                    "{$restaurantero->nombre_restaurante} completó su perfil y fue aprobado automáticamente.")
+            );
+
+            return back()->with('success', '¡Perfil completo! Fuiste aprobado automáticamente' .
+                (\App\Models\Evento::activo() ? ' y ya apareces en el directorio del evento activo.' : '.'));
+        }
+
+        return back()->with('success', 'Progreso guardado. Completa todos los campos requeridos para que tu perfil se apruebe automáticamente.');
     }
 }

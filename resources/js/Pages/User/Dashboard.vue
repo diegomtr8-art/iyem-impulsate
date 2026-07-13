@@ -107,6 +107,7 @@ const formPerfil = useForm({
     necesidades:            page.props.auth.user?.necesidades || '',
     camara_asociacion:      page.props.auth.user?.camara_asociacion || '',
     nombre_establecimiento: page.props.auth.user?.nombre_establecimiento || '',
+    es_restaurantero:       page.props.auth.user?.es_restaurantero ?? false,
 });
 const submitPerfil = () => {
     formPerfil.post(route('perfil.comprador.actualizar'), {
@@ -946,6 +947,37 @@ const guardarNota = (citaId) => {
                                 <p v-if="formPerfil.errors.nombre_establecimiento" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.nombre_establecimiento }}</p>
                             </div>
                         </Transition>
+
+                        <!-- ¿Eres restaurantero? -->
+                        <div class="border-2 rounded-2xl p-4 transition-colors"
+                            :class="formPerfil.es_restaurantero
+                                ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-900/10'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'">
+                            <label class="flex items-start gap-3 cursor-pointer">
+                                <input type="checkbox" v-model="formPerfil.es_restaurantero"
+                                    class="accent-guinda-700 w-5 h-5 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p class="text-sm font-bold text-gray-800 dark:text-gray-200">
+                                        ¿Eres restaurantero?
+                                    </p>
+                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                                        Soy dueño o encargado de un restaurante, cafetería, hotel u otro
+                                        establecimiento de alimentos. Al activar esta opción, podré participar
+                                        en el evento y agendar citas con proveedores.
+                                    </p>
+                                    <Transition name="fade">
+                                        <p v-if="formPerfil.es_restaurantero && !page.props.auth.user?.es_restaurantero"
+                                            class="mt-2 text-xs font-semibold text-green-700 dark:text-green-400">
+                                            ✅ Al guardar, quedarás registrado en el evento activo.
+                                        </p>
+                                        <p v-else-if="formPerfil.es_restaurantero && page.props.auth.user?.es_restaurantero"
+                                            class="mt-2 text-xs text-green-600 dark:text-green-400">
+                                            ✅ Ya estás registrado como restaurantero.
+                                        </p>
+                                    </Transition>
+                                </div>
+                            </label>
+                        </div>
 
                         <div class="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
                             <button type="button" @click="showPerfilModal = false"

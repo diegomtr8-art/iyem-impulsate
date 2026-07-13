@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class RestauranteroAdminController extends Controller
@@ -193,18 +194,57 @@ class RestauranteroAdminController extends Controller
         ]);
     }
 
+    public function editar(Restaurantero $restaurantero)
+    {
+        $restaurantero->load('user:id,name,email');
+
+        return Inertia::render('Admin/Restauranteros/Editar', [
+            'restaurantero' => $restaurantero,
+            'categorias'    => Restaurantero::categoriasActivas(),
+        ]);
+    }
+
     public function update(Request $request, Restaurantero $restaurantero)
     {
         $request->validate([
-            'nombre_restaurante' => 'required|string|max:255',
-            'telefono'           => 'nullable|string|max:30',
-            'direccion'          => 'nullable|string|max:255',
-            'municipio'          => 'nullable|string|max:100',
-            'descripcion'        => 'nullable|string|max:1000',
-            'logo'               => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'nombre_restaurante'      => 'required|string|max:255',
+            'telefono'                => 'nullable|string|max:30',
+            'direccion'               => 'nullable|string|max:255',
+            'municipio'               => 'nullable|string|max:100',
+            'descripcion'             => 'nullable|string|max:1000',
+            'logo'                    => 'nullable|image|mimes:jpg,jpeg,png,webp|max:2048',
+            'rfc'                     => 'nullable|string|max:13',
+            'sitio_web'               => 'nullable|url|max:255',
+            'categoria'               => 'nullable|string|max:100',
+            'acepta_credito'          => 'nullable|boolean',
+            'credito_monto_maximo'    => 'nullable|numeric|min:0',
+            'credito_tiempo_cantidad' => 'nullable|integer|min:1',
+            'credito_tiempo_unidad'   => ['nullable', 'string', Rule::in(['dias', 'semanas', 'meses'])],
+            'credito_a_negociar'      => 'nullable|boolean',
+            'pago_contraentrega'      => 'nullable|boolean',
+            'factura'                 => 'nullable|boolean',
+            'regimen_fiscal'          => 'nullable|string|max:100',
+            'entrega_domicilio'       => 'nullable|boolean',
+            'cobertura_entrega'       => ['nullable', 'string', Rule::in(['local', 'regional', 'nacional'])],
+            'forma_entrega'           => ['nullable', 'string', Rule::in(['programada', 'flexible'])],
+            'user_name'               => 'sometimes|required|string|max:255',
+            'user_email'              => 'sometimes|required|email|max:255|unique:users,email,' . $restaurantero->user_id,
         ]);
 
-        $data = $request->only(['nombre_restaurante', 'telefono', 'direccion', 'municipio', 'descripcion']);
+        $data = $request->only([
+            'nombre_restaurante', 'telefono', 'direccion', 'municipio', 'descripcion',
+            'rfc', 'sitio_web', 'categoria',
+            'acepta_credito', 'credito_monto_maximo', 'credito_tiempo_cantidad', 'credito_tiempo_unidad', 'credito_a_negociar',
+            'pago_contraentrega', 'factura', 'regimen_fiscal',
+            'entrega_domicilio', 'cobertura_entrega', 'forma_entrega',
+        ]);
+
+        if ($request->has('user_name') || $request->has('user_email')) {
+            $restaurantero->user->update([
+                'name'  => $request->input('user_name', $restaurantero->user->name),
+                'email' => $request->input('user_email', $restaurantero->user->email),
+            ]);
+        }
 
         if ($request->hasFile('logo')) {
             $file     = $request->file('logo');

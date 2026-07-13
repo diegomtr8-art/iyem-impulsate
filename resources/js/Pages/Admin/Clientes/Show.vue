@@ -203,6 +203,13 @@ function eliminarCliente() {
                 <!-- Acciones -->
                 <div class="bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-2xl shadow-sm p-4">
                     <p class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Acciones</p>
+                    <Link :href="route('admin.clientes.editar', cliente.id)"
+                        class="w-full mb-2 py-2.5 bg-guinda-50 dark:bg-guinda-900/20 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-800 font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Editar comprador
+                    </Link>
                     <button
                         @click="confirmarEliminar = true"
                         class="w-full py-2.5 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400 font-semibold rounded-xl text-sm transition-colors flex items-center justify-center gap-2">

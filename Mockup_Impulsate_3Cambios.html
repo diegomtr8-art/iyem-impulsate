@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mockup IMPULSATE — 3 Cambios</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F4F1F2;color:#1a1a1a;min-height:100vh}
+:root{--guinda:#8B1028;--guinda-light:#F5E6E9;--guinda-dark:#6a0d1e;--green:#27500A;--green-light:#eaf3de;--amber:#633806;--amber-light:#faeeda;--red:#791F1F;--red-light:#fcebeb;--blue:#0C447C;--blue-light:#e6f1fb;--gray:#444;--border:#e2e2e2;--card:#ffffff;--muted:#888}
+
+/* HEADER */
+.app-header{background:var(--guinda);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.logo{font-size:20px;font-weight:700;letter-spacing:.5px}
+.subtitle{font-size:12px;opacity:.75;margin-top:2px}
+.version-badge{background:rgba(255,255,255,.2);padding:4px 10px;border-radius:99px;font-size:11px}
+
+/* NAV TABS */
+.tabs-wrapper{background:#fff;border-bottom:2px solid var(--border);position:sticky;top:62px;z-index:90;overflow-x:auto}
+.tabs{display:flex;min-width:max-content;padding:0 24px}
+.tab{padding:14px 18px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:all .15s;user-select:none}
+.tab:hover{color:var(--guinda);background:#fafafa}
+.tab.active{color:var(--guinda);border-bottom-color:var(--guinda)}
+.tab-num{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--guinda-light);color:var(--guinda);font-size:10px;margin-right:5px}
+.tab.active .tab-num{background:var(--guinda);color:#fff}
+
+/* SCREENS */
+.screen{display:none;padding:24px;max-width:1100px;margin:0 auto;animation:fadeIn .2s}
+.screen.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* COMMON */
+.screen-title{font-size:20px;font-weight:700;color:var(--guinda);margin-bottom:4px}
+.screen-desc{font-size:13px;color:var(--muted);margin-bottom:24px;max-width:700px;line-height:1.6}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:16px}
+.card-sm{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.section-sep{font-size:11px;font-weight:700;color:var(--guinda);text-transform:uppercase;letter-spacing:.07em;padding:8px 0 6px;border-bottom:2px solid var(--guinda-light);margin:16px 0 12px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.label{font-size:11px;font-weight:600;color:#555;margin-bottom:4px;display:block}
+.req{color:var(--guinda);font-size:10px;font-weight:700}
+.inp{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;color:#1a1a1a;background:#fafafa;outline:none}
+.inp:focus{border-color:var(--guinda);background:#fff}
+.field{margin-bottom:12px}
+.hint{font-size:10px;color:var(--muted);margin-top:3px}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;gap:4px}
+.badge-guinda{background:var(--guinda-light);color:var(--guinda)}
+.badge-green{background:var(--green-light);color:var(--green)}
+.badge-amber{background:var(--amber-light);color:var(--amber)}
+.badge-red{background:var(--red-light);color:var(--red)}
+.badge-blue{background:var(--blue-light);color:var(--blue)}
+.badge-gray{background:#f0f0f0;color:#555;border:1px solid #e0e0e0}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 22px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-guinda{background:var(--guinda);color:#fff}.btn-guinda:hover{background:var(--guinda-dark)}
+.btn-outline{background:#fff;color:var(--guinda);border:1.5px solid var(--guinda)}
+.btn-gray{background:#f0f0f0;color:#444;border:1px solid #ddd}
+.btn-green{background:var(--green);color:#fff}
+.btn-red{background:var(--red);color:#fff}
+.btn-full{width:100%}
+.check-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--border);margin-bottom:6px;font-size:12px;cursor:pointer;background:#fafafa;transition:border-color .15s}
+.check-row:hover{border-color:var(--guinda)}
+.check-row input{margin-top:1px;accent-color:var(--guinda)}
+.check-row.selected{border-color:var(--guinda);background:var(--guinda-light)}
+.radio-row{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;border:1.5px solid var(--border);flex:1;font-size:12px;cursor:pointer;background:#fafafa}
+.radio-row:hover{border-color:var(--guinda)}
+.radio-row.sel{border-color:var(--guinda);background:var(--guinda-light)}
+.radio-row input{accent-color:var(--guinda)}
+.radio-group{display:flex;gap:8px;flex-wrap:wrap}
+
+/* PROGRESS */
+.prog-bar{display:flex;gap:0;margin-bottom:22px;border-radius:8px;overflow:hidden}
+.prog-step{flex:1;padding:9px 6px;text-align:center;font-size:11px;font-weight:600;background:#f0f0f0;color:#999;border-right:1px solid #ddd;position:relative}
+.prog-step:last-child{border-right:none}
+.prog-step.done{background:var(--guinda-light);color:var(--guinda)}
+.prog-step.active{background:var(--guinda);color:#fff}
+.prog-step .step-n{display:block;font-size:15px;font-weight:700;margin-bottom:1px}
+
+/* DEVICE FRAME */
+.device{width:320px;border:3px solid #333;border-radius:28px;overflow:hidden;background:#fff;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.device-bar{background:var(--guinda);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600}
+.device-body{background:#f5f5f5}
+.chat-item{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background .1s}
+.chat-item:hover{background:#fef8f9}
+.avatar{width:46px;height:46px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;border:1.5px solid #eee}
+.chat-info{flex:1;min-width:0}
+.chat-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#111}
+.chat-desc{font-size:11px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.chat-cat-badge{font-size:10px;font-weight:600;color:var(--guinda);background:var(--guinda-light);padding:2px 7px;border-radius:99px;margin-top:3px;display:inline-block}
+
+/* AGENDA */
+.timeline-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f0f0f0}
+.time-lbl{width:56px;font-size:11px;font-weight:700;color:#999;text-align:right;flex-shrink:0}
+.slot{flex:1;padding:8px 12px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;cursor:pointer;transition:all .15s}
+.slot-free{background:#fafafa;color:#999}
+.slot-free:hover{border-color:var(--guinda);background:var(--guinda-light);color:var(--guinda)}
+.slot-assigned{background:var(--green-light);border-color:#9FE1CB;color:var(--green);font-weight:600}
+.slot-busy{background:var(--red-light);border-color:#f7c1c1;color:var(--red)}
+.buyer-pill{padding:5px 12px;border-radius:99px;border:1.5px solid var(--border);font-size:12px;cursor:pointer;background:#fafafa;margin:3px;display:inline-block;transition:all .15s}
+.buyer-pill:hover{border-color:var(--guinda);color:var(--guinda)}
+.buyer-pill.picked{background:var(--green-light);border-color:#9FE1CB;color:var(--green);font-weight:600}
+
+/* EMAIL MOCK */
+.email-wrap{max-width:500px;margin:0 auto;border:1px solid #ddd;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.email-hdr{background:var(--guinda);color:#fff;padding:28px 24px;text-align:center}
+.email-logo{font-size:26px;font-weight:800;letter-spacing:1px}
+.email-sub{font-size:12px;opacity:.8;margin-top:4px}
+.email-body{padding:24px;font-size:13px;line-height:1.7;color:#333;background:#fff}
+.email-agenda-item{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee;font-size:13px}
+.email-cta{display:flex;gap:12px;justify-content:center;padding:20px;background:#f9f9f9}
+.email-footer{padding:12px;text-align:center;font-size:10px;color:#aaa;background:#f9f9f9;border-top:1px solid #eee}
+
+/* FLOW COMPARE */
+.flow-step{padding:8px 12px;border-radius:8px;font-size:12px;margin-bottom:6px;border-left:3px solid transparent}
+.flow-admin{background:var(--amber-light);border-color:#EF9F27;color:var(--amber)}
+.flow-auto{background:var(--green-light);border-color:#97C459;color:var(--green)}
+.flow-user{background:var(--blue-light);border-color:#378ADD;color:var(--blue)}
+.flow-block{background:var(--red-light);border-color:#E24B4A;color:var(--red)}
+
+/* MUNICIPIOS (Yucatán) */
+.muni-list{max-height:200px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;font-size:12px}
+.muni-list option{padding:4px 8px}
+
+/* AGENDA ESTADO TABLE */
+.agenda-table{width:100%;border-collapse:collapse;font-size:13px}
+.agenda-table th{background:var(--guinda);color:#fff;padding:10px 14px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.agenda-table td{padding:10px 14px;border-bottom:1px solid #f0f0f0}
+.agenda-table tr:hover td{background:#fef8f9}
+
+/* TAGS */
+.tag{display:inline-block;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600;margin:2px}
+.tag-req{background:#fef2f2;color:#991b1b;border:1px solid #fecaca}
+.tag-opt{background:#f0fdf4;color:#166534;border:1px solid #bbf7d0}
+.tag-new{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}
+
+/* IMPORTANT NOTE */
+.info-box{padding:12px 16px;border-radius:10px;font-size:12px;line-height:1.6;margin-bottom:14px}
+.info-box.guinda{background:var(--guinda-light);border:1px solid #d4839a;color:var(--guinda-dark)}
+.info-box.green{background:var(--green-light);border:1px solid #9FE1CB;color:var(--green)}
+.info-box.amber{background:var(--amber-light);border:1px solid #FAC775;color:var(--amber)}
+
+@media(max-width:680px){
+  .two-col,.three-col{grid-template-columns:1fr}
+  .screen{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div>
+    <div class="logo">IMPULSATE</div>
+    <div class="subtitle">Mockup de aprobación — 3 cambios</div>
+  </div>
+  <div class="version-badge">v2.0 · Jul 2026</div>
+</div>
+
+<div class="tabs-wrapper">
+  <div class="tabs">
+    <div class="tab active" onclick="show('s1')"><span class="tab-num">1</span>Perfil Proveedor (wizard)</div>
+    <div class="tab" onclick="show('s2')"><span class="tab-num">2</span>Perfil Comprador</div>
+    <div class="tab" onclick="show('s3')"><span class="tab-num">3</span>Auto-aprobación (flujo)</div>
+    <div class="tab" onclick="show('s4')"><span class="tab-num">4</span>Móvil lista WhatsApp</div>
+    <div class="tab" onclick="show('s5')"><span class="tab-num">5</span>Agenda · Admin vista</div>
+    <div class="tab" onclick="show('s6')"><span class="tab-num">6</span>Agenda · Crear propuesta</div>
+    <div class="tab" onclick="show('s7')"><span class="tab-num">7</span>Correo al proveedor</div>
+    <div class="tab" onclick="show('s8')"><span class="tab-num">8</span>Resultado respuesta</div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 1: PERFIL PROVEEDOR ─────────────────────────────────────────── -->
+<div id="s1" class="screen active">
+  <div class="screen-title">1. Completar perfil — Proveedor</div>
+  <div class="screen-desc">Wizard de 5 pasos. El proveedor NO puede acceder a la plataforma hasta completar todos los pasos. Al finalizar se auto-aprueba y queda activo sin intervención del admin.</div>
+
+  <div class="prog-bar">
+    <div class="prog-step done"><span class="step-n">✓</span>Negocio</div>
+    <div class="prog-step done"><span class="step-n">✓</span>Productos</div>
+    <div class="prog-step active"><span class="step-n">3</span>Comercial</div>
+    <div class="prog-step"><span class="step-n">4</span>Logística</div>
+    <div class="prog-step"><span class="step-n">5</span>Legal</div>
+  </div>
+
+  <div class="two-col">
+    <!-- PASO 1 ref -->
+    <div>
+      <div class="section-sep">Paso 1 — Datos del negocio (obligatorio todo)</div>
+      <div class="card">
+        <div class="field"><label class="label">Nombre del negocio <span class="req">*</span></label><input class="inp" placeholder="Salsas Don Miguel S.A. de C.V."/><div class="hint">Como aparecerá en el directorio público</div></div>
+        <div class="field"><label class="label">Descripción del negocio <span class="req">*</span></label><textarea class="inp" rows="3" placeholder="Somos una empresa yucateca especializada en salsas artesanales con chiles de la región..."></textarea></div>
+        <div class="two-col">
+          <div class="field"><label class="label">Teléfono <span class="req">*</span></label><input class="inp" placeholder="9991234567"/></div>
+          <div class="field"><label class="label">Municipio <span class="req">*</span></label>
+            <select class="inp">
+              <option>-- Selecciona --</option>
+              <option>Mérida</option><option>Valladolid</option><option>Tizimín</option><option>Calkiní</option>
+            </select>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="field"><label class="label">RFC <span class="req">*</span></label><input class="inp" placeholder="SDM123456ABC"/></div>
+          <div class="field"><label class="label">Sitio web <span class="req">*</span></label><input class="inp" placeholder="www.salsasdonmiguel.com"/></div>
+        </div>
+        <div class="field">
+          <label class="label">Categoría del negocio <span class="req">*</span> <span class="tag tag-new">NUEVO</span></label>
+          <select class="inp">
+            <option>-- Selecciona una categoría --</option>
+            <option>Condimentos y salsas</option>
+            <option>Productos orgánicos</option>
+            <option>Dulces y mieles</option>
+            <option>Mariscos y pescados</option>
+            <option>Carnes y embutidos</option>
+            <option>Lácteos</option>
+            <option>Panadería y repostería</option>
+            <option>Bebidas</option>
+          </select>
+          <div class="hint">Categorías configuradas por el admin en Super Admin → Categorías</div>
+        </div>
+        <div class="field">
+          <label class="label">Imagen del negocio <span class="req">*</span></label>
+          <div style="border:2px dashed #ccc;border-radius:10px;padding:20px;text-align:center;background:#fafafa;color:#999;font-size:12px">
+            📷 Arrastra o selecciona imagen · JPG/PNG · Máx 4MB<br><small>Recomendado: 1280×720 px (16:9)</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PASO 3 actual mostrado -->
+    <div>
+      <div class="section-sep">Paso 3 — Condiciones comerciales (obligatorio)</div>
+      <div class="card">
+        <div class="field">
+          <label class="label">¿Acepta crédito? <span class="req">*</span></label>
+          <div class="radio-group">
+            <label class="radio-row sel"><input type="radio" name="cred" checked> Sí, acepta crédito</label>
+            <label class="radio-row"><input type="radio" name="cred"> A negociar</label>
+          </div>
+          <label class="radio-row" style="margin-top:6px;border-color:#991b1b;background:#fef2f2" onclick="this.classList.toggle('sel')">
+            <input type="radio" name="cred"> <strong>No acepta crédito</strong> <span class="tag tag-new" style="margin-left:auto">NUEVO</span>
+          </label>
+        </div>
+        <div class="two-col">
+          <div class="field"><label class="label">Monto máximo</label><input class="inp" placeholder="$50,000 MXN"/></div>
+          <div class="field"><label class="label">Plazo máximo</label><input class="inp" placeholder="30 días"/></div>
+        </div>
+        <div class="two-col">
+          <div class="field">
+            <label class="label">Pago contraentrega <span class="req">*</span></label>
+            <div class="radio-group">
+              <label class="radio-row"><input type="radio" name="contra"> Sí</label>
+              <label class="radio-row sel"><input type="radio" name="contra" checked> No</label>
+            </div>
+          </div>
+          <div class="field">
+            <label class="label">Expide factura <span class="req">*</span></label>
+            <div class="radio-group">
+              <label class="radio-row sel"><input type="radio" name="fact" checked> Sí</label>
+              <label class="radio-row"><input type="radio" name="fact"> No</label>
+            </div>
+          </div>
+        </div>
+        <div class="field"><label class="label">Régimen fiscal</label><input class="inp" placeholder="Régimen Simplificado de Confianza"/></div>
+      </div>
+
+      <div class="section-sep">Paso 4 — Logística y distribución (obligatorio)</div>
+      <div class="card">
+        <div class="field">
+          <label class="label">¿Hace entrega a domicilio? <span class="req">*</span></label>
+          <div class="radio-group">
+            <label class="radio-row sel"><input type="radio" name="entrega" checked> Sí</label>
+            <label class="radio-row"><input type="radio" name="entrega"> No</label>
+          </div>
+        </div>
+        <div class="two-col">
+          <div class="field">
+            <label class="label">Cobertura de entrega <span class="req">*</span></label>
+            <select class="inp"><option>Local (mismo municipio)</option><option>Regional (Yucatán)</option><option>Nacional</option></select>
+          </div>
+          <div class="field">
+            <label class="label">Forma de entrega <span class="req">*</span></label>
+            <select class="inp"><option>Programada (días fijos)</option><option>Flexible (a pedido)</option></select>
+          </div>
+        </div>
+        <div class="field"><label class="label">¿Tiene domicilio en Yucatán? <span class="req">*</span></label>
+          <div class="radio-group">
+            <label class="radio-row sel"><input type="radio" name="dom" checked> Sí</label>
+            <label class="radio-row"><input type="radio" name="dom"> No</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-sep">Paso 5 — Información legal y operativa (opcional)</div>
+      <div class="card" style="background:#fffdf5;border-color:#fcd34d">
+        <div class="info-box amber" style="margin-bottom:12px">Estos campos son opcionales pero ayudan a los compradores a conocerte mejor</div>
+
+        <label class="check-row selected" style="margin-bottom:12px">
+          <input type="checkbox" checked> <span><strong>¿Aplica tiempo de vida en anaquel para tu producto?</strong> (activa este campo si aplica)</span>
+        </label>
+        <div class="field"><label class="label">Tiempo de vida en anaquel <span style="color:#888">(opcional — si aplica)</span></label>
+          <input class="inp" placeholder="Ej: Vasos 365 días, Mermelada 180 días"/>
+        </div>
+
+        <div class="field" style="margin-top:14px">
+          <label class="label">Requisitos que cumple <span style="color:#888">(marcar los que apliquen)</span></label>
+          <label class="check-row"><input type="checkbox" checked> Tabla Nutrimental</label>
+          <label class="check-row"><input type="checkbox"> Etiquetado NOM-051</label>
+          <label class="check-row"><input type="checkbox" checked> Código de barras</label>
+          <label class="check-row"><input type="checkbox"> Registro de Marca</label>
+          <label class="check-row"><input type="checkbox"> Cert. calidad/inocuidad</label>
+        </div>
+
+        <div class="field" style="margin-top:14px">
+          <label class="label">¿En qué requisitos requieres apoyo del IYEM? <span style="color:#888">(opcional)</span></label>
+          <label class="check-row"><input type="checkbox"> Tabla Nutrimental</label>
+          <label class="check-row"><input type="checkbox" checked> Etiquetado NOM-051</label>
+          <label class="check-row"><input type="checkbox"> Registro de Marca</label>
+        </div>
+
+        <div class="two-col" style="margin-top:14px">
+          <div class="field">
+            <label class="label">¿Requiere refrigeración? <span style="color:#888">(opcional)</span></label>
+            <select class="inp"><option>— No aplica —</option><option>Sí</option><option>No</option></select>
+          </div>
+          <div class="field">
+            <label class="label">¿Requiere congelación (-4° o menos)?</label>
+            <select class="inp"><option>— No aplica —</option><option>Sí</option><option>No</option></select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width:500px;margin:0 auto">
+    <div class="info-box green">✅ Al guardar el paso 5 → el perfil queda <strong>aprobado automáticamente</strong>. No se requiere intervención del admin para aprobar el perfil.</div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-outline" style="flex:1">← Anterior</button>
+      <button class="btn btn-guinda" style="flex:2">Finalizar y acceder a la plataforma →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 2: PERFIL COMPRADOR ─────────────────────────────────────────── -->
+<div id="s2" class="screen">
+  <div class="screen-title">2. Completar perfil — Comprador</div>
+  <div class="screen-desc">Formulario obligatorio de 2 pasos. El comprador no puede acceder si no completa todo. El campo "¿Eres restaurantero?" es el filtro de acceso al evento — solo restauranteros pueden registrarse al evento activo.</div>
+
+  <div class="prog-bar">
+    <div class="prog-step done"><span class="step-n">✓</span>Datos personales</div>
+    <div class="prog-step active"><span class="step-n">2</span>Tu empresa y necesidades</div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="section-sep">Paso 1 — Datos personales (obligatorio)</div>
+      <div class="card">
+        <div class="field"><label class="label">Nombre completo <span class="req">*</span></label><input class="inp" placeholder="María García López" value="María García López"/></div>
+        <div class="two-col">
+          <div class="field"><label class="label">Teléfono <span class="req">*</span></label><input class="inp" placeholder="9991234567"/></div>
+          <div class="field"><label class="label">Correo electrónico <span class="req">*</span></label><input class="inp" placeholder="maria@restaurante.com"/></div>
+        </div>
+        <div class="field"><label class="label">RFC <span class="req">*</span></label><input class="inp" placeholder="GAML850101XYZ"/></div>
+        <div class="field">
+          <label class="label">Municipio <span class="req">*</span></label>
+          <select class="inp">
+            <option value="">-- Selecciona tu municipio --</option>
+            <optgroup label="Principal">
+              <option selected>Mérida</option>
+            </optgroup>
+            <optgroup label="Otros municipios">
+              <option>Abalá</option><option>Acanceh</option><option>Akil</option><option>Baca</option>
+              <option>Bokobá</option><option>Buctzotz</option><option>Calotmul</option><option>Cansahcab</option>
+              <option>Cantamayec</option><option>Celestún</option><option>Cenotillo</option><option>Conkal</option>
+              <option>Cuncunul</option><option>Cuzamá</option><option>Chacsinkín</option><option>Chankom</option>
+              <option>Chapab</option><option>Chemax</option><option>Chicxulub Pueblo</option><option>Chichimilá</option>
+              <option>Chikindzonot</option><option>Chocholá</option><option>Chumayel</option><option>Dzan</option>
+              <option>Dzemul</option><option>Dzidzantún</option><option>Dzilam de Bravo</option><option>Dzilam González</option>
+              <option>Dzitás</option><option>Dzoncauich</option><option>Espita</option><option>Halachó</option>
+              <option>Hocabá</option><option>Hoctún</option><option>Homún</option><option>Huhí</option>
+              <option>Hunucmá</option><option>Ixil</option><option>Izamal</option><option>Kanasín</option>
+              <option>Kantunil</option><option>Kaua</option><option>Kinchil</option><option>Kopomá</option>
+              <option>Mama</option><option>Maní</option><option>Maxcanú</option><option>Mayapán</option>
+              <option>Mocochá</option><option>Motul</option><option>Muna</option><option>Muxupip</option>
+              <option>Opichén</option><option>Oxkutzcab</option><option>Panabá</option><option>Peto</option>
+              <option>Progreso</option><option>Quintana Roo</option><option>Río Lagartos</option><option>Sacalum</option>
+              <option>Samahil</option><option>Sanahcat</option><option>San Felipe</option><option>Santa Elena</option>
+              <option>Seyé</option><option>Sinanché</option><option>Sotuta</option><option>Sucilá</option>
+              <option>Sudzal</option><option>Suma</option><option>Tahdziú</option><option>Tahmek</option>
+              <option>Teabo</option><option>Tecoh</option><option>Tekal de Venegas</option><option>Tekantó</option>
+              <option>Tekax</option><option>Tekit</option><option>Tekom</option><option>Telchac Pueblo</option>
+              <option>Telchac Puerto</option><option>Temax</option><option>Temozón</option><option>Tepakán</option>
+              <option>Tetiz</option><option>Teya</option><option>Ticul</option><option>Timucuy</option>
+              <option>Tinum</option><option>Tixcacalcupul</option><option>Tixkokob</option><option>Tixmehuac</option>
+              <option>Tixpéhual</option><option>Tizimín</option><option>Truchas</option><option>Tunkás</option>
+              <option>Tzucacab</option><option>Uayma</option><option>Ucú</option><option>Umán</option>
+              <option>Uayma</option><option>Valladolid</option><option>Xocchel</option><option>Yaxcabá</option>
+              <option>Yaxkukul</option><option>Yobaín</option>
+            </optgroup>
+          </select>
+          <div class="hint">Lista completa de los 106 municipios de Yucatán</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-sep">Paso 2 — Empresa y necesidades (obligatorio)</div>
+      <div class="card">
+        <div class="field"><label class="label">Nombre de la empresa / establecimiento <span class="req">*</span></label><input class="inp" placeholder="Restaurante El Mesón de San Juan"/></div>
+        <div class="field"><label class="label">¿Pertenece a alguna cámara o asociación? <span class="req">*</span></label>
+          <div class="radio-group">
+            <label class="radio-row sel"><input type="radio" name="cam" checked> CANIRAC</label>
+            <label class="radio-row"><input type="radio" name="cam"> Otra cámara</label>
+            <label class="radio-row"><input type="radio" name="cam"> Ninguna</label>
+          </div>
+        </div>
+        <div class="field"><label class="label">¿Qué necesidades tienes? <span class="req">*</span></label><textarea class="inp" rows="3" placeholder="Busco proveedores de salsas artesanales, embutidos y productos orgánicos para mi menú de temporada..."></textarea></div>
+
+        <div style="border:2px solid var(--guinda);border-radius:10px;padding:14px;background:var(--guinda-light);margin-top:8px">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+            <input type="checkbox" style="accent-color:var(--guinda);width:18px;height:18px;margin-top:1px;flex-shrink:0" checked>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--guinda)">¿Eres restaurantero? <span class="tag tag-new">NUEVO</span></div>
+              <div style="font-size:11px;color:#6a0d1e;margin-top:3px;line-height:1.5">Si eres dueño o encargado de un restaurante, cafetería, hotel u otro establecimiento de alimentos, marca esta opción para poder registrarte al evento y agendar citas con proveedores.</div>
+              <div style="margin-top:8px;padding:8px 10px;background:#fff;border-radius:7px;font-size:11px;color:var(--green)">✅ Al marcar esta opción, podrás solicitar participar en el evento y agendar citas automáticamente.</div>
+            </div>
+          </label>
+        </div>
+
+        <div style="margin-top:12px;padding:10px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:var(--green)">
+          ✅ Al completar este formulario, <strong>quedas aprobado automáticamente</strong> como comprador y se solicita tu registro al evento activo.
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;margin-top:10px">
+        <button class="btn btn-outline" style="flex:1">← Anterior</button>
+        <button class="btn btn-guinda" style="flex:2">Finalizar y acceder →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 3: AUTO-APROBACIÓN FLUJO ─────────────────────────────────────── -->
+<div id="s3" class="screen">
+  <div class="screen-title">3. Flujo de auto-aprobación</div>
+  <div class="screen-desc">Comparativo entre el flujo actual (con aprobaciones manuales) y el nuevo flujo donde todo se aprueba automáticamente. El único paso manual que queda es la aprobación al evento.</div>
+
+  <div class="two-col">
+    <div>
+      <div class="card" style="border-color:#fcd34d;background:#fffdf5">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:#92400e">❌ Flujo ACTUAL (con aprobaciones manuales)</div>
+        <div class="flow-step flow-user">1. Usuario se registra en la plataforma</div>
+        <div class="flow-step flow-user">2. Usuario llena datos básicos (teléfono, CURP...)</div>
+        <div class="flow-step flow-admin">3. 🔑 Admin aprueba en /admin/restauranteros</div>
+        <div class="flow-step flow-user">4. Proveedor llena su perfil en Panel.vue</div>
+        <div class="flow-step flow-admin">5. 🔑 Admin revisa si el perfil está completo</div>
+        <div class="flow-step flow-user">6. Proveedor solicita entrar al evento</div>
+        <div class="flow-step flow-admin">7. 🔑 Admin aprueba la solicitud al evento</div>
+        <div class="flow-step flow-user">8. Proveedor ya aparece en el directorio</div>
+        <div style="margin-top:14px;padding:10px;background:#fef2f2;border-radius:8px;font-size:12px;color:#991b1b">
+          ⚠️ Requiere <strong>3 intervenciones manuales del admin</strong><br>
+          ⚠️ Proveedores con perfil incompleto pueden quedar sin detectar<br>
+          ⚠️ El comprador también necesita aprobación manual
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="border-color:#9FE1CB;background:#f0fdf4">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px;color:var(--green)">✅ Flujo NUEVO (auto-aprobación)</div>
+        <div class="flow-step flow-user">1. Usuario se registra en la plataforma</div>
+        <div class="flow-step" style="background:#8B102215;border-color:var(--guinda);color:var(--guinda)">2. 🧙 Wizard obliga a completar TODO el perfil</div>
+        <div class="flow-step flow-auto">3. ✅ Al guardar → <strong>aprobado = true automático</strong></div>
+        <div class="flow-step flow-auto">4. ✅ Se solicita automáticamente al evento activo</div>
+        <div class="flow-step flow-auto">5. ✅ Solicitud de evento auto-aprobada</div>
+        <div class="flow-step flow-user">6. Proveedor ya aparece en el directorio</div>
+        <div style="height:36px"></div>
+        <div style="margin-top:14px;padding:10px;background:var(--green-light);border-radius:8px;font-size:12px;color:var(--green)">
+          ✅ <strong>0 intervenciones manuales</strong> para el perfil<br>
+          ✅ Perfil siempre 100% completo antes de ser público<br>
+          ✅ Admin solo usa el módulo Agenda para organizar citas
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:8px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:12px;color:var(--guinda)">¿Qué pasa con el módulo "admin/restauranteros"?</div>
+    <div style="font-size:13px;color:#555;line-height:1.7">
+      El módulo sigue existiendo pero solo se usa para <strong>consulta y edición</strong>, no para aprobar perfiles. La lista mostrará todos los proveedores ya aprobados automáticamente. El admin puede desactivar o bloquear un proveedor si detecta un problema, pero la aprobación inicial es automática.<br><br>
+      <strong>Filtro de compradores:</strong> Si el comprador no marca "¿Eres restaurantero?", puede completar su perfil y acceder a la plataforma pero NO puede solicitar registro al evento. La solicitud al evento solo se auto-aprueba si marcó ser restaurantero.
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 4: MÓVIL WHATSAPP ─────────────────────────────────────────── -->
+<div id="s4" class="screen">
+  <div class="screen-title">4. Vista móvil — Directorio de proveedores (lista compacta)</div>
+  <div class="screen-desc">En móvil, el directorio cambia de tarjetas grandes (1-2 por pantalla) a una lista compacta estilo WhatsApp que permite ver 6+ proveedores por scroll. Solo aplica en pantallas pequeñas (sm: breakpoint en Tailwind).</div>
+
+  <div style="display:flex;gap:40px;flex-wrap:wrap;justify-content:center;align-items:flex-start">
+    <div style="text-align:center">
+      <div style="font-size:12px;font-weight:700;color:#888;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">ANTES — Tarjetas grandes</div>
+      <div class="device">
+        <div class="device-bar">← Proveedores del evento</div>
+        <div class="device-body" style="padding:10px;display:flex;flex-direction:column;gap:8px;background:#f5f5f5">
+          <div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #eee">
+            <div style="width:100%;height:90px;background:#8B102220;display:flex;align-items:center;justify-content:center;font-size:36px">🌶</div>
+            <div style="padding:10px">
+              <div style="font-size:13px;font-weight:700">Salsas Don Miguel</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">Condimentos · Mérida</div>
+              <button style="margin-top:8px;width:100%;padding:7px;background:var(--guinda);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer">Ver perfil y agendar cita</button>
+            </div>
+          </div>
+          <div style="background:#fff;border-radius:10px;overflow:hidden;border:1px solid #eee">
+            <div style="width:100%;height:90px;background:#1D9E7520;display:flex;align-items:center;justify-content:center;font-size:36px">🌿</div>
+            <div style="padding:10px">
+              <div style="font-size:13px;font-weight:700">Orgánicos Yucatán</div>
+              <div style="font-size:11px;color:#888;margin-top:2px">Orgánicos · Valladolid</div>
+              <button style="margin-top:8px;width:100%;padding:7px;background:var(--guinda);color:#fff;border:none;border-radius:7px;font-size:11px;font-weight:600;cursor:pointer">Ver perfil y agendar cita</button>
+            </div>
+          </div>
+        </div>
+        <div style="padding:6px;background:#fff;border-top:1px solid #eee;font-size:10px;color:#999;text-align:center">2 visibles · scroll para ver más</div>
+      </div>
+    </div>
+
+    <div style="text-align:center">
+      <div style="font-size:12px;font-weight:700;color:var(--guinda);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">DESPUÉS — Lista compacta</div>
+      <div class="device">
+        <div class="device-bar">← Proveedores · 22 disponibles</div>
+        <div class="device-body">
+          <div style="padding:8px 10px;background:#fff;border-bottom:1px solid #eee">
+            <input style="width:100%;padding:6px 12px;border-radius:99px;border:1px solid #e0e0e0;font-size:12px;background:#f5f5f5" placeholder="🔍 Buscar por nombre o descripción..."/>
+          </div>
+          <div style="background:#fff">
+            <div class="chat-item">
+              <div class="avatar" style="background:#fef2f2">🌶</div>
+              <div class="chat-info">
+                <div class="chat-name">Salsas Don Miguel</div>
+                <div class="chat-desc">Salsas artesanales con chiles de la región...</div>
+                <span class="chat-cat-badge">Condimentos</span>
+              </div>
+            </div>
+            <div class="chat-item" style="background:#fef8f9">
+              <div class="avatar" style="background:#f0fdf4">🌿</div>
+              <div class="chat-info">
+                <div class="chat-name">Orgánicos Yucatán</div>
+                <div class="chat-desc">Verduras y frutas orgánicas certificadas...</div>
+                <span class="chat-cat-badge">Orgánicos</span>
+              </div>
+            </div>
+            <div class="chat-item">
+              <div class="avatar" style="background:#fffbeb">🍯</div>
+              <div class="chat-info">
+                <div class="chat-name">Mieles del Sureste</div>
+                <div class="chat-desc">Miel de abeja melipona 100% natural...</div>
+                <span class="chat-cat-badge">Dulces / Mieles</span>
+              </div>
+            </div>
+            <div class="chat-item">
+              <div class="avatar" style="background:#eff6ff">🐟</div>
+              <div class="chat-info">
+                <div class="chat-name">Mariscos Progreso</div>
+                <div class="chat-desc">Camarón fresco directo del Golfo...</div>
+                <span class="chat-cat-badge">Mariscos</span>
+              </div>
+            </div>
+            <div class="chat-item">
+              <div class="avatar" style="background:#fef2f2">🥩</div>
+              <div class="chat-info">
+                <div class="chat-name">Carnes La Hacienda</div>
+                <div class="chat-desc">Cortes premium y embutidos artesanales...</div>
+                <span class="chat-cat-badge">Carnes</span>
+              </div>
+            </div>
+            <div class="chat-item">
+              <div class="avatar" style="background:#fdf4ff">🧀</div>
+              <div class="chat-info">
+                <div class="chat-name">Lácteos Don Fulgencio</div>
+                <div class="chat-desc">Quesos artesanales, crema y mantequilla...</div>
+                <span class="chat-cat-badge">Lácteos</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="padding:6px;background:#fff;border-top:1px solid #eee;font-size:10px;color:#999;text-align:center">6+ visibles · scroll para ver más</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:24px">
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--guinda)">Notas técnicas</div>
+    <div style="font-size:12px;color:#555;line-height:1.7">
+      • La vista de lista aplica solo en móvil (<code>sm:</code> breakpoint, &lt;640px). En desktop se mantienen las tarjetas actuales.<br>
+      • Al tocar un proveedor en la lista, abre su perfil completo (Show.vue) desde donde se agenda la cita.<br>
+      • El avatar muestra el logo del proveedor si tiene, o un emoji de placeholder si no tiene imagen.<br>
+      • La descripción se trunca a 1 línea con ellipsis.<br>
+      • El badge de categoría usa los colores de la categoría configurada en Super Admin.
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 5: AGENDA ADMIN ─────────────────────────────────────────── -->
+<div id="s5" class="screen">
+  <div class="screen-title">5. Módulo Agenda — Vista principal del admin</div>
+  <div class="screen-desc">Nueva sección en el panel de admin. El admin ve todas las propuestas de agenda enviadas a proveedores y puede crear nuevas. Las citas aceptadas se registran automáticamente.</div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="badge badge-gray" style="font-size:12px;padding:5px 12px">Todas (12)</span>
+      <span class="badge badge-amber" style="font-size:12px;padding:5px 12px">Pendiente (5)</span>
+      <span class="badge badge-green" style="font-size:12px;padding:5px 12px">Aceptada (6)</span>
+      <span class="badge badge-red" style="font-size:12px;padding:5px 12px">Rechazada (1)</span>
+    </div>
+    <button class="btn btn-guinda" onclick="show('s6')">+ Nueva propuesta de agenda</button>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="agenda-table">
+      <thead>
+        <tr>
+          <th>Proveedor</th>
+          <th>Citas propuestas</th>
+          <th>Enviada</th>
+          <th>Respondida</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:32px;height:32px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;font-size:16px">🌶</div>
+              <div><div style="font-weight:600">Salsas Don Miguel</div><div style="font-size:11px;color:#888">Condimentos</div></div>
+            </div>
+          </td>
+          <td><span class="badge badge-guinda">5 citas</span></td>
+          <td style="font-size:12px;color:#888">18 Jul · 08:15</td>
+          <td style="font-size:12px;color:#888">—</td>
+          <td><span class="badge badge-amber">⏳ Pendiente</span></td>
+          <td><button class="btn btn-gray" style="font-size:11px;padding:5px 10px" onclick="show('s6')">Ver / Editar</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:32px;height:32px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:16px">🌿</div>
+              <div><div style="font-weight:600">Orgánicos Yucatán</div><div style="font-size:11px;color:#888">Orgánicos</div></div>
+            </div>
+          </td>
+          <td><span class="badge badge-guinda">4 citas</span></td>
+          <td style="font-size:12px;color:#888">17 Jul · 14:30</td>
+          <td style="font-size:12px;color:#888">18 Jul · 10:32</td>
+          <td><span class="badge badge-green">✅ Aceptada</span></td>
+          <td><button class="btn btn-gray" style="font-size:11px;padding:5px 10px">Ver citas</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:32px;height:32px;border-radius:50%;background:#fffbeb;display:flex;align-items:center;justify-content:center;font-size:16px">🍯</div>
+              <div><div style="font-weight:600">Mieles del Sureste</div><div style="font-size:11px;color:#888">Dulces</div></div>
+            </div>
+          </td>
+          <td><span class="badge badge-guinda">3 citas</span></td>
+          <td style="font-size:12px;color:#888">17 Jul · 09:00</td>
+          <td style="font-size:12px;color:#888">17 Jul · 18:45</td>
+          <td><span class="badge badge-red">❌ Rechazada</span></td>
+          <td><button class="btn btn-guinda" style="font-size:11px;padding:5px 10px" onclick="show('s6')">Nueva propuesta</button></td>
+        </tr>
+        <tr>
+          <td>
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:32px;height:32px;border-radius:50%;background:#eff6ff;display:flex;align-items:center;justify-content:center;font-size:16px">🐟</div>
+              <div><div style="font-weight:600">Mariscos Progreso</div><div style="font-size:11px;color:#888">Mariscos</div></div>
+            </div>
+          </td>
+          <td><span class="badge badge-guinda">6 citas</span></td>
+          <td style="font-size:12px;color:#888">18 Jul · 07:00</td>
+          <td style="font-size:12px;color:#888">—</td>
+          <td><span class="badge badge-amber">⏳ Pendiente</span></td>
+          <td><button class="btn btn-gray" style="font-size:11px;padding:5px 10px" onclick="show('s6')">Ver / Editar</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ─── SCREEN 6: CREAR AGENDA ─────────────────────────────────────────── -->
+<div id="s6" class="screen">
+  <div class="screen-title">6. Módulo Agenda — Crear propuesta para un proveedor</div>
+  <div class="screen-desc">El admin selecciona un proveedor, ve los slots disponibles del día del evento (21 Jul 2026) y asigna compradores a cada slot. El sistema verifica que el comprador no tenga otra cita en ese horario.</div>
+
+  <div class="two-col">
+    <div>
+      <div class="section-sep">Paso 1 — Proveedor seleccionado</div>
+      <div class="card-sm" style="display:flex;align-items:center;gap:12px;border:2px solid var(--guinda);background:var(--guinda-light);margin-bottom:16px">
+        <div style="font-size:32px">🌶</div>
+        <div>
+          <div style="font-size:14px;font-weight:700">Salsas Don Miguel</div>
+          <div style="font-size:12px;color:#888">Condimentos · Mérida</div>
+          <div style="font-size:11px;color:var(--guinda);margin-top:2px">Horario evento: 09:00 – 17:00 · 21 Jul 2026</div>
+        </div>
+      </div>
+
+      <div class="section-sep">Paso 2 — Asignar compradores a slots</div>
+      <div class="card" style="padding:14px">
+        <div style="font-size:11px;color:#888;margin-bottom:10px">Haz click en un slot libre para asignar el comprador seleccionado</div>
+        <div class="timeline-row">
+          <div class="time-lbl">09:00</div>
+          <div class="slot slot-assigned">✓ Restaurante El Mesón <span style="font-size:10px;opacity:.7;margin-left:4px">— 30 min</span></div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">09:30</div>
+          <div class="slot slot-assigned">✓ Hotel Hacienda Mérida <span style="font-size:10px;opacity:.7;margin-left:4px">— 30 min</span></div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">10:00</div>
+          <div class="slot slot-free">— Click para asignar comprador —</div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">10:30</div>
+          <div class="slot slot-free">— Click para asignar comprador —</div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">11:00</div>
+          <div class="slot slot-busy">⛔ Ya tiene cita confirmada</div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">11:30</div>
+          <div class="slot slot-free">— Click para asignar comprador —</div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">12:00</div>
+          <div class="slot slot-free">— Click para asignar comprador —</div>
+        </div>
+        <div class="timeline-row">
+          <div class="time-lbl">14:00</div>
+          <div class="slot slot-free">— Click para asignar comprador —</div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-sep">Compradores disponibles para asignar</div>
+      <div class="card-sm" style="margin-bottom:12px">
+        <input class="inp" placeholder="Buscar comprador..." style="margin-bottom:10px"/>
+        <div style="font-size:11px;color:#888;margin-bottom:8px">Solo compradores aprobados en el evento sin cita con este proveedor</div>
+        <div>
+          <span class="buyer-pill">Chedraui Mérida</span>
+          <span class="buyer-pill picked">✓ Restaurante El Mesón</span>
+          <span class="buyer-pill picked">✓ Hotel Hacienda Mérida</span>
+          <span class="buyer-pill">Café Montejo</span>
+          <span class="buyer-pill">Tiendas 3B Norte</span>
+          <span class="buyer-pill">Hotel Fiesta Inn</span>
+          <span class="buyer-pill">Cocina La Familia</span>
+          <span class="buyer-pill">Restaurante Néctar</span>
+          <span class="buyer-pill">Hotel Gran Meliá</span>
+          <span class="buyer-pill">Operadora Hotelera</span>
+        </div>
+      </div>
+
+      <div class="section-sep">Resumen de la propuesta</div>
+      <div class="card" style="background:#f0fdf4;border-color:#9FE1CB">
+        <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:10px">2 citas propuestas para Salsas Don Miguel</div>
+        <div style="border-bottom:1px solid #9FE1CB;padding-bottom:8px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0"><span style="color:#888;font-weight:600">09:00 – 09:30</span><span style="font-weight:600">Restaurante El Mesón</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0"><span style="color:#888;font-weight:600">09:30 – 10:00</span><span style="font-weight:600">Hotel Hacienda Mérida</span></div>
+        </div>
+        <div style="font-size:11px;color:#888;margin-bottom:12px">El proveedor recibirá un correo para aceptar o rechazar esta propuesta</div>
+        <button class="btn btn-guinda btn-full" onclick="show('s7')">📧 Enviar propuesta por correo</button>
+        <button class="btn btn-gray btn-full" style="margin-top:8px">💾 Guardar borrador</button>
+      </div>
+
+      <div class="card" style="margin-top:12px;background:#fffbeb;border-color:#fcd34d">
+        <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px">⚙️ Validaciones automáticas</div>
+        <div style="font-size:11px;color:#78350f;line-height:1.6">
+          • El sistema verifica que el comprador no tenga otra cita en el mismo horario<br>
+          • Muestra en rojo los slots ya ocupados por el proveedor<br>
+          • Un comprador no puede aparecer 2 veces en la misma propuesta<br>
+          • Los slots respetan el horario del evento (inicio y fin)
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 7: CORREO PROVEEDOR ─────────────────────────────────────────── -->
+<div id="s7" class="screen">
+  <div class="screen-title">7. Correo que recibe el proveedor</div>
+  <div class="screen-desc">El proveedor recibe este correo con la propuesta de agenda. Los botones contienen un token de un solo uso. Si acepta, las citas se crean automáticamente. El link expira en 72 horas.</div>
+
+  <div class="email-wrap">
+    <div class="email-hdr">
+      <div class="email-logo">IMPULSATE</div>
+      <div class="email-sub">Instituto Yucateco del Emprendedor y las MyPEs · IYEM Yucatán</div>
+    </div>
+    <div class="email-body">
+      <p style="font-size:16px;font-weight:700;margin-bottom:10px">Hola, Salsas Don Miguel 👋</p>
+      <p style="margin-bottom:14px">El equipo de <strong>IMPULSATE</strong> ha preparado una propuesta de agenda para tu participación en la <strong>Rueda de Negocios IMPULSATE 2026</strong>.</p>
+
+      <div style="background:#f9f9f9;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #eee">
+        <div style="font-size:12px;font-weight:700;color:var(--guinda);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📅 Tu agenda propuesta — 21 de julio de 2026</div>
+        <div class="email-agenda-item"><span style="color:#888;font-weight:600;font-size:12px">09:00 – 09:30</span><span style="font-weight:600">Restaurante El Mesón de San Juan</span></div>
+        <div class="email-agenda-item"><span style="color:#888;font-weight:600;font-size:12px">09:30 – 10:00</span><span style="font-weight:600">Hotel Hacienda Mérida</span></div>
+        <div style="font-size:11px;color:#888;margin-top:10px">Ubicación del evento: [Dirección del evento] · Duración por cita: 30 minutos</div>
+      </div>
+
+      <p style="margin-bottom:6px;font-weight:700">¿Aceptas esta propuesta de agenda?</p>
+      <p style="margin-bottom:16px;font-size:12px;color:#666">Si aceptas, estas citas se registrarán automáticamente en tu perfil y los compradores recibirán confirmación. Si rechazas, el equipo de IMPULSATE te contactará para coordinar.</p>
+    </div>
+    <div class="email-cta">
+      <button class="btn btn-green" style="font-size:14px;padding:12px 28px" onclick="show('s8')">✅ Sí, acepto la agenda</button>
+      <button class="btn btn-red" style="font-size:14px;padding:12px 28px">❌ No acepto</button>
+    </div>
+    <div class="email-footer">
+      Este enlace es de un solo uso y expira en 72 horas.<br>
+      Si tienes dudas escríbenos a impulsate@iyemyucatan.com<br>
+      impulsate.iyemyucatan.com · Programa Gubernamental Yucatán
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN 8: RESULTADO RESPUESTA ─────────────────────────────────────────── -->
+<div id="s8" class="screen">
+  <div class="screen-title">8. Panel admin — Estado de la propuesta</div>
+  <div class="screen-desc">Después de que el proveedor responde, el admin ve el estado actualizado. Si aceptó, las citas aparecen como activas en el sistema. Si rechazó, se puede crear una nueva propuesta.</div>
+
+  <div class="two-col">
+    <div>
+      <div class="card" style="border-color:#9FE1CB;background:#f0fdf4">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:28px">🌶</div>
+            <div>
+              <div style="font-size:15px;font-weight:700">Salsas Don Miguel</div>
+              <div style="font-size:12px;color:#888">Propuesta enviada: 18 Jul · 08:15</div>
+              <div style="font-size:12px;color:#888">Respondida: 18 Jul · 10:32</div>
+            </div>
+          </div>
+          <span class="badge badge-green" style="font-size:13px;padding:6px 14px">✅ Aceptada</span>
+        </div>
+        <div class="info-box green">
+          <strong>El proveedor aceptó la propuesta.</strong><br>
+          Las 2 citas se crearon automáticamente. Los compradores ya recibieron confirmación por correo.
+        </div>
+        <div style="font-size:12px;font-weight:700;margin:12px 0 8px">Citas creadas automáticamente</div>
+        <div style="border-radius:8px;overflow:hidden;border:1px solid #9FE1CB">
+          <div style="display:flex;justify-content:space-between;padding:10px 12px;background:#fff;border-bottom:1px solid #9FE1CB;font-size:12px">
+            <span style="color:#888;font-weight:700">09:00 – 09:30</span>
+            <span style="font-weight:600">Restaurante El Mesón</span>
+            <span class="badge badge-green" style="font-size:10px">Activa</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:10px 12px;background:#fff;font-size:12px">
+            <span style="color:#888;font-weight:700">09:30 – 10:00</span>
+            <span style="font-weight:600">Hotel Hacienda Mérida</span>
+            <span class="badge badge-green" style="font-size:10px">Activa</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="border-color:#fecaca;background:#fef2f2">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:28px">🍯</div>
+            <div>
+              <div style="font-size:15px;font-weight:700">Mieles del Sureste</div>
+              <div style="font-size:12px;color:#888">Propuesta enviada: 17 Jul · 09:00</div>
+              <div style="font-size:12px;color:#888">Respondida: 17 Jul · 18:45</div>
+            </div>
+          </div>
+          <span class="badge badge-red" style="font-size:13px;padding:6px 14px">❌ Rechazada</span>
+        </div>
+        <div class="info-box" style="background:#fef2f2;border-color:#fecaca;color:#991b1b">
+          El proveedor rechazó la propuesta. No se crearon citas.<br>
+          Puedes crear una nueva propuesta o contactar al proveedor directamente.
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-guinda btn-full" onclick="show('s6')">+ Nueva propuesta</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--guinda)">¿Qué pasa también en la tabla de citas?</div>
+        <div style="font-size:12px;color:#555;line-height:1.7">
+          • Las citas aceptadas aparecen normales en el módulo de Citas del admin<br>
+          • El proveedor las ve en su panel como citas confirmadas<br>
+          • El comprador recibe correo de confirmación automáticamente<br>
+          • Si el proveedor rechaza, <strong>no se bloquea ningún slot</strong> — el comprador puede agendar por su cuenta en esos horarios<br>
+          • El link del correo expira en 72h — si no responde queda en "Pendiente"
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="background:#fff;border-top:2px solid var(--guinda-light);padding:16px 24px;text-align:center;margin-top:24px">
+  <div style="font-size:12px;color:#888">IMPULSATE · Mockup de aprobación v2.0 · Julio 2026 · Confidencial</div>
+  <div style="font-size:11px;color:#ccc;margin-top:4px">Generado para revisión previa al desarrollo</div>
+</div>
+
+<script>
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const map={s1:0,s2:1,s3:2,s4:3,s5:4,s6:5,s7:6,s8:7};
+  document.querySelectorAll('.tab')[map[id]].classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

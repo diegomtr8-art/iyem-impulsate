@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mockup Agenda — Flujo Comprador · IMPULSATE</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F3F0F1;color:#1a1a1a}
+:root{--g:#8B1028;--gl:#F5E6E9;--gd:#6a0d1e;--green:#1a5c2a;--greenl:#e6f4ea;--amber:#7a4000;--amberl:#fef3e2;--red:#7a1c1c;--redl:#fdeaea;--blue:#0c4472;--bluel:#e8f1fb;--border:#e2e2e2;--card:#fff;--muted:#777}
+.hdr{background:var(--g);color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.logo{font-size:19px;font-weight:800;letter-spacing:.5px}.sub{font-size:11px;opacity:.7;margin-top:2px}
+.vb{background:rgba(255,255,255,.18);padding:3px 10px;border-radius:99px;font-size:11px}
+.tabs-wrap{background:#fff;border-bottom:2px solid var(--border);position:sticky;top:57px;z-index:90;overflow-x:auto}
+.tabs{display:flex;min-width:max-content;padding:0 24px}
+.tab{padding:13px 17px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;user-select:none;transition:all .15s}
+.tab:hover{color:var(--g)}.tab.active{color:var(--g);border-bottom-color:var(--g)}
+.tn{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;background:var(--gl);color:var(--g);font-size:10px;margin-right:4px}
+.tab.active .tn{background:var(--g);color:#fff}
+.scr{display:none;padding:24px;max-width:1120px;margin:0 auto;animation:fi .2s}
+.scr.active{display:block}
+@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+.stitle{font-size:19px;font-weight:800;color:var(--g);margin-bottom:4px}
+.sdesc{font-size:13px;color:var(--muted);margin-bottom:22px;line-height:1.6;max-width:700px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px 24px;margin-bottom:14px}
+.card-sm{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.sep{font-size:11px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.07em;padding:7px 0 5px;border-bottom:2px solid var(--gl);margin:14px 0 10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.label{font-size:11px;font-weight:600;color:#555;margin-bottom:4px;display:block}
+.inp{width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;background:#fafafa}
+.inp:focus{border-color:var(--g);outline:none;background:#fff}
+.fld{margin-bottom:11px}
+.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;gap:4px}
+.bg{background:var(--gl);color:var(--g)}.bgn{background:var(--greenl);color:var(--green)}.ba{background:var(--amberl);color:var(--amber)}.br{background:var(--redl);color:var(--red)}.bgy{background:#f0f0f0;color:#555;border:1px solid #e0e0e0}.bbl{background:var(--bluel);color:var(--blue)}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:9px 20px;border-radius:9px;font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s}
+.btn-g{background:var(--g);color:#fff}.btn-g:hover{background:var(--gd)}
+.btn-o{background:#fff;color:var(--g);border:1.5px solid var(--g)}
+.btn-gy{background:#f0f0f0;color:#444;border:1px solid #ddd}
+.btn-gr{background:var(--green);color:#fff}
+.btn-rd{background:var(--red);color:#fff}
+.btn-full{width:100%}
+/* TABLE */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{background:var(--g);color:#fff;padding:10px 14px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.tbl td{padding:10px 14px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.tbl tr:hover td{background:#fef8f9}
+.tbl tr.rechazada td{background:#fef2f2}
+/* TIMELINE */
+.tl-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #f5f5f5}
+.tl-time{width:52px;font-size:11px;font-weight:700;color:#aaa;text-align:right;flex-shrink:0}
+.slot{flex:1;padding:7px 12px;border-radius:8px;border:1.5px solid var(--border);font-size:12px;cursor:pointer;transition:all .15s}
+.slot-free{background:#fafafa;color:#bbb}
+.slot-free:hover{border-color:var(--g);background:var(--gl);color:var(--g)}
+.slot-ok{background:var(--greenl);border-color:#9FE1CB;color:var(--green);font-weight:600}
+/* PROVIDER LIST */
+.prov-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #f5f5f5;cursor:pointer;transition:background .1s}
+.prov-item:hover{background:#fef8f9}
+.prov-item.sel{background:var(--gl)}
+.prov-item.done{background:#f0fdf4;cursor:default;opacity:.8}
+.av{width:38px;height:38px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:18px;border:1.5px solid #eee;background:#f9f9f9;overflow:hidden}
+.pv-name{font-size:13px;font-weight:700;color:#111}
+.pv-cat{font-size:10px;color:var(--g);background:var(--gl);padding:2px 7px;border-radius:99px;font-weight:600;display:inline-block;margin-top:2px}
+/* BUYER SELECTOR */
+.buyer-opt{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid #f0f0f0;cursor:pointer;transition:background .1s;border-radius:8px}
+.buyer-opt:hover{background:#fef8f9}
+.buyer-opt.sel{background:var(--gl);border:1.5px solid var(--g);border-radius:9px}
+/* EMAIL */
+.email-wrap{max-width:510px;margin:0 auto;border:1px solid #ddd;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08)}
+.email-hdr{background:var(--g);color:#fff;padding:26px 24px;text-align:center}
+.email-logo{font-size:24px;font-weight:800;letter-spacing:1px}
+.email-sub-txt{font-size:11px;opacity:.75;margin-top:3px}
+.email-body{padding:24px;font-size:13px;line-height:1.75;color:#333;background:#fff}
+.email-tbl{width:100%;border-collapse:collapse;font-size:12px;margin:12px 0}
+.email-tbl th{background:var(--gl);color:var(--g);padding:7px 10px;text-align:left;font-weight:700;font-size:11px}
+.email-tbl td{padding:7px 10px;border-bottom:1px solid #eee}
+.email-cta{display:flex;gap:12px;justify-content:center;padding:20px;background:#f9f9f9}
+.email-footer{padding:10px;text-align:center;font-size:10px;color:#aaa;background:#f9f9f9;border-top:1px solid #eee}
+/* CONFIRM DIALOG */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;z-index:200;backdrop-filter:blur(3px)}
+.dialog{background:#fff;border-radius:16px;padding:28px 24px;max-width:360px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+/* GRACIAS */
+.gracias-wrap{max-width:480px;margin:0 auto;text-align:center}
+.gracias-icon{font-size:64px;margin-bottom:16px}
+/* INFO BOX */
+.ibox{padding:11px 14px;border-radius:9px;font-size:12px;line-height:1.6;margin-bottom:12px}
+.ibox-g{background:var(--gl);border:1px solid #d4839a;color:var(--gd)}
+.ibox-gr{background:var(--greenl);border:1px solid #9FE1CB;color:var(--green)}
+.ibox-a{background:var(--amberl);border:1px solid #FAC775;color:var(--amber)}
+.ibox-r{background:var(--redl);border:1px solid #f7c1c1;color:var(--red)}
+@media(max-width:680px){.g2,.g3{grid-template-columns:1fr}.scr{padding:14px}}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div><div class="logo">IMPULSATE</div><div class="sub">Mockup · Agenda Comprador</div></div>
+  <div class="vb">Flujo invertido · Jul 2026</div>
+</div>
+
+<div class="tabs-wrap">
+  <div class="tabs">
+    <div class="tab active" onclick="go('s1')"><span class="tn">1</span>Admin · Lista agendas</div>
+    <div class="tab" onclick="go('s2')"><span class="tn">2</span>Admin · Crear propuesta</div>
+    <div class="tab" onclick="go('s3')"><span class="tn">3</span>Correo al comprador</div>
+    <div class="tab" onclick="go('s4')"><span class="tn">4</span>Comprador · Acepta</div>
+    <div class="tab" onclick="go('s5')"><span class="tn">5</span>Comprador · Rechaza</div>
+    <div class="tab" onclick="go('s6')"><span class="tn">6</span>Admin · Post-respuesta</div>
+  </div>
+</div>
+
+<!-- ── S1: LISTA ADMIN ─────────────────────────────── -->
+<div id="s1" class="scr active">
+  <div class="stitle">1. Módulo Agenda — Vista principal del admin</div>
+  <div class="sdesc">El admin ve todas las propuestas de agenda enviadas a compradores. Puede crear nuevas, reenviar correos y gestionar re-propuestas cuando son rechazadas. Solo participan compradores y proveedores <strong>aprobados</strong> en el evento activo.</div>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="badge bgy" style="font-size:12px;padding:5px 12px">Todas (11)</span>
+      <span class="badge bgy" style="font-size:12px;padding:5px 12px">Borrador (2)</span>
+      <span class="badge ba" style="font-size:12px;padding:5px 12px">⏳ Pendiente (4)</span>
+      <span class="badge bgn" style="font-size:12px;padding:5px 12px">✅ Aceptada (3)</span>
+      <span class="badge br" style="font-size:12px;padding:5px 12px">❌ Rechazada (2)</span>
+    </div>
+    <button class="btn btn-g" onclick="go('s2')">+ Nueva propuesta de agenda</button>
+  </div>
+
+  <div class="card" style="padding:0;overflow:hidden">
+    <table class="tbl">
+      <thead><tr>
+        <th>Comprador</th><th>Proveedores asignados</th><th>Enviada</th><th>Respondida</th><th>Estado</th><th>Acciones</th>
+      </tr></thead>
+      <tbody>
+        <!-- Borrador -->
+        <tr>
+          <td><div style="font-weight:700">Restaurante El Mesón</div><div style="font-size:11px;color:#888">ana@meson.com</div></td>
+          <td><span class="badge bg" style="margin:2px;font-size:10px">Salsas Don Miguel</span><span class="badge bg" style="margin:2px;font-size:10px">Mieles del Sureste</span></td>
+          <td style="font-size:11px;color:#aaa">—</td>
+          <td style="font-size:11px;color:#aaa">—</td>
+          <td><span class="badge bgy">📝 Borrador</span></td>
+          <td style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-g" style="font-size:11px;padding:5px 10px" onclick="go('s3')">📧 Enviar</button>
+            <button class="btn btn-gy" style="font-size:11px;padding:5px 10px">🗑</button>
+          </td>
+        </tr>
+        <!-- Pendiente enviada -->
+        <tr>
+          <td><div style="font-weight:700">Hotel Hacienda Mérida</div><div style="font-size:11px;color:#888">eventos@hacienda.mx</div></td>
+          <td><span class="badge bg" style="margin:2px;font-size:10px">Orgánicos Yucatán</span><span class="badge bg" style="margin:2px;font-size:10px">Lácteos Don F.</span><span class="badge bg" style="margin:2px;font-size:10px">Mariscos Progreso</span></td>
+          <td style="font-size:11px;color:#888">11 Jul · 08:15</td>
+          <td style="font-size:11px;color:#aaa">—</td>
+          <td><span class="badge ba">⏳ Esperando</span></td>
+          <td><button class="btn btn-gy" style="font-size:11px;padding:5px 10px">Ver</button></td>
+        </tr>
+        <!-- Aceptada -->
+        <tr>
+          <td><div style="font-weight:700">ANDREA POLANCO</div><div style="font-size:11px;color:#888">andrea.polancom@gmail.com</div><span class="badge bbl" style="font-size:10px;margin-top:3px">CANIRAC</span></td>
+          <td><span class="badge bg" style="margin:2px;font-size:10px">Carnes La Hacienda</span><span class="badge bg" style="margin:2px;font-size:10px">Salsas Don Miguel</span></td>
+          <td style="font-size:11px;color:#888">10 Jul · 14:30</td>
+          <td style="font-size:11px;color:#888">11 Jul · 09:12</td>
+          <td><span class="badge bgn">✅ Aceptada</span></td>
+          <td><button class="btn btn-gy" style="font-size:11px;padding:5px 10px">Ver citas</button></td>
+        </tr>
+        <!-- Rechazada -->
+        <tr class="rechazada">
+          <td><div style="font-weight:700">Freddy Mis</div><div style="font-size:11px;color:#888">freddymis77@gmail.com</div><span class="badge bbl" style="font-size:10px;margin-top:3px">CANIRAC</span></td>
+          <td><span class="badge br" style="margin:2px;font-size:10px">Mieles del Sureste</span><span class="badge br" style="margin:2px;font-size:10px">Orgánicos Yuc.</span></td>
+          <td style="font-size:11px;color:#888">9 Jul · 17:00</td>
+          <td style="font-size:11px;color:#888">10 Jul · 11:30</td>
+          <td>
+            <span class="badge br">❌ Rechazada</span>
+            <div style="font-size:10px;color:var(--red);margin-top:3px">Admin notificado</div>
+          </td>
+          <td><button class="btn btn-g" style="font-size:11px;padding:5px 10px" onclick="go('s2')">🔄 Re-propuesta</button></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ibox ibox-g" style="margin-top:12px">
+    <strong>Regla clave:</strong> Solo aparecen en esta pantalla compradores y proveedores que están <strong>aprobados</strong> en el evento activo. Los pendientes o rechazados del evento no se pueden agregar a ninguna propuesta.
+  </div>
+</div>
+
+<!-- ── S2: CREAR ─────────────────────────────────────── -->
+<div id="s2" class="scr">
+  <div class="stitle">2. Crear propuesta de agenda</div>
+  <div class="sdesc">El admin selecciona un <strong>comprador aprobado</strong> en el evento, luego asigna <strong>proveedores aprobados</strong> a slots de 30 minutos. Puede guardar como borrador o enviar inmediatamente.</div>
+
+  <div class="g2" style="align-items:start">
+    <!-- COLUMNA IZQUIERDA -->
+    <div>
+      <div class="sep">Paso 1 — Selecciona el comprador</div>
+      <div class="card" style="padding:14px">
+        <div class="fld"><label class="label">Buscar comprador</label>
+          <input class="inp" placeholder="Nombre o empresa..." value="Andrea"/>
+        </div>
+        <div style="border:1.5px solid var(--border);border-radius:9px;overflow:hidden;max-height:200px;overflow-y:auto">
+          <div class="buyer-opt">
+            <div class="av" style="background:#ffe8e8">A</div>
+            <div><div style="font-size:13px;font-weight:700">Alejandra Inzunza</div><div style="font-size:11px;color:#888">Mérida</div></div>
+          </div>
+          <div class="buyer-opt sel">
+            <div class="av" style="background:#fce4ec">A</div>
+            <div>
+              <div style="font-size:13px;font-weight:700;color:var(--g)">ANDREA POLANCO ✓ seleccionada</div>
+              <div style="font-size:11px;color:#888">Mérida · <span class="badge bbl" style="font-size:9px;padding:1px 5px">CANIRAC</span></div>
+            </div>
+          </div>
+          <div class="buyer-opt">
+            <div class="av" style="background:#e8f5e9">A</div>
+            <div><div style="font-size:13px;font-weight:700">Armando Arcila Cabañas</div><div style="font-size:11px;color:#888">Mérida</div></div>
+          </div>
+          <div class="buyer-opt">
+            <div class="av" style="background:#e3f2fd">E</div>
+            <div><div style="font-size:13px;font-weight:700">EDGAR VILLALOBOS M.</div><div style="font-size:11px;color:#888">Mérida</div></div>
+          </div>
+          <div class="buyer-opt">
+            <div class="av" style="background:#f3e5f5">F</div>
+            <div><div style="font-size:13px;font-weight:700">Freddy Mis</div><div style="font-size:11px;color:#888">Mérida · <span class="badge bbl" style="font-size:9px;padding:1px 5px">CANIRAC</span></div></div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding:8px 12px;background:var(--gl);border-radius:8px;font-size:11px;color:var(--gd)">
+          Solo compradores con estado <strong>Aprobado</strong> en el evento · 97 disponibles
+        </div>
+      </div>
+
+      <div class="sep">Paso 2 — Selecciona proveedores</div>
+      <div class="card" style="padding:14px">
+        <div class="fld"><input class="inp" placeholder="Buscar proveedor..." /></div>
+        <div style="border:1.5px solid var(--border);border-radius:9px;overflow:hidden;max-height:240px;overflow-y:auto;background:#fff">
+          <div class="prov-item sel">
+            <div class="av">🌶</div>
+            <div class="flex-1">
+              <div class="pv-name" style="color:var(--g)">▶ Salsas Don Miguel — seleccionado</div>
+              <span class="pv-cat">Condimentos</span>
+            </div>
+          </div>
+          <div class="prov-item done">
+            <div class="av">🌿</div>
+            <div class="flex-1">
+              <div class="pv-name">Orgánicos Yucatán</div>
+              <span class="pv-cat">Orgánicos</span>
+            </div>
+            <span style="font-size:13px;color:var(--green);margin-left:auto">✓</span>
+          </div>
+          <div class="prov-item">
+            <div class="av">🍯</div>
+            <div class="flex-1"><div class="pv-name">Mieles del Sureste</div><span class="pv-cat">Dulces</span></div>
+          </div>
+          <div class="prov-item">
+            <div class="av">🐟</div>
+            <div class="flex-1"><div class="pv-name">Mariscos Progreso</div><span class="pv-cat">Mariscos</span></div>
+          </div>
+          <div class="prov-item">
+            <div class="av">🥩</div>
+            <div class="flex-1"><div class="pv-name">Carnes La Hacienda</div><span class="pv-cat">Carnes</span></div>
+          </div>
+          <div class="prov-item">
+            <div class="av">🧀</div>
+            <div class="flex-1"><div class="pv-name">Lácteos Don Fulgencio</div><span class="pv-cat">Lácteos</span></div>
+          </div>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:#888">Solo proveedores <strong>Aprobados</strong> en el evento · Click → asigna al próximo slot</div>
+      </div>
+    </div>
+
+    <!-- COLUMNA DERECHA -->
+    <div>
+      <div class="sep">Paso 3 — Asigna proveedores a slots (21 Jul 2026)</div>
+      <div class="card" style="padding:14px">
+        <div style="font-size:11px;color:#888;margin-bottom:10px">Selecciona un proveedor de la lista y toca un slot libre para asignarlo</div>
+        <div class="tl-row"><div class="tl-time">09:00</div><div class="slot slot-ok">✓ Orgánicos Yucatán <span style="font-size:10px;opacity:.6">— 30 min</span> <button style="margin-left:auto;border:none;background:none;color:#c0392b;cursor:pointer;font-size:14px">×</button></div></div>
+        <div class="tl-row"><div class="tl-time">09:30</div><div class="slot slot-free" style="border-style:dashed;color:var(--g);border-color:var(--g);background:var(--gl)">+ Click para asignar: Salsas Don Miguel</div></div>
+        <div class="tl-row"><div class="tl-time">10:00</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">10:30</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">11:00</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">11:30</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">12:00</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">14:00</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">14:30</div><div class="slot slot-free">— Libre —</div></div>
+        <div class="tl-row"><div class="tl-time">15:00</div><div class="slot slot-free">— Libre —</div></div>
+      </div>
+
+      <div class="card" style="background:#f0fdf4;border-color:#9FE1CB;padding:14px;margin-top:0">
+        <div style="font-size:13px;font-weight:700;color:var(--green);margin-bottom:8px">Resumen — 1 cita asignada para ANDREA POLANCO</div>
+        <div style="font-size:12px;padding:6px 0;border-bottom:1px solid #9FE1CB;display:flex;justify-content:space-between">
+          <span style="color:#888;font-weight:600">09:00 – 09:30</span>
+          <span style="font-weight:700">🌿 Orgánicos Yucatán</span>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-o btn-full" style="flex:1;font-size:12px">💾 Guardar borrador</button>
+          <button class="btn btn-g btn-full" style="flex:2;font-size:12px" onclick="go('s3')">📧 Enviar al comprador</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── S3: CORREO ─────────────────────────────────────── -->
+<div id="s3" class="scr">
+  <div class="stitle">3. Correo que recibe el comprador</div>
+  <div class="sdesc">El comprador recibe este correo con su propuesta de agenda. Los botones contienen un token de un solo uso. Si acepta → citas creadas. Si rechaza → admin notificado para re-propuesta.</div>
+
+  <div class="email-wrap">
+    <div class="email-hdr">
+      <div class="email-logo">IMPULSATE</div>
+      <div class="email-sub-txt">Instituto Yucateco del Emprendedor y las MyPEs · IYEM Yucatán</div>
+    </div>
+    <div class="email-body">
+      <p style="font-size:16px;font-weight:700;margin-bottom:10px">¡Hola, ANDREA POLANCO! 👋</p>
+      <p style="margin-bottom:14px">El equipo de <strong>IMPULSATE</strong> ha preparado una propuesta de agenda de citas para tu participación en la <strong>Rueda de Negocios IMPÚLSATE Edición Restaurantes</strong>.</p>
+
+      <div style="background:#f9f9f9;border-radius:10px;padding:16px;margin-bottom:16px;border:1px solid #eee">
+        <div style="font-size:11px;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📅 Tu agenda propuesta — 21 de julio de 2026</div>
+        <table class="email-tbl">
+          <thead><tr><th>Horario</th><th>Proveedor</th><th>Categoría</th></tr></thead>
+          <tbody>
+            <tr><td><strong>09:00 – 09:30</strong></td><td>Orgánicos Yucatán</td><td style="color:#888">Orgánicos</td></tr>
+            <tr><td><strong>10:00 – 10:30</strong></td><td>Carnes La Hacienda</td><td style="color:#888">Carnes</td></tr>
+            <tr><td><strong>11:00 – 11:30</strong></td><td>Salsas Don Miguel</td><td style="color:#888">Condimentos</td></tr>
+          </tbody>
+        </table>
+        <div style="font-size:11px;color:#888;margin-top:8px">Duración por cita: 30 minutos · Evento: Centro Cultural Mérida</div>
+      </div>
+
+      <p style="margin-bottom:6px;font-weight:700;font-size:13px">¿Aceptas esta propuesta de agenda?</p>
+      <p style="margin-bottom:14px;font-size:12px;color:#666">Si aceptas, las citas quedarán confirmadas y los proveedores recibirán notificación. Si rechazas, el equipo de IMPULSATE te contactará para programar una nueva propuesta.</p>
+    </div>
+    <div class="email-cta">
+      <button class="btn btn-gr" style="font-size:13px;padding:12px 24px" onclick="go('s4')">✅ Sí, acepto la agenda</button>
+      <button class="btn btn-rd" style="font-size:13px;padding:12px 24px" onclick="go('s5')">❌ No acepto</button>
+    </div>
+    <div class="email-footer">
+      Este enlace es de un solo uso · impulsate@iyemyucatan.com<br>
+      impulsate.iyemyucatan.com · Programa Gubernamental Yucatán
+    </div>
+  </div>
+</div>
+
+<!-- ── S4: ACEPTA ─────────────────────────────────────── -->
+<div id="s4" class="scr">
+  <div class="stitle">4. El comprador acepta la propuesta</div>
+  <div class="sdesc">Al dar clic en "Sí, acepto" el sistema crea automáticamente las citas, notifica a los proveedores y muestra una confirmación al comprador.</div>
+
+  <div class="g2">
+    <div>
+      <div class="sep">Página que ve el comprador antes de aceptar</div>
+      <div class="card">
+        <div style="font-size:16px;font-weight:800;margin-bottom:6px">Tu propuesta de agenda</div>
+        <div style="font-size:12px;color:#888;margin-bottom:14px">Encuentro de Negocios IMPÚLSATE · 21 de julio de 2026</div>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+          <thead><tr style="background:var(--gl)">
+            <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--g)">Horario</th>
+            <th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--g)">Proveedor</th>
+          </tr></thead>
+          <tbody>
+            <tr style="border-bottom:1px solid #eee"><td style="padding:8px 10px;font-weight:700">09:00 – 09:30</td><td style="padding:8px 10px">🌿 Orgánicos Yucatán</td></tr>
+            <tr style="border-bottom:1px solid #eee"><td style="padding:8px 10px;font-weight:700">10:00 – 10:30</td><td style="padding:8px 10px">🥩 Carnes La Hacienda</td></tr>
+            <tr><td style="padding:8px 10px;font-weight:700">11:00 – 11:30</td><td style="padding:8px 10px">🌶 Salsas Don Miguel</td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-gr" style="flex:2;font-size:13px;padding:12px">✅ Sí, acepto la agenda</button>
+          <button class="btn btn-rd" style="flex:1;font-size:13px;padding:12px" onclick="go('s5')">❌ No acepto</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sep">Página de confirmación (Gracias.vue)</div>
+      <div class="gracias-wrap card" style="padding:36px 24px">
+        <div class="gracias-icon">✅</div>
+        <div style="font-size:20px;font-weight:800;color:var(--green);margin-bottom:10px">¡Agenda confirmada!</div>
+        <p style="font-size:13px;color:#555;margin-bottom:18px;line-height:1.6">
+          Has aceptado tu agenda de citas para el <strong>Encuentro de Negocios IMPÚLSATE Edición Restaurantes</strong>.
+        </p>
+        <div style="background:var(--greenl);border-radius:10px;padding:14px;text-align:left;margin-bottom:16px;border:1px solid #9FE1CB">
+          <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em">Tus citas confirmadas</div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #9FE1CB"><span style="font-weight:700;color:#888">09:00 – 09:30</span><span style="font-weight:600">Orgánicos Yucatán</span></div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #9FE1CB"><span style="font-weight:700;color:#888">10:00 – 10:30</span><span style="font-weight:600">Carnes La Hacienda</span></div>
+          <div style="font-size:12px;display:flex;justify-content:space-between;padding:5px 0"><span style="font-weight:700;color:#888">11:00 – 11:30</span><span style="font-weight:600">Salsas Don Miguel</span></div>
+        </div>
+        <p style="font-size:12px;color:#888">Recibirás un recordatorio antes del evento.<br>Dudas: impulsate@iyemyucatan.com</p>
+      </div>
+
+      <div class="ibox ibox-gr" style="margin-top:12px">
+        <strong>Lo que ocurre en el backend al aceptar:</strong><br>
+        1. agendas_propuestas.estado = 'aceptada'<br>
+        2. Se crean 3 filas en la tabla <code>citas</code> (una por proveedor)<br>
+        3. Cada proveedor recibe una notificación de nueva cita<br>
+        4. El comprador recibe notificación de agenda confirmada
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── S5: RECHAZA ─────────────────────────────────────── -->
+<div id="s5" class="scr">
+  <div class="stitle">5. El comprador rechaza la propuesta</div>
+  <div class="sdesc">Al dar clic en "No acepto", aparece un diálogo de confirmación. Si confirma, el admin recibe una notificación para hacer una re-propuesta. No se crean citas.</div>
+
+  <div class="g2">
+    <div>
+      <div class="sep">Diálogo de confirmación antes del rechazo</div>
+      <div class="card" style="padding:14px;position:relative;overflow:hidden">
+        <!-- Fondo desenfocado -->
+        <div style="opacity:.3;pointer-events:none">
+          <div style="font-size:15px;font-weight:800;margin-bottom:12px">Tu propuesta de agenda</div>
+          <div style="font-size:12px;color:#888;margin-bottom:10px">Encuentro de Negocios IMPÚLSATE · 21 jul 2026</div>
+          <div style="height:80px;background:#f5f5f5;border-radius:8px"></div>
+        </div>
+        <!-- Diálogo encima -->
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);backdrop-filter:blur(3px);border-radius:13px">
+          <div style="background:#fff;border-radius:14px;padding:24px 20px;max-width:300px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+            <div style="font-size:15px;font-weight:800;margin-bottom:8px;color:#222">¿Rechazar propuesta?</div>
+            <p style="font-size:12px;color:#666;line-height:1.6;margin-bottom:16px">
+              Si rechazas, el equipo de IMPULSATE recibirá una notificación y te contactará para generar una nueva propuesta de agenda.
+            </p>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-gy" style="flex:1;font-size:12px">Cancelar</button>
+              <button class="btn btn-rd" style="flex:2;font-size:12px" onclick="go('s5r')">Confirmar rechazo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sep" id="s5r-sep">Página tras rechazar (Gracias.vue)</div>
+      <div class="gracias-wrap card" style="padding:36px 24px">
+        <div class="gracias-icon">🔄</div>
+        <div style="font-size:19px;font-weight:800;color:var(--amber);margin-bottom:10px">Hemos recibido tu respuesta</div>
+        <p style="font-size:13px;color:#555;margin-bottom:18px;line-height:1.6">
+          Has rechazado la propuesta de agenda.<br>
+          El equipo de <strong>IMPULSATE</strong> recibirá una notificación y te contactará pronto para generarte una nueva propuesta.
+        </p>
+        <div style="background:var(--amberl);border-radius:10px;padding:14px;border:1px solid #FAC775;margin-bottom:16px;text-align:left">
+          <p style="font-size:12px;color:var(--amber)">📧 Si tienes alguna preferencia de horario o proveedor, puedes escribirnos a:<br><strong>impulsate@iyemyucatan.com</strong></p>
+        </div>
+        <p style="font-size:12px;color:#aaa">impulsate.iyemyucatan.com · Programa Gubernamental Yucatán</p>
+      </div>
+
+      <div class="ibox ibox-a" style="margin-top:12px">
+        <strong>Lo que ocurre en el backend al rechazar:</strong><br>
+        1. agendas_propuestas.estado = 'rechazada', respondida_at = ahora<br>
+        2. NO se crean citas<br>
+        3. Todos los admins reciben notificación: "Freddy Mis rechazó su agenda — re-propuesta necesaria"<br>
+        4. El comprador recibe notificación de rechazo registrado
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── S6: ADMIN POST-RESPUESTA ───────────────────────── -->
+<div id="s6" class="scr">
+  <div class="stitle">6. Admin — Panel después de la respuesta</div>
+  <div class="sdesc">El admin ve el resultado de cada propuesta. Las aceptadas muestran las citas creadas. Las rechazadas muestran la notificación recibida y un botón de re-propuesta.</div>
+
+  <div class="g2">
+    <div>
+      <div class="sep">Propuesta aceptada — Admin ve las citas creadas</div>
+      <div class="card" style="border-color:#9FE1CB;background:#f0fdf4">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:15px;font-weight:800">ANDREA POLANCO</div>
+            <div style="font-size:12px;color:#888">Enviada: 10 Jul · 14:30 · Respondida: 11 Jul · 09:12</div>
+          </div>
+          <span class="badge bgn" style="font-size:12px;padding:5px 12px">✅ Aceptada</span>
+        </div>
+        <div class="ibox ibox-gr">
+          La compradore aceptó la propuesta. <strong>3 citas creadas automáticamente</strong> en el sistema.
+        </div>
+        <div style="font-size:12px;font-weight:700;margin:10px 0 6px">Citas confirmadas en el sistema:</div>
+        <div style="border-radius:9px;overflow:hidden;border:1px solid #9FE1CB">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#fff;border-bottom:1px solid #9FE1CB;font-size:12px">
+            <span style="font-weight:700;color:#888">09:00 – 09:30</span>
+            <span style="font-weight:600">🌿 Orgánicos Yucatán</span>
+            <span class="badge bgn" style="font-size:10px">Confirmada</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#fff;border-bottom:1px solid #9FE1CB;font-size:12px">
+            <span style="font-weight:700;color:#888">10:00 – 10:30</span>
+            <span style="font-weight:600">🥩 Carnes La Hacienda</span>
+            <span class="badge bgn" style="font-size:10px">Confirmada</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:#fff;font-size:12px">
+            <span style="font-weight:700;color:#888">11:00 – 11:30</span>
+            <span style="font-weight:600">🌶 Salsas Don Miguel</span>
+            <span class="badge bgn" style="font-size:10px">Confirmada</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="sep">Propuesta rechazada — Admin ve la notificación</div>
+      <div class="card" style="border-color:#fecaca;background:#fef2f2">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+          <div>
+            <div style="font-size:15px;font-weight:800">Freddy Mis</div>
+            <div style="font-size:12px;color:#888">Enviada: 9 Jul · 17:00 · Respondida: 10 Jul · 11:30</div>
+          </div>
+          <span class="badge br" style="font-size:12px;padding:5px 12px">❌ Rechazada</span>
+        </div>
+        <div class="ibox ibox-r">
+          El comprador rechazó la propuesta. <strong>No se crearon citas.</strong><br>
+          Todos los admins fueron notificados para re-programar.
+        </div>
+        <div class="card-sm" style="background:#fff;margin-bottom:12px;border-color:#fecaca">
+          <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">🔔 Notificación recibida por admins</div>
+          <p style="font-size:12px;color:#555">
+            El comprador "Freddy Mis" rechazó su propuesta de agenda para el evento "Encuentro de Negocios IMPÚLSATE Edición Restaurantes". Es necesario hacer una re-propuesta.
+          </p>
+          <div style="font-size:10px;color:#aaa;margin-top:4px">10 Jul 2026 · 11:30 a.m.</div>
+        </div>
+        <button class="btn btn-g btn-full" onclick="go('s2')">🔄 Generar nueva propuesta para este comprador</button>
+      </div>
+
+      <div class="ibox ibox-g" style="margin-top:12px">
+        <strong>Flujo completo del módulo Agenda:</strong><br>
+        Admin crea → guarda/envía → Comprador recibe correo → Acepta (citas confirmadas) / Rechaza (admin notificado) → Re-propuesta si necesario
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="background:#fff;border-top:2px solid var(--gl);padding:14px 24px;text-align:center;margin-top:24px">
+  <div style="font-size:12px;color:#888">IMPULSATE · Mockup Agenda Comprador · Julio 2026 · Confidencial</div>
+</div>
+
+<script>
+function go(id){
+  document.querySelectorAll('.scr').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const map={s1:0,s2:1,s3:2,s4:3,s5:4,s5r:4,s6:5};
+  if(map[id]!==undefined) document.querySelectorAll('.tab')[map[id]].classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>

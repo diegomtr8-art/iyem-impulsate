@@ -1,0 +1,147 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — FIX URGENTE
+Sitio en blanco: archivos JS con 404 tras deploy incompleto
+Archivo: FIX_SITIO_BLANCO_404.txt
+================================================================================
+
+PROBLEMA DETECTADO:
+  El sitio impulsate.iyemyucatan.com/mi-panel está en BLANCO.
+  La consola del navegador muestra decenas de archivos JS con error 404.
+  Ejemplo: app-CWW9wiKe.js → 404, Dashboard-fFgf69xN.js → 404
+  
+  Causa: El último deploy generó un build nuevo con hashes nuevos en los
+  nombres de archivo, pero la subida al servidor fue incompleta. El archivo
+  manifest.json quedó apuntando a los archivos nuevos, pero esos archivos
+  no existen en el servidor → pantalla en blanco.
+
+OBJETIVO: Reconstruir el build directamente en el servidor y verificar que
+todos los archivos JS/CSS existen y el manifest.json coincide.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 1 — CONECTAR AL SERVIDOR VÍA SSH Y VERIFICAR EL ESTADO ACTUAL
+════════════════════════════════════════════════════════════════════════════════
+
+Conéctate al servidor usando los datos de acceso ya configurados en el
+script deploy anterior (host 195.35.38.222, puerto 65002, user u489236361).
+
+Una vez conectado, ejecuta:
+
+    # Ir al directorio del proyecto (ajusta si la ruta es diferente)
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # Ver qué hay en el directorio de build actual
+    ls public/build/assets/ | head -30
+
+    # Ver el manifest para saber a qué archivos apunta
+    cat public/build/manifest.json | head -50
+
+    # Verificar si el archivo JS del app existe en el servidor
+    ls public/build/assets/app-*.js 2>/dev/null || echo "FALTA el archivo JS principal"
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 2 — RECONSTRUIR EL BUILD DIRECTAMENTE EN EL SERVIDOR
+════════════════════════════════════════════════════════════════════════════════
+
+Si el servidor tiene Node.js disponible, ejecuta el build ahí mismo.
+Esto garantiza que los archivos generados y el manifest.json estén sincronizados.
+
+    # Verificar que Node y npm estén disponibles
+    node --version && npm --version
+
+    # Si están disponibles, ejecutar el build en el servidor:
+    npm ci --no-audit 2>/dev/null || npm install --no-audit
+    npm run build
+
+    # Verificar que ahora sí existen los archivos
+    ls public/build/assets/*.js | wc -l
+    echo "--- archivos JS generados ---"
+    ls public/build/assets/*.js | head -10
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 3 — SI EL SERVIDOR NO TIENE NODE: SUBIR EL BUILD LOCALMENTE
+════════════════════════════════════════════════════════════════════════════════
+
+Si node --version falla en el servidor, el build debe hacerse LOCALMENTE y
+subirse completo al servidor.
+
+EN LA MÁQUINA LOCAL (Windows con XAMPP):
+    
+    cd C:\xampp\htdocs\citas
+    npm run build
+
+Esto genera la carpeta: C:\xampp\htdocs\citas\public\build\
+
+Luego sube TODA esa carpeta al servidor con rsync o scp:
+
+    # Con scp (desde terminal local, NO desde el servidor):
+    scp -P 65002 -r C:\xampp\htdocs\citas\public\build \
+        u489236361@195.35.38.222:/home/u489236361/domains/impulsate.iyemyucatan.com/public_html/public/
+
+    # O con rsync (más seguro, solo sube cambios):
+    rsync -avz --delete -e "ssh -p 65002" \
+        C:\xampp\htdocs\citas\public\build/ \
+        u489236361@195.35.38.222:/home/u489236361/domains/impulsate.iyemyucatan.com/public_html/public/build/
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 4 — LIMPIAR CACHÉ DE LARAVEL Y REINICIAR
+════════════════════════════════════════════════════════════════════════════════
+
+En el servidor, después del build exitoso:
+
+    php artisan cache:clear
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    php artisan optimize
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 5 — VERIFICAR QUE EL SITIO FUNCIONA
+════════════════════════════════════════════════════════════════════════════════
+
+Verifica con curl desde el servidor que los archivos JS existen y responden:
+
+    # El nombre exacto del archivo cambia con cada build.
+    # Primero obtén el nombre actual del manifest:
+    cat public/build/manifest.json | grep '"file"' | head -5
+
+    # Luego verifica que ese archivo existe:
+    # Ejemplo (sustituye el hash real):
+    curl -I https://impulsate.iyemyucatan.com/build/assets/app-XXXX.js
+
+    # Si responde 200 = OK. Si responde 404 = subida incompleta.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 6 — SI HAY CDN DE HOSTINGER: PURGAR EL CACHÉ
+════════════════════════════════════════════════════════════════════════════════
+
+Si después del build correcto el sitio sigue en blanco en el navegador:
+
+1. Entra al panel de Hostinger
+2. Ve a: Hosting → impulsate.iyemyucatan.com → CDN
+3. Busca el botón "Purgar caché" o "Clear CDN cache"
+4. Confirma la purga
+5. Espera 2-3 minutos y recarga el sitio en modo incógnito
+
+ALTERNATIVA sin acceso al panel:
+    - El script anterior ya intentó forzar hashes nuevos modificando
+      NotificacionCampana.vue. Si el build fue exitoso, los nuevos hashes
+      deberían bypassar cualquier caché de CDN automáticamente.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN FINAL
+════════════════════════════════════════════════════════════════════════════════
+
+1. Abre https://impulsate.iyemyucatan.com/mi-panel en modo INCÓGNITO
+2. Abre DevTools → Network → recarga la página
+3. Verifica que los archivos .js ahora responden 200 (no 404)
+4. Verifica que la página carga correctamente sin pantalla en blanco
+
+Si sigue fallando, ejecuta en el servidor:
+    ls -la public/build/
+    cat public/build/manifest.json
+    
+Y comparte el output para diagnosticar.
+
+================================================================================
+FIN DEL PROMPT — FIX SITIO BLANCO
+================================================================================

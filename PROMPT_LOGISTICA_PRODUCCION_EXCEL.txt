@@ -1,0 +1,735 @@
+================================================================================
+PROMPT: LOGÍSTICA Y DISTRIBUCIÓN + CAPACIDAD DE PRODUCCIÓN + EXCEL MEJORADO
+Proyecto: IMPÚLSATE — Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode:'class')
+Color primario: guinda (#8b1028) — NUNCA azul/indigo
+================================================================================
+
+CONTEXTO TÉCNICO
+─────────────────
+• El modelo Restaurantero ya tiene hook `static::booted()` → saving → `calcularPerfilCompleto()`.
+• `productos_top` es columna JSON en `restauranteros`; cada elemento puede tener:
+  { nombre, descripcion, foto_path }   ← estado actual
+• ProveedorPerfilController::store() ya maneja acepta_credito, factura, etc. con filter_var y FormData.
+• Panel.vue usa `router.post(..., fd, { forceFormData: true })` para enviar el formulario con archivos.
+• Los archivos de formulario están en dos lugares: Panel.vue (modal) y Restaurantero/CompletarPerfil.vue.
+  Ambos deben recibir los mismos cambios de campos nuevos.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 1 — SECCIÓN "LOGÍSTICA Y DISTRIBUCIÓN" EN EL PERFIL DEL PROVEEDOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.1 MIGRACIÓN
+─────────────
+Crear: database/migrations/YYYY_MM_DD_HHMMSS_add_logistica_to_restauranteros_table.php
+
+Schema::table('restauranteros', function (Blueprint $table) {
+    $table->boolean('entrega_domicilio')->nullable()->after('regimen_fiscal');
+    $table->string('cobertura_entrega', 30)->nullable()->after('entrega_domicilio');
+    // Valores válidos: 'local', 'regional', 'nacional'
+    $table->string('forma_entrega', 30)->nullable()->after('cobertura_entrega');
+    // Valores válidos: 'programada', 'flexible'
+});
+
+1.2 MODELO — app/Models/Restaurantero.php
+──────────────────────────────────────────
+a) Agregar al array $fillable (después de 'regimen_fiscal'):
+   'entrega_domicilio',
+   'cobertura_entrega',
+   'forma_entrega',
+
+b) Agregar a casts():
+   'entrega_domicilio' => 'boolean',
+
+c) Reemplazar el método calcularPerfilCompleto() con la versión completa que incluye
+   TODOS los criterios (los anteriores + el nuevo de logística):
+
+    public function calcularPerfilCompleto(): bool
+    {
+        $infoBasica = filled($this->nombre_restaurante)
+            && filled($this->descripcion)
+            && filled($this->telefono)
+            && filled($this->municipio);
+
+        $tieneLogo = filled($this->logo_path);
+
+        $tieneProducto = !empty($this->productos_top)
+            && collect($this->productos_top)->contains(
+                fn($p) => filled($p['nombre'] ?? ($p ?? null))
+            );
+
+        $facturaOk = !$this->factura
+            || (filled($this->rfc) && filled($this->regimen_fiscal));
+
+        $creditoOk = !$this->acepta_credito
+            || (
+                filled($this->credito_monto_maximo)
+                && filled($this->credito_tiempo_cantidad)
+                && filled($this->credito_tiempo_unidad)
+            );
+
+        // Logística: el campo debe haber sido respondido (no null).
+        // Si respondió que sí entrega, cobertura y forma son obligatorios.
+        $logisticaOk = !is_null($this->entrega_domicilio)
+            && (
+                !$this->entrega_domicilio
+                || (filled($this->cobertura_entrega) && filled($this->forma_entrega))
+            );
+
+        return $infoBasica && $tieneLogo && $tieneProducto
+            && $facturaOk && $creditoOk && $logisticaOk;
+    }
+
+NOTA: perfil_completo NO debe estar en $fillable (es solo computed vía saving hook).
+
+1.3 VALIDACIÓN — ProveedorPerfilController::store()
+────────────────────────────────────────────────────
+Agregar al array $request->validate([...]):
+
+    'entrega_domicilio' => ['required', 'boolean'],
+    'cobertura_entrega' => [
+        'nullable', 'string',
+        Rule::in(['local', 'regional', 'nacional']),
+        Rule::requiredIf((bool) $request->boolean('entrega_domicilio')),
+    ],
+    'forma_entrega'     => [
+        'nullable', 'string',
+        Rule::in(['programada', 'flexible']),
+        Rule::requiredIf((bool) $request->boolean('entrega_domicilio')),
+    ],
+
+Agregar al bloque de asignación de $data (después del bloque de factura/regimen_fiscal):
+
+    $data['entrega_domicilio'] = filter_var(
+        $request->entrega_domicilio,
+        FILTER_VALIDATE_BOOLEAN,
+        FILTER_NULL_ON_FAILURE
+    );
+    $data['cobertura_entrega'] = $data['entrega_domicilio']
+        ? $request->cobertura_entrega
+        : null;
+    $data['forma_entrega'] = $data['entrega_domicilio']
+        ? $request->forma_entrega
+        : null;
+
+IMPORTANTE: NO agregar 'entrega_domicilio', 'cobertura_entrega', 'forma_entrega' al array
+de $request->only([...]) — se manejan igual que acepta_credito (con filter_var manual).
+
+1.4 Panel.vue — resources/js/Pages/Restaurantero/Panel.vue
+────────────────────────────────────────────────────────────
+A) En useForm (formPerfil), agregar después de 'regimen_fiscal':
+   entrega_domicilio: props.restaurantero.entrega_domicilio ?? null,
+   cobertura_entrega: props.restaurantero.cobertura_entrega || '',
+   forma_entrega:     props.restaurantero.forma_entrega || '',
+
+B) En submitPerfil() (bloque FormData), agregar después del bloque de factura:
+   fd.append('entrega_domicilio', formPerfil.entrega_domicilio === true ? '1' : '0');
+   if (formPerfil.entrega_domicilio) {
+       if (formPerfil.cobertura_entrega) fd.append('cobertura_entrega', formPerfil.cobertura_entrega);
+       if (formPerfil.forma_entrega)     fd.append('forma_entrega', formPerfil.forma_entrega);
+   }
+
+C) En la sección del modal de perfil, agregar DEBAJO del bloque de
+   "Condiciones comerciales" (el bloque que contiene acepta_credito,
+   pago_contraentrega, factura) la siguiente sección nueva:
+
+────────────── inicio bloque Vue ──────────────
+<!-- Logística y Distribución -->
+<div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-4">
+    <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
+        🚚 Logística y Distribución
+    </h3>
+
+    <!-- ¿Entrega a domicilio? -->
+    <div>
+        <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            ¿Entregan a domicilio?
+        </p>
+        <div class="flex gap-3">
+            <button type="button"
+                @click="formPerfil.entrega_domicilio = true"
+                :class="formPerfil.entrega_domicilio === true
+                    ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors">
+                Sí
+            </button>
+            <button type="button"
+                @click="formPerfil.entrega_domicilio = false;
+                        formPerfil.cobertura_entrega = '';
+                        formPerfil.forma_entrega = ''"
+                :class="formPerfil.entrega_domicilio === false
+                    ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors">
+                No
+            </button>
+        </div>
+        <p v-if="formPerfil.errors?.entrega_domicilio"
+           class="text-red-500 text-xs mt-1">
+            {{ formPerfil.errors.entrega_domicilio }}
+        </p>
+    </div>
+
+    <!-- Sub-preguntas (solo cuando entrega a domicilio = true) -->
+    <template v-if="formPerfil.entrega_domicilio === true">
+
+        <!-- Cobertura de entrega -->
+        <div>
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                ¿Cobertura de entrega?
+            </p>
+            <div class="flex gap-2 flex-wrap">
+                <button v-for="op in ['local', 'regional', 'nacional']"
+                    :key="op" type="button"
+                    @click="formPerfil.cobertura_entrega = op"
+                    :class="formPerfil.cobertura_entrega === op
+                        ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                    class="px-5 py-2 rounded-xl border text-sm font-semibold transition-colors capitalize">
+                    {{ op.charAt(0).toUpperCase() + op.slice(1) }}
+                </button>
+            </div>
+            <p v-if="formPerfil.errors?.cobertura_entrega"
+               class="text-red-500 text-xs mt-1">
+                {{ formPerfil.errors.cobertura_entrega }}
+            </p>
+        </div>
+
+        <!-- Forma de entrega -->
+        <div>
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                ¿Forma de entrega?
+            </p>
+            <div class="flex gap-2">
+                <button v-for="op in ['programada', 'flexible']"
+                    :key="op" type="button"
+                    @click="formPerfil.forma_entrega = op"
+                    :class="formPerfil.forma_entrega === op
+                        ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
+                        : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
+                    class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors capitalize">
+                    {{ op.charAt(0).toUpperCase() + op.slice(1) }}
+                </button>
+            </div>
+            <p v-if="formPerfil.errors?.forma_entrega"
+               class="text-red-500 text-xs mt-1">
+                {{ formPerfil.errors.forma_entrega }}
+            </p>
+        </div>
+
+    </template>
+</div>
+────────────── fin bloque Vue ──────────────
+
+D) Actualizar perfilPorcentaje (computed) para incluir logística.
+   Rebalancear pesos para que sumen 100. Versión actualizada completa:
+
+    const perfilPorcentaje = computed(() => {
+        const r = props.restaurantero;
+        if (!r) return 0;
+        let pct = 0;
+        if (r.nombre_restaurante)        pct += 10;
+        if (r.descripcion)               pct += 10;
+        if (r.telefono)                  pct += 8;
+        if (r.municipio)                 pct += 7;
+        if (r.logo_path)                 pct += 15;
+        if (r.productos_top?.length > 0) pct += 15;
+        if (r.acepta_credito !== null && r.acepta_credito !== undefined) pct += 5;
+        if (r.pago_contraentrega !== null && r.pago_contraentrega !== undefined) pct += 5;
+        if (r.factura !== null && r.factura !== undefined) pct += 5;
+        if (!r.factura || (r.rfc && r.regimen_fiscal)) pct += 10;
+        if (r.entrega_domicilio !== null && r.entrega_domicilio !== undefined) pct += 10;
+        if (!r.entrega_domicilio || (r.cobertura_entrega && r.forma_entrega)) pct += 0;
+        // Los 10 puntos de logística se cuentan solo si entrega_domicilio fue respondido.
+        return Math.min(pct, 100);
+    });
+
+E) Actualizar perfilCamposFaltantes (computed) — agregar:
+   if (r.entrega_domicilio === null || r.entrega_domicilio === undefined)
+       f.push('Logística (¿entrega a domicilio?)');
+   else if (r.entrega_domicilio && !r.cobertura_entrega)
+       f.push('Cobertura de entrega');
+   else if (r.entrega_domicilio && !r.forma_entrega)
+       f.push('Forma de entrega');
+
+1.5 CompletarPerfil.vue — resources/js/Pages/Restaurantero/CompletarPerfil.vue
+────────────────────────────────────────────────────────────────────────────────
+Aplicar los mismos cambios de Panel.vue:
+• Agregar entrega_domicilio, cobertura_entrega, forma_entrega al useForm/ref de estado.
+• Agregar al FormData en el método de submit.
+• Agregar la misma sección "Logística y Distribución" en el template, debajo de
+  la sección de condiciones comerciales.
+
+1.6 Perfil público — resources/js/Pages/Restauranteros/Show.vue
+────────────────────────────────────────────────────────────────
+Agregar DESPUÉS del bloque "Condiciones comerciales" (div v-if con acepta_credito, etc.),
+antes del bloque de contacto (border-t con email):
+
+────────────── inicio bloque Vue ──────────────
+<!-- Logística y Distribución -->
+<div v-if="restaurantero.entrega_domicilio !== null && restaurantero.entrega_domicilio !== undefined"
+     class="border-t border-gray-100 dark:border-gray-800 pt-4 mb-5">
+    <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+        Logística y Distribución
+    </h3>
+    <div class="flex flex-wrap gap-2">
+        <span v-if="restaurantero.entrega_domicilio"
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+                   bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
+                   border border-emerald-200 dark:border-emerald-500/20">
+            🚚 Entrega a domicilio
+            <span v-if="restaurantero.cobertura_entrega" class="opacity-70 capitalize">
+                · {{ restaurantero.cobertura_entrega }}
+            </span>
+            <span v-if="restaurantero.forma_entrega" class="opacity-70 capitalize">
+                · {{ restaurantero.forma_entrega }}
+            </span>
+        </span>
+        <span v-else
+            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
+                   bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400
+                   border border-gray-200 dark:border-gray-700">
+            📦 Sin entrega a domicilio
+        </span>
+    </div>
+</div>
+────────────── fin bloque Vue ──────────────
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 2 — CAPACIDAD DE PRODUCCIÓN MENSUAL POR PRODUCTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+NO SE REQUIERE MIGRACIÓN — `productos_top` ya es JSON. Solo se añaden campos al
+objeto de cada producto dentro del array.
+
+2.1 Panel.vue — inicialización de productosInputs (ref)
+────────────────────────────────────────────────────────
+Reemplazar la línea del return dentro del Array.from:
+
+ANTES:
+    return { nombre: p.nombre || '', descripcion: p.descripcion || '', foto_path: p.foto_path || null, _file: null };
+
+DESPUÉS:
+    return {
+        nombre:             p.nombre || '',
+        descripcion:        p.descripcion || '',
+        foto_path:          p.foto_path || null,
+        _file:              null,
+        capacidad_cantidad: p.capacidad_cantidad ?? '',
+        capacidad_unidad:   p.capacidad_unidad   || 'piezas',
+    };
+
+El mismo cambio aplica al bloque del else if (typeof p === 'string'):
+    return { nombre: p, descripcion: '', foto_path: null, _file: null,
+             capacidad_cantidad: '', capacidad_unidad: 'piezas' };
+
+2.2 Panel.vue — submitPerfil() FormData
+────────────────────────────────────────
+Dentro del forEach de productosInputs (donde se hace fd.append de nombre, descripcion),
+agregar después de descripcion:
+
+    fd.append(`productos[${idx}][capacidad_cantidad]`, p.capacidad_cantidad ?? '');
+    fd.append(`productos[${idx}][capacidad_unidad]`,   p.capacidad_unidad   || 'piezas');
+
+2.3 Panel.vue — template de la sección de productos (modal de perfil)
+───────────────────────────────────────────────────────────────────────
+Para cada slot de producto (donde están los inputs de nombre y descripcion), agregar
+DESPUÉS del input de descripción el siguiente bloque:
+
+────────────── inicio bloque Vue ──────────────
+<div class="flex gap-2 mt-2">
+    <input
+        type="number"
+        v-model="prod.capacidad_cantidad"
+        min="0"
+        placeholder="Cant. aprox."
+        class="w-1/2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700
+               text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600
+               rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-guinda-500
+               dark:focus:border-guinda-500 transition-colors"
+    />
+    <select
+        v-model="prod.capacidad_unidad"
+        class="w-1/2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700
+               text-gray-900 dark:text-white rounded-xl px-3 py-2 text-sm
+               focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500
+               transition-colors"
+    >
+        <option value="piezas">Piezas</option>
+        <option value="cajas">Cajas</option>
+        <option value="litros">Litros</option>
+        <option value="kilogramos">Kilogramos</option>
+    </select>
+</div>
+<p class="text-xs text-gray-400 dark:text-gray-600 mt-1">
+    Capacidad de producción mensual aprox.
+</p>
+────────────── fin bloque Vue ──────────────
+
+2.4 ProveedorPerfilController::store() — validación y procesamiento
+────────────────────────────────────────────────────────────────────
+Agregar al array de validate:
+    'productos.*.capacidad_cantidad' => ['nullable', 'numeric', 'min:0'],
+    'productos.*.capacidad_unidad'   => ['nullable', 'string', Rule::in(['piezas', 'cajas', 'litros', 'kilogramos'])],
+
+En el foreach de procesamiento de productos, ampliar el array $item:
+    $item = [
+        'nombre'             => $prod['nombre'],
+        'descripcion'        => $prod['descripcion'] ?? '',
+        'foto_path'          => $productosExistentes[$i]['foto_path'] ?? null,
+        'capacidad_cantidad' => isset($prod['capacidad_cantidad']) && $prod['capacidad_cantidad'] !== ''
+                                ? (float) $prod['capacidad_cantidad'] : null,
+        'capacidad_unidad'   => $prod['capacidad_unidad'] ?? null,
+    ];
+
+2.5 CompletarPerfil.vue — mismos cambios de productosInputs, FormData y template
+──────────────────────────────────────────────────────────────────────────────────
+Aplicar idénticos cambios de Panel.vue al formulario de CompletarPerfil.vue.
+
+2.6 Perfil público — resources/js/Pages/Restauranteros/Show.vue
+────────────────────────────────────────────────────────────────
+A) En la GRILLA de productos (card pequeña, líneas ~394-413), agregar DENTRO de la
+   div class="p-2.5" después del párrafo de descripción:
+
+    <p v-if="prod.capacidad_cantidad"
+       class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold mt-1">
+        📦 {{ Number(prod.capacidad_cantidad).toLocaleString('es-MX') }} {{ prod.capacidad_unidad }}/mes
+    </p>
+
+B) En el MODAL de producto (líneas ~199-219), agregar DENTRO del div de contenido
+   (class="p-6 overflow-y-auto") después del párrafo de descripción:
+
+    <div v-if="productoActivo.capacidad_cantidad"
+         class="mt-4 inline-flex items-center gap-1.5
+                bg-guinda-50 dark:bg-guinda-500/10
+                border border-guinda-200 dark:border-guinda-500/20
+                text-guinda-700 dark:text-guinda-400
+                text-xs font-semibold px-3 py-1.5 rounded-full">
+        📦 Capacidad producción:
+        {{ Number(productoActivo.capacidad_cantidad).toLocaleString('es-MX') }}
+        {{ productoActivo.capacidad_unidad }}/mes
+    </div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 3 — EXCEL MEJORADO (DESCARGA DE PROVEEDORES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Reescribir completamente app/Exports/ProveedoresExport.php con el siguiente contenido:
+
+<?php
+
+namespace App\Exports;
+
+use App\Models\Restaurantero;
+use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
+class ProveedoresExport implements FromCollection, WithHeadings, WithStyles, WithColumnWidths, WithEvents
+{
+    public function collection()
+    {
+        return Restaurantero::with('user')
+            ->withCount('citas')
+            ->orderBy('nombre_restaurante')
+            ->get()
+            ->map(function ($r) {
+
+                // Productos: nombres separados por coma
+                $productos = collect($r->productos_top ?? [])
+                    ->filter(fn($p) => filled($p['nombre'] ?? null))
+                    ->map(fn($p) => $p['nombre'])
+                    ->join(', ') ?: '—';
+
+                // Capacidades: "NombreProducto: X unidad/mes"
+                $capacidades = collect($r->productos_top ?? [])
+                    ->filter(fn($p) => isset($p['capacidad_cantidad']) && $p['capacidad_cantidad'] !== null)
+                    ->map(fn($p) =>
+                        ($p['nombre'] ?? '?') . ': '
+                        . number_format((float)$p['capacidad_cantidad'], 0, '.', ',')
+                        . ' ' . ($p['capacidad_unidad'] ?? '')
+                        . '/mes'
+                    )
+                    ->join(' | ') ?: '—';
+
+                $plazo = ($r->credito_tiempo_cantidad && $r->credito_tiempo_unidad)
+                    ? "{$r->credito_tiempo_cantidad} {$r->credito_tiempo_unidad}"
+                    : '—';
+
+                $bool = fn($val) => is_null($val) ? '—' : ($val ? 'Sí' : 'No');
+
+                return [
+                    // ── Identificación ──────────────────────────────────
+                    'Empresa'               => $r->nombre_restaurante ?? '—',
+                    'Categoría'             => $r->categoria ?? '—',
+                    'Razón Social'          => $r->razon_social ?? '—',
+                    'Representante'         => $r->nombre_representante ?? '—',
+                    'CURP'                  => $r->curp_representante ?? '—',
+                    // ── Ubicación y contacto ─────────────────────────────
+                    'Municipio'             => $r->municipio ?? '—',
+                    'Dom. en Yucatán'       => $bool($r->domicilio_en_yucatan),
+                    'Teléfono'              => $r->telefono ?? '—',
+                    'Email'                 => $r->user?->email ?? '—',
+                    'Sitio Web'             => $r->sitio_web ?? '—',
+                    // ── Negocio ──────────────────────────────────────────
+                    'RFC'                   => $r->rfc ?? '—',
+                    'Núm. Empleados'        => $r->num_empleados ?? '—',
+                    'Inicio Operaciones'    => $r->fecha_inicio_operaciones ?? '—',
+                    'Mercado Meta'          => $r->mercado_meta ?? '—',
+                    'Vida Anaquel'          => $r->tiempo_vida_anaquel ?? '—',
+                    'Req. Refrigeración'    => $bool($r->requiere_refrigeracion),
+                    'Req. Congelación'      => $bool($r->requiere_congelacion),
+                    // ── Productos ────────────────────────────────────────
+                    'Productos / Servicios' => $productos,
+                    'Capacidades Producción'=> $capacidades,
+                    // ── Logística ────────────────────────────────────────
+                    'Entrega Domicilio'     => $bool($r->entrega_domicilio),
+                    'Cobertura'             => $r->cobertura_entrega ? ucfirst($r->cobertura_entrega) : '—',
+                    'Forma Entrega'         => $r->forma_entrega ? ucfirst($r->forma_entrega) : '—',
+                    // ── Condiciones comerciales ───────────────────────────
+                    'Acepta Crédito'        => $bool($r->acepta_credito),
+                    'Crédito Máx. (MXN)'   => $r->credito_monto_maximo
+                                                ? number_format((float)$r->credito_monto_maximo, 2, '.', ',')
+                                                : '—',
+                    'Plazo Crédito'         => $plazo,
+                    'Contraentrega'         => $bool($r->pago_contraentrega),
+                    'Factura'               => $bool($r->factura),
+                    'Régimen Fiscal'        => $r->regimen_fiscal ?? '—',
+                    // ── Plataforma ───────────────────────────────────────
+                    'Total Citas'           => $r->citas_count,
+                    'Aprobado'              => $bool($r->aprobado),
+                    'Activo'                => $bool($r->activo),
+                    'Perfil Completo'       => $bool($r->perfil_completo),
+                    'Sol. Aprobación'       => $r->solicitado_aprobacion_at?->format('d/m/Y H:i') ?? '—',
+                    'Registro'              => $r->created_at->format('d/m/Y'),
+                ];
+            });
+    }
+
+    public function headings(): array
+    {
+        return [
+            // Identificación (A–E)
+            'Empresa', 'Categoría', 'Razón Social', 'Representante', 'CURP',
+            // Ubicación y contacto (F–J)
+            'Municipio', 'Dom. Yucatán', 'Teléfono', 'Email', 'Sitio Web',
+            // Negocio (K–Q)
+            'RFC', 'Núm. Empleados', 'Inicio Ops.', 'Mercado Meta', 'Vida Anaquel',
+            'Req. Refrig.', 'Req. Congel.',
+            // Productos (R–S)
+            'Productos / Servicios', 'Cap. Producción',
+            // Logística (T–V)
+            'Entrega Domicilio', 'Cobertura', 'Forma Entrega',
+            // Condiciones comerciales (W–AB)
+            'Acepta Crédito', 'Crédito Máx. (MXN)', 'Plazo Crédito',
+            'Contraentrega', 'Factura', 'Régimen Fiscal',
+            // Plataforma (AC–AH)
+            'Total Citas', 'Aprobado', 'Activo', 'Perfil Completo',
+            'Sol. Aprobación', 'Registro',
+        ];
+    }
+
+    public function columnWidths(): array
+    {
+        return [
+            'A' => 30,  // Empresa
+            'B' => 18,  // Categoría
+            'C' => 26,  // Razón Social
+            'D' => 24,  // Representante
+            'E' => 20,  // CURP
+            'F' => 16,  // Municipio
+            'G' => 13,  // Dom. Yucatán
+            'H' => 15,  // Teléfono
+            'I' => 30,  // Email
+            'J' => 26,  // Sitio Web
+            'K' => 14,  // RFC
+            'L' => 13,  // Núm. Empleados
+            'M' => 16,  // Inicio Ops.
+            'N' => 32,  // Mercado Meta
+            'O' => 22,  // Vida Anaquel
+            'P' => 13,  // Req. Refrig.
+            'Q' => 13,  // Req. Congel.
+            'R' => 36,  // Productos
+            'S' => 36,  // Cap. Producción
+            'T' => 15,  // Entrega Domicilio
+            'U' => 13,  // Cobertura
+            'V' => 14,  // Forma Entrega
+            'W' => 14,  // Acepta Crédito
+            'X' => 18,  // Crédito Máx.
+            'Y' => 15,  // Plazo Crédito
+            'Z' => 13,  // Contraentrega
+            'AA'=> 10,  // Factura
+            'AB'=> 28,  // Régimen Fiscal
+            'AC'=> 12,  // Total Citas
+            'AD'=> 10,  // Aprobado
+            'AE'=> 10,  // Activo
+            'AF'=> 15,  // Perfil Completo
+            'AG'=> 18,  // Sol. Aprobación
+            'AH'=> 12,  // Registro
+        ];
+    }
+
+    public function styles(Worksheet $sheet): array
+    {
+        $lastRow = $sheet->getHighestRow();
+        $lastCol = $sheet->getHighestColumn();
+
+        // Filas alternas: blanco y rosa-guinda muy suave
+        for ($row = 2; $row <= $lastRow; $row++) {
+            if ($row % 2 === 0) {
+                $sheet->getStyle("A{$row}:{$lastCol}{$row}")->applyFromArray([
+                    'fill' => [
+                        'fillType'   => Fill::FILL_SOLID,
+                        'startColor' => ['rgb' => 'FDF2F4'],
+                    ],
+                ]);
+            }
+        }
+
+        // Bordes finos en toda la tabla
+        $sheet->getStyle("A1:{$lastCol}{$lastRow}")->applyFromArray([
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color'       => ['rgb' => 'E5E7EB'],
+                ],
+            ],
+        ]);
+
+        // Borde inferior grueso debajo del encabezado
+        $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
+            'borders' => [
+                'bottom' => [
+                    'borderStyle' => Border::BORDER_MEDIUM,
+                    'color'       => ['rgb' => '6B0D1E'],
+                ],
+            ],
+        ]);
+
+        return [
+            // Encabezado
+            1 => [
+                'font' => [
+                    'bold'  => true,
+                    'color' => ['rgb' => 'FFFFFF'],
+                    'size'  => 10,
+                    'name'  => 'Calibri',
+                ],
+                'fill' => [
+                    'fillType'   => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '8B1028'],
+                ],
+                'alignment' => [
+                    'vertical'   => Alignment::VERTICAL_CENTER,
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'wrapText'   => true,
+                ],
+            ],
+            // Filas de datos
+            "A2:{$lastCol}{$lastRow}" => [
+                'font' => ['size' => 9, 'name' => 'Calibri'],
+                'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
+            ],
+            // Columnas numéricas centradas (Total Citas, Aprobado, Activo, Perfil, etc.)
+            "AC2:AH{$lastRow}" => [
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            ],
+            // Columna Empresa en negrita
+            "A2:A{$lastRow}" => [
+                'font' => ['bold' => true, 'size' => 9],
+            ],
+        ];
+    }
+
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function (AfterSheet $event) {
+                $ws      = $event->sheet->getDelegate();
+                $lastCol = $ws->getHighestColumn();
+                $lastRow = $ws->getHighestRow();
+
+                // Altura del encabezado
+                $ws->getRowDimension(1)->setRowHeight(32);
+
+                // Altura uniforme de filas de datos
+                for ($r = 2; $r <= $lastRow; $r++) {
+                    $ws->getRowDimension($r)->setRowHeight(18);
+                }
+
+                // Congelar encabezado
+                $ws->freezePane('A2');
+
+                // Autofiltro
+                $ws->setAutoFilter("A1:{$lastCol}1");
+
+                // Nombre de pestaña y color
+                $ws->setTitle('Proveedores');
+                $ws->getTabColor()->setARGB('FF8B1028');
+            },
+        ];
+    }
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PUNTO 4 — DEPLOY A PRODUCCIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PASO A — Compilar assets (en local o en servidor según el flujo de deploy):
+    npm run build
+
+PASO B — Subir archivos al servidor de producción via FTP/Git/rsync:
+    Los archivos modificados en este prompt son:
+    • app/Models/Restaurantero.php
+    • app/Http/Controllers/ProveedorPerfilController.php
+    • app/Exports/ProveedoresExport.php
+    • resources/js/Pages/Restaurantero/Panel.vue
+    • resources/js/Pages/Restaurantero/CompletarPerfil.vue
+    • resources/js/Pages/Restauranteros/Show.vue
+    • database/migrations/YYYY_..._add_logistica_to_restauranteros_table.php
+    • public/build/ (assets compilados)
+
+PASO C — Ejecutar en el servidor de producción (via SSH o panel de hosting):
+
+    # 1. Correr la migración (solo la nueva — no toca datos existentes)
+    php artisan migrate --force
+
+    # 2. Limpiar y recompilar caché de configuración y rutas
+    php artisan config:clear
+    php artisan config:cache
+    php artisan route:clear
+    php artisan route:cache
+
+    # 3. Limpiar vistas compiladas
+    php artisan view:clear
+
+    # 4. Optimizar autoloader
+    php artisan optimize
+
+    # 5. Si el proyecto usa colas (queues), reiniciarlas
+    php artisan queue:restart
+
+NOTAS IMPORTANTES DEL DEPLOY:
+• La migración solo AGREGA columnas nullable — no rompe datos existentes.
+• Proveedores ya registrados tendrán entrega_domicilio = NULL (no afecta perfil_completo
+  actual, pero tras este deploy sí lo afectará → los proveedores existentes necesitarán
+  llenar la sección de logística para recalcular perfil_completo = true).
+• Si deseas que los proveedores existentes no pierdan perfil_completo, agrega un seeder
+  opcional que marque entrega_domicilio = false en quienes ya tengan perfil_completo = true.
+  Comando de ejemplo:
+      Restaurantero::where('perfil_completo', true)
+          ->whereNull('entrega_domicilio')
+          ->update(['entrega_domicilio' => false]);
+  Puedes correr esto como un tinker one-liner antes o después de migrate:
+      php artisan tinker --execute="App\Models\Restaurantero::where('perfil_completo',true)->whereNull('entrega_domicilio')->update(['entrega_domicilio'=>false]);"
+
+================================================================================
+FIN DEL PROMPT
+================================================================================

@@ -1,0 +1,729 @@
+====================================================================
+PROMPT: MEJORAS — CALENDARIO, CATEGORÍAS, CORREO MASIVO, TEXTOS
+====================================================================
+Stack: Laravel 11 · Inertia.js · Vue 3 · Tailwind CSS (darkMode:'class')
+Color primario: guinda #8b1028 — NUNCA azul/indigo
+====================================================================
+
+CAMBIO 1 — CALENDARIO: SOLO MOSTRAR DÍAS Y HORARIO DEL EVENTO
+==============================================================
+
+CONTEXTO
+--------
+El calendario de agendado en resources/js/Pages/Restauranteros/Show.vue
+actualmente muestra una vista semanal (lunes a viernes) navegable.
+Los timeSlots están hardcodeados de 09:00 a 16:00.
+
+El evento tiene:
+  - fecha_hora_inicio → día y hora de inicio del evento presencial (ej: 21/07/2026 10:00)
+  - fecha_hora_fin    → fin del evento presencial (ej: 21/07/2026 16:00)
+
+Se necesita que el calendario solo muestre el/los días del evento
+presencial y solo los horarios dentro del rango del evento.
+
+PASO 1A — CONTROLLER: pasar fechas del evento presencial
+---------------------------------------------------------
+Archivo: app/Http/Controllers/RestauranteroPublicoController.php
+
+En el método show(), dentro del array del evento que se pasa a Inertia,
+agregar:
+    'fecha_hora_inicio'  => $evento->fecha_hora_inicio?->format('Y-m-d H:i'),
+    'fecha_hora_fin'     => $evento->fecha_hora_fin?->format('Y-m-d H:i'),
+
+El bloque completo del evento quedará:
+    'evento' => $evento ? [
+        'nombre'                        => $evento->nombre,
+        'fecha_hora_inicio_compradores' => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
+        'fecha_hora_fin'                => $evento->fecha_hora_fin?->format('Y-m-d'),
+        'fecha_inicio_agenda'           => $evento->fecha_hora_inicio_compradores?->format('Y-m-d'),
+        'fecha_fin_agenda'              => $evento->fecha_hora_fin?->format('Y-m-d'),
+        'fecha_hora_inicio'             => $evento->fecha_hora_inicio?->format('Y-m-d H:i'),
+        'tiempo_entre_citas_minutos'    => $evento->tiempo_entre_citas_minutos ?? 30,
+        'max_citas_por_comprador'       => $evento->max_citas_por_comprador ?? 3,
+    ] : null,
+
+PASO 1B — Show.vue: reemplazar lógica de semana y timeSlots
+------------------------------------------------------------
+Archivo: resources/js/Pages/Restauranteros/Show.vue
+
+PRIMERO: Reemplazar las computed de fecha inicio/fin de la sección
+"RANGO DE FECHAS DEL EVENTO" para usar fecha_hora_inicio:
+
+    // ── DÍAS DEL EVENTO PRESENCIAL ─────────────────────────────────────────
+    const diasEvento = computed(() => {
+        if (!props.evento?.fecha_hora_inicio) return [];
+        // Si el evento dura más de un día, listar todos los días del rango
+        const inicio = new Date(props.evento.fecha_hora_inicio);
+        inicio.setHours(0, 0, 0, 0);
+        const fin = props.evento.fecha_hora_fin
+            ? new Date(props.evento.fecha_hora_fin)
+            : new Date(inicio);
+        fin.setHours(23, 59, 59, 999);
+
+        const dias = [];
+        const cursor = new Date(inicio);
+        while (cursor <= fin) {
+            dias.push(new Date(cursor));
+            cursor.setDate(cursor.getDate() + 1);
+        }
+        return dias;
+    });
+
+    // Mantener compatibilidad con la función esFueraDeRangoEdicion
+    const edicionInicioAgenda = computed(() => {
+        if (props.evento?.fecha_hora_inicio) {
+            const d = new Date(props.evento.fecha_hora_inicio);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        }
+        return props.evento?.fecha_inicio_agenda
+            ? new Date(props.evento.fecha_inicio_agenda + 'T00:00:00') : null;
+    });
+    const edicionFinAgenda = computed(() => {
+        if (props.evento?.fecha_hora_fin) {
+            const d = new Date(props.evento.fecha_hora_fin);
+            return d;
+        }
+        return props.evento?.fecha_fin_agenda
+            ? new Date(props.evento.fecha_fin_agenda + 'T23:59:59') : null;
+    });
+
+SEGUNDO: Reemplazar la computed `timeSlots` para usar las horas del evento:
+
+ANTES:
+    const timeSlots = computed(() => {
+        const slots = [];
+        const inicio = 9 * 60;
+        const fin    = 16 * 60;
+        const paso   = intervalo.value;
+        for (let min = inicio; min < fin; min += paso) {
+            const hh = String(Math.floor(min / 60)).padStart(2, '0');
+            const mm = String(min % 60).padStart(2, '0');
+            slots.push(`${hh}:${mm}`);
+        }
+        return slots;
+    });
+
+DESPUÉS:
+    const timeSlots = computed(() => {
+        const slots = [];
+        // Usar horas del evento presencial si están disponibles
+        let inicioMin = 9 * 60;  // fallback: 09:00
+        let finMin    = 16 * 60; // fallback: 16:00
+        if (props.evento?.fecha_hora_inicio) {
+            const partes = props.evento.fecha_hora_inicio.split(' ');
+            if (partes[1]) {
+                const [h, m] = partes[1].split(':').map(Number);
+                inicioMin = h * 60 + (m || 0);
+            }
+        }
+        if (props.evento?.fecha_hora_fin) {
+            const partes = props.evento.fecha_hora_fin.split(' ');
+            if (partes[1]) {
+                const [h, m] = partes[1].split(':').map(Number);
+                finMin = h * 60 + (m || 0);
+            }
+        }
+        const paso = intervalo.value;
+        for (let min = inicioMin; min < finMin; min += paso) {
+            const hh = String(Math.floor(min / 60)).padStart(2, '0');
+            const mm = String(min % 60).padStart(2, '0');
+            slots.push(`${hh}:${mm}`);
+        }
+        return slots;
+    });
+
+TERCERO: Reemplazar la computed `semana` para mostrar SOLO los días
+del evento en lugar de la semana completa. Esto también elimina la
+necesidad de los botones "semana anterior / siguiente":
+
+ANTES:
+    const weekOffset = ref(0);
+    const semana = computed(() => {
+        const hoy = new Date();
+        const dow = hoy.getDay();
+        const monday = new Date(hoy);
+        monday.setDate(hoy.getDate() + (dow === 0 ? -6 : 1 - dow) + weekOffset.value * 7);
+        monday.setHours(0, 0, 0, 0);
+        return Array.from({length: 5}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+    });
+
+DESPUÉS:
+    const weekOffset = ref(0); // se mantiene por compatibilidad pero no se usa en la navegación
+    const semana = computed(() => {
+        // Si hay días de evento definidos, mostrar solo esos días
+        if (diasEvento.value.length > 0) return diasEvento.value;
+        // Fallback: semana actual
+        const hoy = new Date();
+        const dow = hoy.getDay();
+        const monday = new Date(hoy);
+        monday.setDate(hoy.getDate() + (dow === 0 ? -6 : 1 - dow));
+        monday.setHours(0, 0, 0, 0);
+        return Array.from({length: 5}, (_, i) => {
+            const d = new Date(monday); d.setDate(monday.getDate() + i); return d;
+        });
+    });
+
+CUARTO: Ocultar los botones de navegación de semana cuando hay días
+de evento definidos. En el template, encontrar los botones
+"puedeRetrocederSemana" y "puedeAvanzarSemana" y envolverlos en:
+    <template v-if="!diasEvento.length">
+        <!-- botones de navegación semana anterior/siguiente -->
+    </template>
+
+También actualizar el semanaLabel para que cuando solo haya un día
+muestre solo ese día:
+    const semanaLabel = computed(() => {
+        if (diasEvento.value.length === 1) {
+            const d = diasEvento.value[0];
+            return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        }
+        if (!semana.value.length) return '';
+        const ini = semana.value[0];
+        const fin = semana.value[semana.value.length - 1];
+        return `${ini.toLocaleDateString('es-MX', {day:'numeric',month:'short'})} — ${fin.toLocaleDateString('es-MX', {day:'numeric',month:'short',year:'numeric'})}`;
+    });
+
+QUINTO: Actualizar la función `esFueraDeRangoEdicion` para que sea
+más estricta — solo permite la fecha exacta del evento:
+
+    function esFueraDeRangoEdicion(date) {
+        if (diasEvento.value.length > 0) {
+            // Solo permitir los días exactos del evento
+            const dKey = formatFechaKey(date);
+            return !diasEvento.value.some(d => formatFechaKey(d) === dKey);
+        }
+        // Fallback original
+        const d = new Date(date); d.setHours(0, 0, 0, 0);
+        if (edicionInicioAgenda.value && d < edicionInicioAgenda.value) return true;
+        if (edicionFinAgenda.value    && d > edicionFinAgenda.value)    return true;
+        return false;
+    }
+
+
+====================================================================
+CAMBIO 2 — CATEGORÍAS DINÁMICAS + MÓDULO SUPERADMIN
+====================================================================
+
+CONTEXTO
+--------
+Las categorías están hardcodeadas en Restaurantero::$categorias.
+Hay que agregar 4 categorías nuevas Y crear un módulo en SuperAdmin
+para gestionarlas dinámicamente desde la plataforma.
+
+PASO 2A — MIGRATION: crear tabla categorias
+--------------------------------------------
+    php artisan make:migration create_categorias_table
+
+    Schema::create('categorias', function (Blueprint $table) {
+        $table->id();
+        $table->string('nombre')->unique();
+        $table->integer('orden')->default(0);
+        $table->boolean('activo')->default(true);
+        $table->timestamps();
+    });
+
+PASO 2B — SEEDER: poblar con todas las categorías existentes + nuevas
+----------------------------------------------------------------------
+Crear: database/seeders/CategoriasSeeder.php
+
+    $categorias = [
+        'Alimentos y Bebidas',
+        'Tecnología',
+        'Salud y Bienestar',
+        'Servicios Profesionales',
+        'Manufactura',
+        'Comercio',
+        'Construcción',
+        'Educación',
+        'Turismo',
+        'Logística',
+        'Finanzas',
+        'Textiles',
+        'Artesanías',
+        'Muebles y decoración',
+        'Servicios impresos',
+        'Vinos y licores',
+        'Entretenimiento',
+        // NUEVAS:
+        'Blancos',
+        'Limpieza e higiene',
+        'Equipos, mantenimiento y reparación',
+        'Cristalería, plásticos y utensilios',
+        'Otro',
+    ];
+
+    foreach ($categorias as $i => $nombre) {
+        \App\Models\Categoria::updateOrCreate(
+            ['nombre' => $nombre],
+            ['orden' => $i, 'activo' => true]
+        );
+    }
+
+PASO 2C — MODELO: app/Models/Categoria.php
+-------------------------------------------
+    <?php
+    namespace App\Models;
+    use Illuminate\Database\Eloquent\Model;
+
+    class Categoria extends Model
+    {
+        protected $table = 'categorias';
+        protected $fillable = ['nombre', 'orden', 'activo'];
+        protected function casts(): array { return ['activo' => 'boolean']; }
+
+        public function scopeActivas($query) { return $query->where('activo', true)->orderBy('orden'); }
+    }
+
+PASO 2D — ACTUALIZAR TODAS LAS REFERENCIAS a Restaurantero::$categorias
+-------------------------------------------------------------------------
+En TODOS los controladores y vistas que usen Restaurantero::$categorias,
+reemplazar por: Categoria::activas()->pluck('nombre')
+
+Archivos a buscar y actualizar (grep -r "categorias" para encontrarlos):
+- app/Http/Controllers/ProveedorPerfilController.php
+- app/Http/Controllers/Admin/RestauranteroAdminController.php
+- app/Http/Controllers/RestauranteroPublicoController.php
+- app/Http/Controllers/Admin/SuperAdmin/CorreoMasivoController.php
+- Cualquier otro que tenga Restaurantero::$categorias
+
+En cada uno, agregar use App\Models\Categoria; y cambiar la referencia.
+
+TAMBIÉN en Restaurantero.php: mantener $categorias por compatibilidad
+pero agregar método estático:
+    public static function categoriasActivas(): array
+    {
+        return \App\Models\Categoria::activas()->pluck('nombre')->toArray();
+    }
+
+PASO 2E — CONTROLLER SuperAdmin: CategoriasController
+------------------------------------------------------
+Crear: app/Http/Controllers/Admin/SuperAdmin/CategoriasController.php
+
+    <?php
+    namespace App\Http\Controllers\Admin\SuperAdmin;
+    use App\Http\Controllers\Controller;
+    use App\Models\Categoria;
+    use Illuminate\Http\Request;
+    use Inertia\Inertia;
+
+    class CategoriasController extends Controller
+    {
+        public function index()
+        {
+            return Inertia::render('Admin/SuperAdmin/Categorias/Index', [
+                'categorias' => Categoria::orderBy('orden')->get(),
+            ]);
+        }
+
+        public function store(Request $request)
+        {
+            $request->validate(['nombre' => 'required|string|max:100|unique:categorias,nombre']);
+            $maxOrden = Categoria::max('orden') ?? 0;
+            Categoria::create(['nombre' => $request->nombre, 'orden' => $maxOrden + 1, 'activo' => true]);
+            return back()->with('success', 'Categoría agregada.');
+        }
+
+        public function update(Request $request, Categoria $categoria)
+        {
+            $request->validate(['nombre' => 'required|string|max:100|unique:categorias,nombre,' . $categoria->id]);
+            $categoria->update(['nombre' => $request->nombre]);
+            return back()->with('success', 'Categoría actualizada.');
+        }
+
+        public function toggle(Categoria $categoria)
+        {
+            $categoria->update(['activo' => !$categoria->activo]);
+            return back()->with('success', $categoria->activo ? 'Categoría activada.' : 'Categoría desactivada.');
+        }
+
+        public function destroy(Categoria $categoria)
+        {
+            // Solo borrar si no está en uso
+            $enUso = \App\Models\Restaurantero::where('categoria', $categoria->nombre)->exists();
+            if ($enUso) {
+                return back()->withErrors(['error' => 'No se puede eliminar: hay proveedores con esta categoría.']);
+            }
+            $categoria->delete();
+            return back()->with('success', 'Categoría eliminada.');
+        }
+
+        public function reordenar(Request $request)
+        {
+            // Recibe array de IDs en el nuevo orden
+            $request->validate(['ids' => 'required|array']);
+            foreach ($request->ids as $i => $id) {
+                Categoria::where('id', $id)->update(['orden' => $i]);
+            }
+            return back()->with('success', 'Orden actualizado.');
+        }
+    }
+
+PASO 2F — ROUTES
+-----------------
+Archivo: routes/web.php
+
+Agregar use App\Http\Controllers\Admin\SuperAdmin\CategoriasController;
+
+Dentro del grupo middleware('super-admin'), agregar:
+    Route::prefix('categorias')->name('categorias.')->group(function () {
+        Route::get('/',               [CategoriasController::class, 'index'])->name('index');
+        Route::post('/',              [CategoriasController::class, 'store'])->name('store');
+        Route::put('/{categoria}',    [CategoriasController::class, 'update'])->name('update');
+        Route::patch('/{categoria}/toggle', [CategoriasController::class, 'toggle'])->name('toggle');
+        Route::delete('/{categoria}', [CategoriasController::class, 'destroy'])->name('destroy');
+        Route::post('/reordenar',     [CategoriasController::class, 'reordenar'])->name('reordenar');
+    });
+
+PASO 2G — NAV: agregar en AdminLayout.vue
+------------------------------------------
+En el array superAdminNavItems agregar:
+    { label: 'Categorías', routeName: 'admin.categorias.index',
+      icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
+
+PASO 2H — VISTA Vue: Admin/SuperAdmin/Categorias/Index.vue
+-----------------------------------------------------------
+Crear la vista con:
+- Lista de categorías con toggle activo/inactivo + editar nombre + eliminar
+- Formulario inline "Nueva categoría" con input + botón agregar
+- Indicador de cuántos proveedores tienen cada categoría (pasar count desde el controller)
+- Diseño consistente con el resto del sistema (guinda, dark mode)
+
+En el controller index(), agregar conteo:
+    'categorias' => Categoria::orderBy('orden')
+        ->withCount(['restauranteros' => fn($q) => $q->where('activo', true)])
+        ->get(),
+
+Para withCount funcionar, agregar relación en Categoria.php:
+    public function restauranteros()
+    {
+        return $this->hasMany(\App\Models\Restaurantero::class, 'categoria', 'nombre');
+    }
+
+
+====================================================================
+CAMBIO 3 — CORREO MASIVO: ENVÍO DE PRUEBA
+====================================================================
+
+CONTEXTO
+--------
+El módulo de Correo Masivo (Admin/SuperAdmin/CorreoMasivo/Index.vue)
+necesita una sección para enviar un correo de prueba antes del envío
+masivo, para verificar que el diseño y contenido se ven correctamente.
+
+PASO 3A — CONTROLLER: agregar método prueba()
+----------------------------------------------
+Archivo: app/Http/Controllers/Admin/SuperAdmin/CorreoMasivoController.php
+
+Agregar método antes de filtrarDestinatarios():
+
+    public function prueba(Request $request)
+    {
+        $request->validate([
+            'email_prueba' => ['required', 'email'],
+            'asunto'       => ['required', 'string', 'max:255'],
+            'contenido'    => ['required', 'string'],
+        ]);
+
+        $plantillaTemporal = new \App\Models\PlantillaCorreo([
+            'clave'    => 'prueba_correo_masivo',
+            'nombre'   => 'Prueba Correo Masivo',
+            'asunto'   => '[PRUEBA] ' . $request->asunto,
+            'contenido'=> $request->contenido,
+            'activo'   => true,
+        ]);
+
+        try {
+            Mail::to($request->email_prueba)->send(
+                new \App\Mail\PlantillaCorreoMail($plantillaTemporal, [
+                    'nombre_usuario' => 'Usuario de Prueba',
+                ])
+            );
+            return back()->with('success', "Correo de prueba enviado a {$request->email_prueba}.");
+        } catch (\Exception $e) {
+            \Log::error('Error correo prueba masivo: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'Error al enviar: ' . $e->getMessage()]);
+        }
+    }
+
+PASO 3B — ROUTE: agregar ruta de prueba
+----------------------------------------
+Dentro del grupo correo-masivo:
+    Route::post('/prueba', [CorreoMasivoController::class, 'prueba'])->name('prueba');
+
+PASO 3C — Vue: agregar sección de prueba en Index.vue
+------------------------------------------------------
+En Admin/SuperAdmin/CorreoMasivo/Index.vue, agregar una sección
+"Prueba de envío" ANTES del botón "Enviar correos". La sección muestra:
+
+- Input de email con label "Enviar prueba a"
+- Botón "Enviar prueba" (fondo gris/neutro, NO guinda)
+- Al hacer click envía el asunto y contenido actuales a ese email
+- Nota: "[PRUEBA] se antepondrá al asunto"
+
+Script:
+    const emailPrueba = ref('');
+    const enviandoPrueba = ref(false);
+
+    const enviarPrueba = () => {
+        if (!emailPrueba.value || !form.asunto || !form.contenido) {
+            alert('Completa el asunto, contenido y el email de prueba.');
+            return;
+        }
+        enviandoPrueba.value = true;
+        router.post(route('admin.correo-masivo.prueba'), {
+            email_prueba: emailPrueba.value,
+            asunto: form.asunto,
+            contenido: form.contenido,
+        }, {
+            preserveScroll: true,
+            onFinish: () => { enviandoPrueba.value = false; },
+        });
+    };
+
+Template de la sección:
+    <div class="border border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 bg-gray-50 dark:bg-gray-800/50">
+        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            Prueba de envío
+        </p>
+        <div class="flex gap-2">
+            <input v-model="emailPrueba" type="email" placeholder="tu@correo.com"
+                class="flex-1 text-sm rounded-xl border border-gray-300 dark:border-gray-600
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                       px-3 py-2 focus:ring-2 focus:ring-gray-400 focus:outline-none" />
+            <button @click="enviarPrueba"
+                :disabled="!emailPrueba || !form.asunto || !form.contenido || enviandoPrueba"
+                class="px-4 py-2 text-sm font-semibold rounded-xl
+                       bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200
+                       hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors
+                       disabled:opacity-50 disabled:cursor-not-allowed">
+                {{ enviandoPrueba ? 'Enviando…' : 'Enviar prueba' }}
+            </button>
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+            Se antepondrá [PRUEBA] al asunto. Verifica el diseño antes del envío masivo.
+        </p>
+    </div>
+
+LÍMITE DE CORREOS — NOTA IMPORTANTE
+-------------------------------------
+Gmail SMTP (impulsate@iyemyucatan.com con App Password) tiene un límite
+de 500 correos por día. Si el envío masivo supera ese número en un solo
+día, los correos adicionales rebotarán silenciosamente o serán rechazados.
+
+Para envíos grandes (más de 200 correos), se recomienda:
+1. Configurar Laravel Queue con un rate limiter (1 correo cada 2 segundos)
+2. O dividir el envío en grupos de 200 por día
+
+Por ahora el sistema no tiene límite propio — el throttle lo impone Gmail.
+Para mitigar, en el controller enviar() agregar un sleep entre envíos:
+    Mail::to($user->email)->queue(new PlantillaCorreoMail(...));
+    // Las colas ya ayudan a espaciar. Para más control, ver queue:work --sleep=2
+
+
+====================================================================
+CAMBIO 4 — TEXTO EN PLANTILLA DE CORREO "PROVEEDOR APROBADO"
+====================================================================
+
+ARCHIVO 1: resources/views/mail/proveedor-aprobado.blade.php
+
+Encontrar la línea:
+    Tu perfil de proveedor ha sido <strong style="color:#15803d;">aprobado</strong> y ya está visible para los compradores.
+
+Reemplazar con:
+    Tu perfil de proveedor ha sido <strong style="color:#15803d;">aprobado</strong> en la plataforma. Completa la información de tu negocio y podrás registrarte a los eventos disponibles.
+
+ARCHIVO 2: database/seeders/PlantillasCorreoSeeder.php
+
+En el método tplProveedorAprobado(), encontrar:
+    Tu perfil como proveedor de <strong>{{nombre_empresa}}</strong> ha sido revisado y aprobado por nuestro equipo.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:#6b7280;">A partir de ahora los compradores podrán ver tu perfil y agendar citas de networking contigo. Asegúrate de tener tu agenda disponible.
+
+Reemplazar con:
+    Tu perfil como proveedor de <strong>{{nombre_empresa}}</strong> ha sido revisado y aprobado en la plataforma.</p>
+    <p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Completa la información de tu negocio y podrás registrarte a los eventos disponibles. ¡Te esperamos!
+
+Después correr:
+    php artisan db:seed --class=PlantillasCorreoSeeder --force
+(ya tiene updateOrCreate, actualizará la plantilla existente en BD)
+
+
+====================================================================
+CAMBIO 5 — TEXTO EN NOTIFICACIÓN DE APROBACIÓN (PANEL PROVEEDOR)
+====================================================================
+
+Archivo: app/Http/Controllers/Admin/RestauranteroAdminController.php
+
+En el método aprobar(), localizar las líneas (aprox. 277-278):
+    '🎉 ¡Tu perfil fue aprobado!',
+    'Tu perfil de proveedor está activo y visible para los compradores.',
+
+Reemplazar el segundo string con:
+    'Tu perfil fue aprobado. Completa la información de tu negocio y podrás registrarte a los eventos disponibles.',
+
+Quedará:
+    Notificacion::crear(
+        $restaurantero->user_id,
+        'info',
+        '🎉 ¡Tu perfil fue aprobado!',
+        'Tu perfil fue aprobado. Completa la información de tu negocio y podrás registrarte a los eventos disponibles.',
+    );
+
+
+====================================================================
+CAMBIO 6 — MODAL DE EVENTO: AGREGAR "DOMICILIO FISCAL EN YUCATÁN"
+====================================================================
+
+CONTEXTO
+--------
+En Solicitudes.vue, el modal de perfil del proveedor (modalPerfil) muestra
+datos del restaurantero para que el admin decida si admitirlo al evento.
+Falta mostrar el campo domicilio_en_yucatan.
+
+PASO 6A — CONTROLLER: verificar que domicilio_en_yucatan se pasa
+-----------------------------------------------------------------
+Archivo: app/Http/Controllers/Admin/EventoSolicitudesController.php
+
+En el closure $mapear, dentro del objeto restaurantero, verificar que
+esté incluido el campo domicilio_en_yucatan. Si no está, agregarlo:
+    'domicilio_en_yucatan' => $r->domicilio_en_yucatan,
+
+PASO 6B — Vue: agregar el campo en el grid de datos del modal
+--------------------------------------------------------------
+Archivo: resources/js/Pages/Admin/Eventos/Solicitudes.vue
+
+En el modal de perfil, dentro del grid de datos (donde están Teléfono,
+RFC, Sitio web, Historial), agregar DESPUÉS del campo RFC:
+
+    <div>
+        <p class="text-xs text-gray-400 dark:text-gray-600">Domicilio fiscal</p>
+        <p class="font-medium text-gray-800 dark:text-gray-200">
+            <span v-if="solicitudPreview.restaurantero.domicilio_en_yucatan === true"
+                class="text-emerald-600 dark:text-emerald-400 font-semibold">
+                ✓ Sí tiene domicilio fiscal en Yucatán
+            </span>
+            <span v-else-if="solicitudPreview.restaurantero.domicilio_en_yucatan === false"
+                class="text-red-500 dark:text-red-400">
+                ✗ No tiene domicilio fiscal en Yucatán
+            </span>
+            <span v-else class="text-gray-400">No especificado</span>
+        </p>
+    </div>
+
+
+====================================================================
+CAMBIO 7 — DEBUG: INFORMACIÓN DE PROVEEDORES NO GUARDA
+====================================================================
+
+CONTEXTO
+--------
+Algunos proveedores reportan que su información no se guarda. No es
+todos, solo algunos. Hay varias causas posibles identificadas:
+
+CAUSA A: Campo entrega_domicilio requerido en validación
+--------------------------------------------------------
+En ProveedorPerfilController.php, línea 74:
+    'entrega_domicilio' => ['required', 'boolean'],
+
+Este campo está como REQUERIDO (no nullable). Si el proveedor tiene
+una versión anterior del formulario cargada en caché del navegador
+o si el campo no llega en el FormData, Laravel retorna 422 pero
+Inertia puede no mostrar el error claramente.
+
+FIX: Cambiar a nullable y poner valor por defecto:
+    'entrega_domicilio' => ['nullable', 'boolean'],
+
+Y en el bloque de procesamiento, cambiar:
+    $data['entrega_domicilio'] = filter_var(
+        $request->entrega_domicilio,
+        FILTER_VALIDATE_BOOLEAN,
+        FILTER_NULL_ON_FAILURE
+    );
+    // Si viene null (no se envió), poner false por defecto:
+    if (is_null($data['entrega_domicilio'])) {
+        $data['entrega_domicilio'] = false;
+    }
+
+CAUSA B: Validación de sitio_web con URL inválida
+--------------------------------------------------
+La regla 'url' de Laravel requiere que el URL incluya protocolo
+(https://). Si el usuario escribe "www.ejemplo.com" sin https://,
+la validación falla silenciosamente en algunos navegadores.
+
+FIX en ProveedorPerfilController.php:
+    'sitio_web' => ['nullable', 'string', 'max:200'],
+
+Y en el controller, antes de guardar, normalizar la URL:
+    if (!empty($data['sitio_web']) && !preg_match('/^https?:\/\//', $data['sitio_web'])) {
+        $data['sitio_web'] = 'https://' . $data['sitio_web'];
+    }
+
+CAUSA C: Timeout en subida de fotos grandes
+--------------------------------------------
+El campo foto tiene validación 'max:4096' (4MB). Si el servidor tiene
+un php.ini con upload_max_filesize o post_max_size menor, la petición
+falla a nivel de PHP antes de llegar al controlador, y el error no
+se muestra claramente.
+
+FIX: Verificar en php.ini de producción:
+    upload_max_filesize = 5M
+    post_max_size = 10M
+
+También en el controller, agregar manejo explícito:
+    if ($request->hasFile('foto') && !$request->file('foto')->isValid()) {
+        return back()->withErrors(['foto' => 'El archivo de foto no pudo subirse. Intenta con una imagen más pequeña (máx. 4MB).']);
+    }
+
+CAUSA D: El formulario se re-envía (solicitado_aprobacion_at actualiza)
+------------------------------------------------------------------------
+En el controller, línea 163:
+    $data['solicitado_aprobacion_at'] = now();
+
+Y línea 167-170: si el proveedor ya estaba aprobado, lo desaprueba:
+    if ($restaurantero->aprobado) {
+        $data['aprobado'] = false;
+        $data['activo']   = false;
+    }
+
+Esto es correcto. Pero si el proveedor edita perfil repetidamente,
+pierde la aprobación cada vez. Considerar: solo resetear si cambió
+información sustancial. Por ahora se deja igual pero hay que documentarlo.
+
+CAUSA E: Agregar logging para debug
+------------------------------------
+Para identificar el problema en producción, agregar logging temporal
+al inicio del método store():
+
+    \Log::info('ProveedorPerfil::store inicio', [
+        'user_id' => $request->user()->id,
+        'has_foto' => $request->hasFile('foto'),
+        'entrega_domicilio' => $request->input('entrega_domicilio'),
+        'sitio_web' => $request->input('sitio_web'),
+    ]);
+
+Y al final:
+    \Log::info('ProveedorPerfil::store OK', ['restaurantero_id' => $restaurantero->id]);
+
+Así en production.log se podrá ver si la petición llega pero falla en
+validación (no aparecerá el log "OK") o si hay otro problema.
+
+IMPLEMENTAR TODAS LAS CAUSAS A, B y C. La causa E es temporal.
+
+
+====================================================================
+CAMBIO 8 — DEPLOY A PRODUCCIÓN
+====================================================================
+
+    php artisan migrate --force
+    php artisan db:seed --class=CategoriasSeeder --force
+    php artisan db:seed --class=PlantillasCorreoSeeder --force
+    npm run build
+    php artisan config:clear
+    php artisan route:clear
+    php artisan view:clear
+    php artisan optimize
+    php artisan queue:restart
+
+====================================================================
+FIN DEL PROMPT
+====================================================================

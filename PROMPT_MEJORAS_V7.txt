@@ -1,0 +1,550 @@
+PROMPT PARA CLAUDE CODE - IMPULSATE V7
+==========================================
+Proyecto: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Ruta: C:\xampp\htdocs\citas
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo/blue-*.
+Texto en español con acentos correctos. Modo claro y oscuro. Responsivo.
+
+INSTRUCCIÓN CRÍTICA — BOCETOS PREVIOS AL DEPLOY:
+Antes de hacer cualquier deploy a producción (último paso), Claude Code debe:
+  1. Describir detalladamente en texto los cambios realizados en cada punto.
+  2. Generar un boceto visual en HTML estático (un archivo local temporal, sin subir al servidor)
+     que muestre el antes/después de cada cambio de UI, para revisión visual.
+  3. Esperar confirmación explícita del usuario ("listo, sube") antes de ejecutar el deploy.
+NO subir a producción sin este paso.
+
+CONTEXTO RELEVANTE
+------------------
+- Roles Spatie: admin, restaurantero, cliente, super-admin.
+- AdminLayout.vue (resources/js/Layouts/AdminLayout.vue): menú lateral con `adminNavItems` y `superAdminNavItems`. El item de "Usuarios" (línea ~35) apunta a `admin.usuarios.index`.
+- Gestión Usuarios (Super Admin) en resources/js/Pages/Admin/SuperAdmin/Usuarios/Index.vue: renderiza `v-for="r in u.roles"` donde `r` llega como objeto Spatie completo (con pivot, timestamps, etc.) en lugar de string simple — por eso muestra JSON crudo.
+- Register.vue (resources/js/Pages/Auth/Register.vue): ya tiene un `<Checkbox>` de términos pero está condicionado a `$page.props.jetstream.hasTermsAndPrivacyPolicyFeature` (línea ~147), lo que hace que NO se muestre si Jetstream no lo tiene habilitado.
+- Login.vue: no tiene referencia al aviso de privacidad actualmente.
+- AvisoPrivacidad.vue (resources/js/Pages/AvisoPrivacidad.vue): existe pero le falta el párrafo sobre finalidades secundarias con la opción de oposición y el párrafo "Los datos se obtienen directamente de la persona solicitante / medidas de seguridad implementadas". Ver comparación detallada en CAMBIO 4.
+- Google OAuth: app/Http/Controllers/Auth/SocialAuthController.php — método `handleGoogleCallback()` crea/loguea al usuario y lo redirige a `rol.seleccionar` o `dashboard` directamente, SIN pasar por el formulario de registro. Por eso los usuarios de Google nunca ven el checkbox de aviso. El flujo actual es: Socialite obtiene usuario de Google → si no existe, lo crea → Auth::login() → redirect. NO hay un paso de aceptación de aviso en este flujo.
+- User model fillable: name, email, password, telefono, curp, rfc, municipio, nombre_empresa, active_role, rol_seleccionado, necesidades, perfil_completo, sitio_web — NO tiene acepta_aviso_at, camara_asociacion, ni nombre_establecimiento aún.
+- CompletarPerfilController: métodos `store()` (primera vez) y `actualizarComprador()` (edición posterior en Dashboard).
+- CompletarPerfil.vue: formulario de primera vez con telefono, curp, rfc, municipio, nombre_empresa.
+- User/Dashboard.vue: modal de "Editar perfil" del comprador con los mismos campos.
+- Middleware existente relevante: EnsureIsAdmin.php, EnsureProfileComplete.php, EnsureRolSeleccionado.php. El nuevo middleware de aviso debe encajar en esta cadena.
+
+==========================================
+CAMBIO 1: Borrar todos los eventos existentes
+==========================================
+Ejecutar en la consola de Artisan (o crear un comando/seeder de limpieza):
+
+```bash
+php artisan tinker --execute="
+  DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+  DB::table('evento_usuario')->truncate();
+  DB::table('citas')->truncate();
+  DB::table('eventos')->truncate();
+  DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+  echo 'Eventos, citas y registros de evento eliminados.';
+"
+```
+
+IMPORTANTE antes de ejecutar:
+- Hacer un mysqldump de respaldo de la base de datos actual.
+- Confirmar con el usuario que también desea borrar las citas asociadas (sin eventos no tienen sentido).
+- Si hay encuestas o notificaciones ligadas a esas citas, borrarlas también para mantener integridad referencial (revisar qué tablas tienen FK a `citas` y `eventos`).
+- Si el usuario confirma, ejecutar el comando. Si no confirma, solo mostrarle qué se borraría y esperar su respaldo.
+
+==========================================
+CAMBIO 2: Gestión Usuarios — mostrar roles con nombres amigables
+==========================================
+PROBLEMA: En `Admin/SuperAdmin/Usuarios/Index.vue`, el renderizado `v-for="r in u.roles"` muestra el objeto Spatie completo porque el controlador pasa `$user->roles` (la relación Eloquent completa con pivot). El template intenta usar `r` directamente como string, pero es un objeto.
+
+SOLUCIÓN — DOS PARTES:
+
+PARTE A — Backend (UsuariosGestionController::index):
+Modificar la query para que `roles` llegue como array de strings simples, no objetos:
+```php
+$usuarios = $query->with('roles:id,name')->paginate(20)->withQueryString();
+// Luego al transformar para Inertia:
+$usuarios->getCollection()->transform(function ($user) {
+    $user->roles_nombres = $user->roles->pluck('name')->toArray();
+    return $user;
+});
+```
+O directamente en el `->through()` del paginador si prefiere. El objetivo: que cada usuario tenga un campo `roles_nombres` (array de strings como 'restaurantero', 'cliente', 'admin', 'super-admin').
+
+PARTE B — Frontend (Index.vue):
+1. Cambiar el render de badges para usar `u.roles_nombres` (array de strings simples) en lugar de `u.roles` (array de objetos).
+
+2. Actualizar la función `badgeClass(rol)` para mapear correctamente:
+```js
+const badgeClass = (rol) => {
+    const map = {
+        'super-admin':   'bg-guinda-100 text-guinda-800 dark:bg-guinda-900/30 dark:text-guinda-300 border border-guinda-300 dark:border-guinda-700',
+        'admin':         'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+        'restaurantero': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300',
+        'cliente':       'bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300',
+    };
+    return map[rol] ?? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
+};
+```
+
+3. Agregar función de nombre amigable (sustituye el nombre técnico por etiqueta legible):
+```js
+const rolLabel = (rol) => {
+    const labels = {
+        'super-admin':   'Super Admin',
+        'admin':         'Admin',
+        'restaurantero': 'Proveedor',
+        'cliente':       'Comprador',
+    };
+    return labels[rol] ?? rol;
+};
+```
+
+4. Actualizar el template:
+```html
+<!-- ANTES (problemático): -->
+<span v-for="r in u.roles" :key="r" :class="['text-xs px-2 py-0.5 rounded-full font-medium', badgeClass(r)]">
+    {{ r }}
+</span>
+
+<!-- DESPUÉS (correcto): -->
+<span v-for="r in u.roles_nombres" :key="r"
+      :class="['text-xs px-2 py-0.5 rounded-full font-medium', badgeClass(r)]">
+    {{ rolLabel(r) }}
+</span>
+```
+
+5. Actualizar el `<select>` de filtro por rol para mostrar labels amigables:
+```html
+<option value="">Todos los roles</option>
+<option value="cliente">Comprador</option>
+<option value="restaurantero">Proveedor</option>
+<option value="admin">Admin</option>
+<option value="super-admin">Super Admin</option>
+```
+(Reemplazar el `v-for="r in roles"` por opciones fijas con labels amigables — o mantener el `v-for` pero aplicar `rolLabel` al texto mostrado, enviando el valor técnico al filtro.)
+
+6. Lo mismo aplicar en `Edit.vue` si los roles se muestran ahí: verificar y aplicar `rolLabel` donde corresponda.
+
+==========================================
+CAMBIO 3: Renombrar "Usuarios" por "Compradores" en el menú lateral Admin
+==========================================
+En `resources/js/Layouts/AdminLayout.vue`, localizar el array `adminNavItems`:
+```js
+{ label: 'Usuarios', routeName: 'admin.usuarios.index', ... }
+```
+Cambiar el label a:
+```js
+{ label: 'Compradores', routeName: 'admin.usuarios.index', ... }
+```
+También actualizar el `<h1>` o `<title>` de la vista `Admin/Usuarios/Index.vue` si dice "Usuarios" en el encabezado visible de la página, cambiarlo a "Compradores" para consistencia.
+
+==========================================
+CAMBIO 4: Corrección del Aviso de Privacidad + aceptación universal (registro, Google, login)
+==========================================
+PARTE A — Completar el texto faltante en AvisoPrivacidad.vue
+
+Comparar la página actual con el PDF e insertar TEXTUALMENTE los párrafos faltantes:
+
+1. Párrafo sobre oposición a finalidades secundarias (va DESPUÉS de la lista de finalidades
+   secundarias, ANTES de la lista de datos recabados):
+   "Si usted no desea que sus datos sean utilizados con estas finalidades secundarias, podrá
+   manifestarlo al momento de su registro o posteriormente de forma personal y por escrito en
+   las oficinas del Instituto Yucateco de Emprendedores o a través del siguiente correo
+   electrónico: solicitudes.iyem@transparenciayucatan.org.mx"
+
+2. Párrafo sobre origen de los datos y medidas de seguridad (va DESPUÉS de la tabla de datos
+   sensibles, ANTES de "Fundamento legal"):
+   "Los datos personales se obtienen directamente de la persona solicitante.
+   Se informa que el Instituto ha implementado medidas de seguridad físicas, técnicas y
+   administrativas para proteger los datos personales contra daño, pérdida, alteración,
+   destrucción o acceso no autorizado, garantizando su confidencialidad, integridad y
+   disponibilidad."
+
+3. Reemplazar el párrafo introductorio del responsable con el texto LITERAL del PDF:
+   "El Instituto Yucateco de Emprendedores (IYEM), con domicilio en Avenida Principal
+   Industrias No Contaminantes, Tablaje Catastral 13613, Colonia Sodzil Norte, C.P. 97110,
+   Mérida, Yucatán, México, es responsable del tratamiento de los datos personales
+   proporcionados por las personas físicas y representantes legales de personas morales que
+   soliciten participar en los bazares, ferias y exposiciones para artesanos y emprendedores
+   que realiza, organiza o participa el IYEM. Los datos serán tratados conforme a la Ley
+   General de Protección de Datos Personales en Posesión de Sujetos Obligados, los
+   Lineamientos Generales del Sistema Nacional de Transparencia y demás disposiciones
+   jurídicas aplicables."
+
+4. Revisar sección por sección contra el PDF — ningún párrafo debe estar abreviado o parafraseado.
+
+---------------------------------------------------------------------------
+PARTE B — Columna acepta_aviso_at en la BD (base de todo el sistema de aceptación)
+---------------------------------------------------------------------------
+1. Migración: agregar a la tabla `users`:
+   ```php
+   $table->timestamp('acepta_aviso_at')->nullable()->after('perfil_completo');
+   ```
+   Si es NULL = nunca aceptó. Si tiene timestamp = fecha/hora en que aceptó.
+
+2. Agregar `acepta_aviso_at` al `$fillable` de User.php y al cast:
+   ```php
+   'acepta_aviso_at' => 'datetime',
+   ```
+
+3. Exponer en HandleInertiaRequests.php: agregar `acepta_aviso_at` al array `->only([...])` de
+   `auth.user` (para que el frontend sepa si el usuario ya aceptó).
+
+---------------------------------------------------------------------------
+PARTE C — Middleware EnsureAvisoAceptado (cubre TODOS los flujos de acceso)
+---------------------------------------------------------------------------
+Esta es la pieza central. Un middleware que intercepta a cualquier usuario autenticado que no
+haya aceptado el aviso, sin importar cómo llegó (registro normal, Google, o usuario antiguo).
+
+1. Crear `app/Http/Middleware/EnsureAvisoAceptado.php`:
+   ```php
+   public function handle(Request $request, Closure $next): Response
+   {
+       if (Auth::check() && is_null(Auth::user()->acepta_aviso_at)) {
+           // Admins y super-admins están exentos — solo aplica a usuarios regulares
+           if (!Auth::user()->hasRole('admin') && !Auth::user()->hasRole('super-admin')) {
+               // Evitar loop: permitir las rutas del aviso y logout
+               $rutasPermitidas = ['aviso.aceptar', 'aviso.aceptar.post', 'logout', 'aviso.privacidad'];
+               if (!in_array($request->route()->getName(), $rutasPermitidas)) {
+                   return redirect()->route('aviso.aceptar');
+               }
+           }
+       }
+       return $next($request);
+   }
+   ```
+
+2. Registrar el alias del middleware en `bootstrap/app.php` (Laravel 11):
+   ```php
+   ->withMiddleware(function (Middleware $middleware) {
+       $middleware->alias([
+           // ... aliases existentes ...
+           'aviso.aceptado' => \App\Http\Middleware\EnsureAvisoAceptado::class,
+       ]);
+   })
+   ```
+
+3. Aplicar el middleware en routes/web.php al grupo de rutas autenticadas (el grupo que ya
+   usa `auth` y contiene dashboard, rol.seleccionar, perfil, paneles, etc.):
+   ```php
+   Route::middleware(['auth', 'aviso.aceptado'])->group(function () {
+       // ... todas las rutas de usuarios autenticados (dashboard, perfil, citas, etc.)
+   });
+   ```
+   Verificar que las rutas /aceptar-aviso queden FUERA de este grupo (son las que el
+   middleware permite para no crear un loop de redirecciones).
+
+---------------------------------------------------------------------------
+PARTE D — Pantalla de aceptación del aviso (/aceptar-aviso)
+---------------------------------------------------------------------------
+Esta pantalla se muestra a CUALQUIER usuario que aún no tenga acepta_aviso_at, incluyendo
+los que entraron por Google.
+
+1. Ruta pública (dentro del middleware `auth` pero fuera del middleware `aviso.aceptado`):
+   ```php
+   Route::middleware('auth')->group(function () {
+       Route::get('/aceptar-aviso',  [AvisoAceptacionController::class, 'show'])->name('aviso.aceptar');
+       Route::post('/aceptar-aviso', [AvisoAceptacionController::class, 'store'])->name('aviso.aceptar.post');
+   });
+   ```
+
+2. Controlador `app/Http/Controllers/AvisoAceptacionController.php`:
+   ```php
+   public function show() {
+       // Si ya aceptó, mandarlo al flujo normal
+       if (auth()->user()->acepta_aviso_at) {
+           return redirect()->intended(route('dashboard'));
+       }
+       return Inertia::render('Auth/AceptarAviso');
+   }
+
+   public function store(Request $request) {
+       $request->validate([
+           'acepta' => ['required', 'accepted'],
+       ], [
+           'acepta.required' => 'Debes aceptar el Aviso de Privacidad para continuar.',
+           'acepta.accepted' => 'Debes aceptar el Aviso de Privacidad para continuar.',
+       ]);
+
+       $request->user()->update(['acepta_aviso_at' => now()]);
+
+       // Continuar al flujo normal post-login
+       // Si no ha seleccionado rol todavía, mandarlo ahí
+       if (!$request->user()->rol_seleccionado && !$request->user()->isAdmin()) {
+           return redirect()->route('rol.seleccionar');
+       }
+       return redirect()->intended(route('dashboard'));
+   }
+   ```
+
+3. Vista `resources/js/Pages/Auth/AceptarAviso.vue`:
+   - Diseño: misma identidad visual que CompletarPerfil.vue (card centrado, logo, paleta guinda).
+   - Mostrar un resumen del aviso de privacidad (no el texto completo — solo lo esencial):
+     título, quién es el responsable (IYEM), para qué se usan los datos, y enlace "Leer
+     aviso completo" que abre /aviso-de-privacidad en nueva pestaña.
+   - Checkbox obligatorio:
+     ```html
+     <label class="flex items-start gap-3 cursor-pointer">
+         <Checkbox id="acepta" v-model:checked="form.acepta" name="acepta" class="mt-0.5" />
+         <span class="text-sm text-gray-600 dark:text-gray-400">
+             He leído y acepto el
+             <Link :href="route('aviso.privacidad')" target="_blank"
+                   class="text-guinda-700 dark:text-guinda-400 underline">
+                 Aviso de Privacidad
+             </Link>
+             del Instituto Yucateco de Emprendedores (IYEM).
+         </span>
+     </label>
+     ```
+   - Botón "Continuar" deshabilitado hasta que se marque el checkbox.
+   - NO mostrar botón de "Cerrar" ni forma de saltarse esta pantalla — es obligatoria.
+   - Botón secundario de "Cerrar sesión" (salida limpia para quien no quiera aceptar):
+     ```html
+     <button @click="router.post(route('logout'))"
+             class="text-sm text-gray-400 hover:text-gray-600 underline mt-3">
+         No acepto — cerrar sesión
+     </button>
+     ```
+
+---------------------------------------------------------------------------
+PARTE E — Ajustes en SocialAuthController (Google OAuth)
+---------------------------------------------------------------------------
+En `handleGoogleCallback()`, después del `Auth::login($user, true)`, cambiar la redirección
+para que pase primero por la pantalla de aviso si no lo ha aceptado:
+
+```php
+Auth::login($user, true);
+
+// NUEVO: verificar aviso de privacidad PRIMERO
+if (is_null($user->acepta_aviso_at)) {
+    return redirect()->route('aviso.aceptar');
+}
+
+// Flujo existente:
+if (!$user->rol_seleccionado && !$user->isAdmin()) {
+    return redirect()->route('rol.seleccionar');
+}
+return redirect()->intended(route('dashboard'));
+```
+El middleware también lo capturará, pero esta redirección explícita es más limpia y evita
+que el middleware tenga que actuar sobre el redirect de Google.
+
+---------------------------------------------------------------------------
+PARTE F — Formulario de REGISTRO normal (email/password)
+---------------------------------------------------------------------------
+En `Register.vue`:
+- Reemplazar el bloque condicional de Jetstream por un checkbox SIEMPRE VISIBLE:
+  ```html
+  <div class="pt-1">
+      <label class="flex items-start gap-3 cursor-pointer">
+          <Checkbox id="aviso" v-model:checked="form.acepta_aviso" name="acepta_aviso"
+                    required class="mt-0.5" />
+          <span class="text-sm text-gray-500 dark:text-gray-400">
+              Al registrarme, acepto el
+              <Link :href="route('aviso.privacidad')" target="_blank"
+                    class="text-guinda-700 dark:text-guinda-400 underline">
+                  Aviso de Privacidad
+              </Link>
+              del Instituto Yucateco de Emprendedores (IYEM).
+          </span>
+      </label>
+      <InputError class="mt-1.5" :message="form.errors.acepta_aviso" />
+  </div>
+  ```
+- Agregar `acepta_aviso: false` al `useForm({...})`.
+- Botón deshabilitado si `!form.acepta_aviso`: `:disabled="form.processing || !form.acepta_aviso"`.
+- En el backend (RegisteredUserController::store), agregar validación:
+  `'acepta_aviso' => ['required', 'accepted']`
+  Y al crear el usuario, guardar directamente: `'acepta_aviso_at' => now()`
+  (el usuario marcó el checkbox → ya aceptó → no necesita ver la pantalla intermedia).
+
+---------------------------------------------------------------------------
+PARTE G — Aviso informativo en LOGIN
+---------------------------------------------------------------------------
+En `Login.vue`, debajo del botón de submit, agregar texto informativo:
+```html
+<p class="text-xs text-center text-gray-400 dark:text-gray-600 mt-2">
+    Al ingresar, aceptas nuestro
+    <Link :href="route('aviso.privacidad')" target="_blank"
+          class="text-guinda-600 dark:text-guinda-400 underline">
+        Aviso de Privacidad
+    </Link>.
+</p>
+```
+(El middleware ya se encarga de interceptar a cualquier usuario sin `acepta_aviso_at`.)
+
+---------------------------------------------------------------------------
+RESUMEN DE FLUJOS CUBIERTOS POR ESTE CAMBIO:
+---------------------------------------------------------------------------
+  ✓ Registro nuevo (email):    checkbox en el form → acepta_aviso_at se guarda al crear cuenta.
+  ✓ Google (usuario nuevo):    AvisoAceptacionController::show() → pantalla de aceptación.
+  ✓ Google (usuario existente sin acepta): middleware → pantalla de aceptación.
+  ✓ Login email (usuario sin acepta): middleware → pantalla de aceptación.
+  ✓ Usuario antiguo ya logueado: middleware lo intercepta en próxima request → pantalla.
+  ✓ Admin/Super Admin: exentos del middleware (no aplica el aviso a ellos).
+
+==========================================
+CAMBIO 5: Pregunta "¿Pertenece a alguna cámara o asociación?" en perfil de comprador
+==========================================
+PARTE A — Base de datos y modelo
+
+1. Migración: agregar dos columnas a la tabla `users`:
+```php
+$table->string('camara_asociacion', 50)->nullable()->after('nombre_empresa');
+// Valores posibles: 'CANIRAC', 'Ninguna'
+$table->string('nombre_establecimiento', 255)->nullable()->after('camara_asociacion');
+// Requerido solo cuando camara_asociacion = 'CANIRAC'
+```
+
+2. Agregar al `$fillable` de `app/Models/User.php`:
+```php
+'camara_asociacion',
+'nombre_establecimiento',
+```
+
+3. Exponer en `HandleInertiaRequests.php` dentro de `auth.user` (en el array `->only([...])` que ya existe): agregar `camara_asociacion` y `nombre_establecimiento`.
+
+PARTE B — Validación en el backend
+
+En `CompletarPerfilController`, actualizar AMBOS métodos (`store` y `actualizarComprador`):
+```php
+$request->validate([
+    // ... validaciones existentes ...
+    'camara_asociacion'    => ['nullable', 'string', 'in:CANIRAC,Ninguna'],
+    'nombre_establecimiento' => [
+        'nullable',
+        'string',
+        'max:255',
+        Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),
+    ],
+]);
+
+$request->user()->update([
+    // ... campos existentes ...
+    'camara_asociacion'      => $request->camara_asociacion,
+    'nombre_establecimiento' => $request->camara_asociacion === 'CANIRAC'
+                                ? $request->nombre_establecimiento
+                                : null,  // limpiar si cambió a "Ninguna"
+]);
+```
+Agregar `use Illuminate\Validation\Rule;` al controller si no existe.
+
+PARTE C — Formulario de primera vez (CompletarPerfil.vue)
+
+En `resources/js/Pages/Auth/CompletarPerfil.vue`, agregar ANTES del botón de submit:
+
+```html
+<!-- Cámara o asociación -->
+<div>
+    <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+        ¿Pertenece a alguna cámara o asociación?
+    </label>
+    <div class="flex flex-col sm:flex-row gap-3">
+        <label v-for="opcion in ['CANIRAC', 'Ninguna']" :key="opcion"
+               class="flex items-center gap-2.5 cursor-pointer px-4 py-3 rounded-xl border transition-all"
+               :class="form.camara_asociacion === opcion
+                   ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-500/10 dark:border-guinda-500'
+                   : 'border-gray-200 dark:border-gray-700 hover:border-guinda-300 dark:hover:border-guinda-600'">
+            <input type="radio" :value="opcion" v-model="form.camara_asociacion"
+                   class="accent-guinda-700" />
+            <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ opcion }}</span>
+        </label>
+    </div>
+    <InputError class="mt-1.5" :message="form.errors.camara_asociacion" />
+</div>
+
+<!-- Nombre del establecimiento (solo si CANIRAC) -->
+<Transition name="fade">
+    <div v-if="form.camara_asociacion === 'CANIRAC'" class="mt-3">
+        <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+            Nombre del restaurante, cafetería o establecimiento de alimentos <span class="text-red-500">*</span>
+        </label>
+        <input v-model="form.nombre_establecimiento" type="text" required
+               placeholder="Ej. Restaurante El Mesón de San Juan"
+               class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-guinda-400 focus:border-transparent transition-colors text-sm" />
+        <InputError class="mt-1.5" :message="form.errors.nombre_establecimiento" />
+    </div>
+</Transition>
+```
+
+Agregar al `useForm({...})`:
+```js
+camara_asociacion:    '',
+nombre_establecimiento: '',
+```
+
+PARTE D — Formulario de edición de perfil en Dashboard del comprador (User/Dashboard.vue)
+
+Localizar el modal de "Editar perfil" del comprador (buscar `actualizarComprador` o `@submit.prevent`). Agregar los mismos campos que en CompletarPerfil.vue: radio buttons de cámara/asociación y campo condicional de nombre del establecimiento. Inicializar con los valores actuales del usuario (`user.camara_asociacion`, `user.nombre_establecimiento`).
+
+PARTE E — Usuarios existentes que no han contestado
+
+Los usuarios que ya tienen `perfil_completo = true` pero `camara_asociacion IS NULL` no verán el formulario de primera vez. Para cubrirlos:
+
+1. En `User/Dashboard.vue`, mostrar un banner/alerta no bloqueante en la parte superior del panel si `auth.user.camara_asociacion === null || auth.user.camara_asociacion === ''`:
+```html
+<div v-if="!auth.user.camara_asociacion"
+     class="mb-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl flex items-start gap-3">
+    <svg class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" ...icono de info/advertencia... />
+    <div>
+        <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">Completa tu perfil</p>
+        <p class="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+            Tenemos una nueva pregunta para ti. Por favor actualiza tu perfil haciendo clic en "Editar perfil".
+        </p>
+    </div>
+</div>
+```
+
+2. Esto dirige al usuario al modal de edición donde encontrará la nueva pregunta. No es bloqueante — puede ignorarlo, pero el campo quedará vacío hasta que responda.
+
+3. En el panel del Super Admin (Gestión Usuarios / Edit.vue), también mostrar y permitir editar estos campos para usuarios existentes.
+
+==========================================
+CAMBIO 6: Boceto visual previo al deploy (OBLIGATORIO)
+==========================================
+ANTES de hacer cualquier deploy a producción, Claude Code debe:
+
+1. Crear un archivo `bocetos_v7.html` en la raíz del proyecto (o en el directorio de salidas) que contenga un boceto HTML estático mostrando visualmente los siguientes cambios:
+   - Panel de Gestión Usuarios: tabla con badges de roles mostrando "Comprador", "Proveedor", "Admin", "Super Admin" (sin JSON).
+   - Menú lateral con "Compradores" en lugar de "Usuarios".
+   - Aviso de Privacidad: sección del párrafo que se agregó sobre oposición a finalidades secundarias.
+   - Pantalla /aceptar-aviso: card con resumen del aviso, checkbox y botón continuar/cerrar sesión.
+   - Login: texto informativo debajo del botón.
+   - Registro: checkbox siempre visible con link al aviso de privacidad.
+   - Perfil comprador: radio buttons de cámara/asociación y campo condicional de establecimiento.
+   - Banner de "Completa tu perfil" en el dashboard para usuarios existentes.
+
+2. Presentar al usuario el archivo bocetos_v7.html (usando el sistema de archivos del proyecto para que pueda abrirlo en el navegador) y pedir confirmación explícita antes de hacer el deploy.
+
+3. Pasos de deploy SOLO después de confirmación:
+   a. `npm run build`
+   b. `git add . && git commit -m "V7: borrar eventos, roles amigables, Compradores menú, aviso privacidad corregido, aceptación aviso login/registro, cámara asociación comprador"`
+   c. `git push`
+   d. SSH al servidor Hostinger:
+      - `git pull`
+      - `composer install --no-dev --optimize-autoloader`
+      - `php artisan migrate --force` (agrega acepta_aviso_at, camara_asociacion y nombre_establecimiento a users)
+      - Ejecutar el borrado de eventos (CAMBIO 1) en producción — hacer mysqldump previo
+      - `php artisan optimize:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache`
+      - Copiar `public/build/` a la ruta correcta del subdominio impulsate.iyemyucatan.com
+
+==========================================
+VERIFICACIÓN FINAL
+==========================================
+- [ ] No existen eventos en la BD (tabla eventos vacía, citas y evento_usuario también limpias).
+- [ ] Gestión Usuarios muestra "Comprador", "Proveedor", "Admin", "Super Admin" — sin JSON crudo.
+- [ ] Menú lateral Admin dice "Compradores" (no "Usuarios") para la sección de clientes.
+- [ ] AvisoPrivacidad.vue tiene el texto completo e idéntico al PDF (párrafos de oposición a finalidades secundarias y medidas de seguridad incluidos).
+- [ ] Columna acepta_aviso_at en tabla users (migración ejecutada).
+- [ ] Middleware EnsureAvisoAceptado registrado y aplicado a rutas autenticadas de usuarios.
+- [ ] Pantalla /aceptar-aviso funciona: muestra resumen del aviso, checkbox obligatorio, botón "No acepto - cerrar sesión".
+- [ ] Google OAuth: usuario nuevo o existente sin acepta_aviso_at es redirigido a /aceptar-aviso antes de continuar.
+- [ ] Registro email: checkbox siempre visible, acepta_aviso_at guardado al crear la cuenta, botón deshabilitado hasta aceptar.
+- [ ] Usuario antiguo que inicia sesión: middleware lo intercepta y manda a /aceptar-aviso.
+- [ ] En Login: texto informativo pequeño con link al Aviso de Privacidad.
+- [ ] Admins exentos del middleware de aviso.
+- [ ] Formulario CompletarPerfil.vue: radio buttons CANIRAC/Ninguna con campo condicional de establecimiento (obligatorio si CANIRAC).
+- [ ] Dashboard comprador: modal de edición incluye los nuevos campos y pre-rellena con valores actuales.
+- [ ] Dashboard comprador: banner visible para usuarios sin camara_asociacion respondida.
+- [ ] Super Admin Gestión Usuarios/Edit.vue: puede ver y editar camara_asociacion/nombre_establecimiento.
+- [ ] Boceto HTML generado y revisado por el usuario antes del deploy.
+- [ ] Deploy realizado solo tras confirmación explícita del usuario.

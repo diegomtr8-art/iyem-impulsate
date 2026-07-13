@@ -1,0 +1,629 @@
+PROMPT PARA CLAUDE CODE — DEMO ZONA COMERCIAL V2 (MEJORADO)
+============================================================
+Este prompt reemplaza y mejora PROMPT_DEMO_LAYOUT.txt.
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3)
+Rutas públicas (ya creadas en V1, no duplicar):
+  GET /demo-prueba/layout  → resources/js/Pages/Demo/Layout.vue  ← REESCRIBIR
+  GET /demo-prueba/paid    → resources/js/Pages/Demo/Paid.vue    ← mantener sin cambios
+
+MEJORAS PRINCIPALES EN V2:
+  1. Modo Portrait en móvil (sin necesidad de rotar el teléfono)
+  2. Personas animadas caminando en la zona de "Paso de Gente"
+  3. Toggle Dark Mode / Light Mode con transición suave
+  4. 3D de mayor calidad: sombras, ambient occlusion, glow, texturas de carpa, bloom
+  5. Cámara isométrica fija optimizada para portrait (375×667) y landscape
+
+============================================================
+SECCIÓN A — ARQUITECTURA DE LA ESCENA THREE.JS
+============================================================
+Cargar Three.js r128 desde CDN tal como en V1.
+Además, cargar desde CDN estas utilidades (sin librerías externas de post-process que
+requieran módulos ES — todo inline o desde cdnjs):
+
+  GSAP 3 para tweens (animaciones suaves):
+  https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js
+
+RENDERER:
+  - THREE.WebGLRenderer({ antialias: true, alpha: true })
+  - renderer.shadowMap.enabled = true
+  - renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  - renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+  - renderer.toneMapping = THREE.ACESFilmicToneMapping
+  - renderer.toneMappingExposure = 1.2
+
+CÁMARA:
+  Usar PERSPECTIVA (no ortográfica) para mayor sensación de profundidad 3D.
+
+  DESKTOP/LANDSCAPE (ancho > 768px):
+    - fov: 45, position: (0, 28, 22), lookAt: (0, 0, 0)
+    - Permite ver toda la zona comercial de frente
+
+  PORTRAIT MÓVIL (ancho ≤ 768px):
+    - fov: 55, position: (-4, 22, 18), lookAt: (0, 0, 0)
+    - La cámara está más cerca y ligeramente ladeada para que la escena quepa verticalmente
+    - Escena escalada: renderer.setSize(containerWidth, containerHeight) dinámico
+    - El canvas llena el 60% superior de la pantalla; el 40% inferior es el panel de info
+      (o permanece vacío hasta que se seleccione un espacio)
+
+  Detectar orientación con:
+    const isMobile = () => window.innerWidth <= 768
+    const isPortrait = () => window.innerHeight > window.innerWidth
+    window.addEventListener('resize', () => ajustarCamara())
+    window.addEventListener('orientationchange', () => ajustarCamara())
+
+CONTROLES DE CÁMARA:
+  Implementar OrbitControls manual (mouse + touch):
+    - enableDamping: true (lerp factor 0.05)
+    - minDistance: 12, maxDistance: 50
+    - minPolarAngle: Math.PI/8 (no ver desde abajo)
+    - maxPolarAngle: Math.PI/2.5 (no quedar horizontal)
+    - En móvil portrait: deshabilitar orbit (cámara fija), solo pinch-zoom permitido
+    - Botones overlay [⊕ Zoom] [⊖ Zoom] [↺ Reset]
+
+============================================================
+SECCIÓN B — ILUMINACIÓN DE ALTA CALIDAD
+============================================================
+DARK MODE (fondo #0a0a0a, activado por defecto):
+
+  // Luz ambiental tenue
+  new THREE.AmbientLight(0xffffff, 0.25)
+
+  // Luz principal (sol nocturno/reflectores tipo motorsport)
+  const dirLight = new THREE.DirectionalLight(0xfff5e0, 1.4)
+  dirLight.position.set(12, 20, 10)
+  dirLight.castShadow = true
+  dirLight.shadow.mapSize.set(2048, 2048)
+  dirLight.shadow.camera.near = 0.5
+  dirLight.shadow.camera.far = 80
+  dirLight.shadow.camera.left = -25
+  dirLight.shadow.camera.right = 25
+  dirLight.shadow.camera.top = 25
+  dirLight.shadow.camera.bottom = -25
+  dirLight.shadow.bias = -0.001
+
+  // Luz de acento tipo foco de pista (desde abajo derecha, roja)
+  new THREE.PointLight(0xff3333, 0.6, 40).position.set(15, 3, -8)
+
+  // Luz de relleno fría (desde la izquierda)
+  new THREE.PointLight(0x334466, 0.4, 50).position.set(-15, 8, 5)
+
+  // Niebla atmosférica
+  scene.fog = new THREE.FogExp2(0x0a0a0a, 0.018)
+
+LIGHT MODE (fondo #f8f8f8, activado con toggle):
+
+  // Quitar niebla o hacer muy tenue
+  scene.fog = new THREE.FogExp2(0xe8e8e8, 0.010)
+
+  // Luz ambiental más fuerte (día soleado)
+  new THREE.AmbientLight(0xffffff, 0.7)
+
+  // Luz solar
+  const dirLight = new THREE.DirectionalLight(0xfff9e6, 1.2)
+  dirLight.position.set(12, 25, 10)
+  // Mantener sombras con los mismos parámetros
+
+  // Sin luces de acento de colores en light mode
+
+TOGGLE DARK/LIGHT:
+  - Botón flotante [🌙] / [☀️] en esquina superior derecha.
+  - Al activar/desactivar: cambiar renderer.setClearColor, scene.fog, lights intensities,
+    background del canvas, color del texto/panel lateral.
+  - Animar la transición con GSAP:
+    gsap.to(ambientLight, { intensity: 0.7, duration: 0.6, ease: 'power2.inOut' })
+  - Guardar preferencia en localStorage('demoTheme').
+
+============================================================
+SECCIÓN C — GEOMETRÍAS Y MATERIALES MEJORADOS
+============================================================
+SUELO:
+  - PlaneGeometry(60, 40), rotado -90° en X, color #1a1a1a (dark) / #d4d4d4 (light)
+  - receiveShadow = true
+  - Cuadrícula sutil: GridHelper(60, 30, 0x333333, 0x222222) en dark; (0xcccccc, 0xbbbbbb) en light
+
+ZONA DE STANDS COMERCIALES (filas de boxes):
+  Para cada espacio del array SPACES:
+
+  Outer shell (estructura del stand):
+    Usar THREE.Group por espacio. Contiene:
+
+    A) BASE (suelo del stand):
+       BoxGeometry(w, 0.05, d), MeshStandardMaterial, color más oscuro que el tipo.
+       receiveShadow = true
+
+    B) PAREDES (3 paredes trasera + 2 laterales):
+       BoxGeometry para cada pared, MeshStandardMaterial del color del tipo.
+       roughness: 0.6, metalness: 0.1
+       castShadow = true, receiveShadow = true
+
+    C) TECHO (carpa):
+       Usar CylinderGeometry(ancho/2 + 0.2, ancho/2, 0.6, 4) rotado para simular carpa
+       cuadrada con punta. Color del tipo ligeramente más claro (lighten 20%).
+       O bien: usar BoxGeometry con escalado en Y para simular tejadillo inclinado.
+       MeshStandardMaterial con roughness: 0.8
+
+    D) LETRERO FRONTAL (franja horizontal en la fachada):
+       BoxGeometry(w - 0.2, 0.3, 0.05), posición pegada al frente de la pared.
+       Color oscuro (#1a1a1a) con text renderizado via CanvasTexture:
+       ```js
+       const makeLabel = (text, color) => {
+         const canvas = document.createElement('canvas')
+         canvas.width = 256; canvas.height = 64
+         const ctx = canvas.getContext('2d')
+         ctx.fillStyle = '#111111'
+         ctx.fillRect(0, 0, 256, 64)
+         ctx.fillStyle = '#ffffff'
+         ctx.font = 'bold 36px Figtree, Arial'
+         ctx.textAlign = 'center'
+         ctx.textBaseline = 'middle'
+         ctx.fillText(text, 128, 32)
+         return new THREE.CanvasTexture(canvas)
+       }
+       ```
+       El letrero muestra el ID del espacio (ej: "L7") en blanco sobre fondo oscuro.
+
+    E) EFECTO GLOW en hover:
+       Al hacer hover, agregar un PointLight(colorDelTipo, 0.8, 3) dentro del Group del stand.
+       Al quitar hover, remover o bajar intensidad a 0 con GSAP.
+
+    F) STAND SELECCIONADO:
+       Agregar wireframe dorado: EdgesGeometry + LineSegments con LineBasicMaterial(0xf59e0b)
+       sobre las paredes del stand seleccionado. Quitar del anterior seleccionado.
+
+DIMENSIONES DE BOXES por tipo:
+  Tipo L (9×4 m): w=2.2, d=1.0, h_pared=1.4
+  Tipo M (6×4 m): w=1.5, d=1.0, h_pared=1.2
+  Tipo C (9×4 m): w=2.2, d=1.0, h_pared=1.4  (mismo que L, pero color verde)
+  Tipo B (9×4 m): w=2.2, d=1.0, h_pared=1.4  (mismo que L, pero color turquesa)
+
+COLORES (sin cambio respecto a V1):
+  L=#7c3aed (morado), M=#dc2626 (rojo), C=#16a34a (verde), B=#0891b2 (turquesa)
+  Vendidos: #4b5563 (gris), sin interacción.
+
+VENDIDOS (igual que V1):
+  const VENDIDOS = ['L1','M3','C1','B2','L8','M9','L15','C6','M16','L22','B7','M22']
+
+DISTRIBUCIÓN EN FILA (eje X):
+  Posicionar todos los stands en Z=0 (zona comercial central).
+  Separar los stands con gap de 0.15 entre sí.
+  Calcular el offset X acumulativo según el ancho de cada stand + gap.
+  Centrar todo el grupo en X=0.
+
+============================================================
+SECCIÓN D — ZONA DE GRADAS (NON-INTERACTIVA)
+============================================================
+Posicionar las gradas en Z = -8 (detrás del Paso de Gente desde la cámara).
+
+Renderizar 5 bloques escalonados. Cada bloque tiene 4 "escalones" de altura creciente:
+  Para cada escalón i (0..3):
+    BoxGeometry(ancho_seccion, 0.35, 0.6)
+    Posición Z: base_z - i*0.5 (escalones hacia atrás)
+    Posición Y: i * 0.35 + 0.175 (escalones hacia arriba)
+
+Secciones (de izquierda a derecha, ancho total disponible dividido en 5):
+  1. Gradas Generales izq  (#7f1d1d)
+  2. VIP izq               (#92400e) ← marrón dorado
+  3. Grada Principal        (#1e3a5f) ← azul marino
+  4. VIP der               (#92400e)
+  5. Gradas Generales der  (#7f1d1d)
+
+Labels de texto 3D flotantes sobre cada sección:
+  Usar Sprite con CanvasTexture (igual que el letrero de stands, pero con fondo semi-transparente).
+  Mostrar: "GRADAS\nGENERALES", "VIP", "GRADA\nPRINCIPAL", etc.
+
+"PERSONAS EN LAS GRADAS" — efecto de masa:
+  En cada escalón, dispersar pequeños cilindros (CylinderGeometry(0.06, 0.06, 0.25, 6)):
+    - Color aleatorio entre: naranja (#ea580c), rojo (#dc2626), blanco (#ffffff), amarillo (#eab308)
+    - Density: 1 figura cada 0.25 unidades de ancho en cada escalón
+    - Animación sutil: oscilación vertical individual con requestAnimationFrame
+      (cada figura tiene un phase offset aleatoria para que no se muevan todas igual):
+      figura.position.y = base_y + Math.sin(time * 2.0 + phase) * 0.03
+
+============================================================
+SECCIÓN E — PISTA (FONDO DE LA ESCENA)
+============================================================
+Posición Z = -18 (más al fondo).
+
+Elementos:
+  A) Asfalto principal:
+     PlaneGeometry(60, 8), color #111111, con líneas blancas usando EdgesGeometry
+     o TextureCanvas con líneas de carril pintadas.
+     receiveShadow = true
+
+  B) Línea central de meta:
+     BoxGeometry(0.3, 0.02, 8) color #f59e0b (dorado) cruzando el asfalto.
+
+  C) "PISTA" text Sprite grande sobre la pista.
+
+  D) Bandera de cuadros (CanvasTexture 8x8 cuadros blanco/negro) como PlaneGeometry(3, 2)
+     en el extremo derecho de la pista.
+
+  E) Barreras de seguridad: fila de BoxGeometry(0.3, 0.5, 0.3) alineados en Z=-14,
+     color alterno rojo/blanco.
+
+============================================================
+SECCIÓN F — PASO DE GENTE CON PERSONAS CAMINANDO (★ NUEVA FUNCIONALIDAD)
+============================================================
+Posicionar la franja "Paso de Gente" en Z = -4 (entre stands y gradas).
+PlaneGeometry(60, 3), color #2d2d2d (dark) / #e0e0e0 (light), receiveShadow.
+
+Arrows animadas de flujo (igual que V1):
+  Crear 6-8 flechas (→) usando geometrías triangulares simples (cono + cilindro) de color #f59e0b.
+  Animar su opacidad pulsando para indicar dirección de tráfico.
+
+── PERSONAS CAMINANDO ANIMADAS ─────────────────────────────
+
+Crear 15-20 figuras "peatón" distribuidas a lo largo del Paso de Gente.
+
+Cada figura es un THREE.Group con las siguientes partes (primitivas simples, no modelos):
+  - Cabeza: SphereGeometry(0.07, 8, 8)
+  - Torso: CylinderGeometry(0.06, 0.07, 0.25, 8)
+  - Pierna izq: CylinderGeometry(0.03, 0.03, 0.2, 6)
+  - Pierna der: CylinderGeometry(0.03, 0.03, 0.2, 6)
+  - Brazo izq: CylinderGeometry(0.025, 0.025, 0.18, 6)
+  - Brazo der: CylinderGeometry(0.025, 0.025, 0.18, 6)
+
+Paleta de colores de ropa aleatoria:
+  const coloresPeatones = ['#e74c3c','#3498db','#f39c12','#2ecc71','#9b59b6',
+                           '#1abc9c','#e67e22','#ecf0f1','#34495e','#f8b500']
+  Cada figura elige colores aleatorios para torso, piernas, cabeza.
+
+ANIMACIÓN DE CAMINAR (ciclo continuo via requestAnimationFrame):
+  Cada figura tiene propiedades: speed, direction (±1 = izquierda o derecha), phase.
+
+  En cada frame:
+  ```js
+  const t = clock.getElapsedTime()
+  peatones.forEach(p => {
+    // Mover horizontalmente
+    p.group.position.x += p.speed * p.direction * delta
+
+    // Rebote en bordes: si sale del rango X, invertir dirección y voltear
+    if (p.group.position.x > 28 || p.group.position.x < -28) {
+      p.direction *= -1
+      p.group.rotation.y = p.direction > 0 ? 0 : Math.PI
+    }
+
+    // Ciclo de caminar: oscilar piernas y brazos
+    const cycle = Math.sin(t * 4.5 + p.phase)
+    p.piernaIzq.rotation.x = cycle * 0.45
+    p.piernaDer.rotation.x = -cycle * 0.45
+    p.brazoIzq.rotation.x = -cycle * 0.3
+    p.brazoDer.rotation.x = cycle * 0.3
+
+    // Ligero bounce vertical del torso
+    p.group.position.y = p.baseY + Math.abs(Math.sin(t * 4.5 + p.phase)) * 0.025
+  })
+  ```
+
+  Speed por figura: random entre 0.015 y 0.04 (unidades por frame a 60fps).
+  Fase por figura: random 0..2π para que no se muevan sincronizadas.
+  Distribución Z: cada figura en un Z aleatorio entre -4.8 y -3.2 (dentro del Paso de Gente).
+
+SOMBRAS DE PERSONAS: cada parte de la figura tiene castShadow = true.
+
+============================================================
+SECCIÓN G — DISEÑO RESPONSIVE PORTRAIT (★ NUEVA FUNCIONALIDAD)
+============================================================
+OBJETIVO: en móvil portrait (375×667), el layout se divide en 2 secciones verticales:
+
+  ┌───────────────────────────────┐ ← 100vw
+  │                               │
+  │   CANVAS 3D (Three.js)        │ ← 58vh
+  │                               │
+  ├───────────────────────────────┤
+  │  HEADER DEL EVENTO            │ ← 8vh (logo + nombre + contador)
+  ├───────────────────────────────┤
+  │  PANEL DE ESPACIO SELECCIONADO│ ← 34vh (scrolleable si es necesario)
+  │  (aparece al tocar un stand)  │
+  │  — o mensajes de instrucciones│
+  └───────────────────────────────┘
+
+CSS para el layout en portrait:
+```css
+/* Contenedor principal */
+.demo-layout-container {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh; /* dvh para móvil (excluye barra de navegación) */
+  overflow: hidden;
+}
+
+/* Canvas 3D */
+#three-canvas-wrapper {
+  flex: 0 0 58vh;
+  position: relative;
+}
+
+/* Header del evento (mobile) */
+.mobile-event-header {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  background: #111;  /* dark */  /* o #fff en light */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Panel inferior */
+.space-info-panel {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px;
+}
+```
+
+CÁMARA EN PORTRAIT:
+  const cameras = {
+    portrait:  { pos: [0, 30, 16], fov: 52 },  // más alto, más cerca en Z
+    landscape: { pos: [0, 28, 22], fov: 45 },
+  }
+  Al cambiar orientación, animar cámara con GSAP:
+  gsap.to(camera.position, { x: target.x, y: target.y, z: target.z, duration: 1.2, ease: 'power2.inOut' })
+
+CONTROLES EN PORTRAIT (TOUCH):
+  - Solo pinch-to-zoom (2 dedos) → ajusta camera.position.z
+  - Tap en un stand → seleccionarlo (mostrar panel inferior)
+  - Tap fuera de un stand → deseleccionar (limpiar panel inferior)
+  - NO orbit con 1 dedo en portrait (evita confusion con scroll del panel)
+  - Mostrar hint "Pellizca para zoom" la primera vez
+
+============================================================
+SECCIÓN H — UI OVERLAY MEJORADA
+============================================================
+Todos los elementos UI son divs HTML sobre el canvas (position: absolute/fixed).
+Diseñados para verse perfectos en AMBOS modos (dark/light).
+
+── NAVBAR (solo desktop) ───────────────────────────────────
+  Header fijo, altura 60px.
+  Dark: bg rgba(0,0,0,0.85) + backdrop-blur, borde inferior #f59e0b.
+  Light: bg rgba(255,255,255,0.9) + backdrop-blur, borde inferior #f59e0b.
+
+  Elementos:
+    - Logo "Y·200" estilizado (monospaced font, color guinda #8b1028)
+    - Título "ZONA COMERCIAL — Layout Interactivo"
+    - Contador animado "XX de YY disponibles" + barra de progreso
+    - Toggle Dark/Light [🌙|☀️] — botón pill, animado
+    - "← Volver" link
+
+── TOOLTIP EN HOVER ─────────────────────────────────────────
+  Small tooltip que sigue al cursor/touch (pointer-events: none).
+  Dark: bg #000 con borde del color del tipo, texto blanco.
+  Light: bg #fff con border del color del tipo, sombra, texto oscuro.
+  Contenido: "[ID] • $[Precio] MXN • Toca para info"
+
+── PANEL LATERAL (desktop ≥ 768px) ─────────────────────────
+  Slide-in desde la derecha, width: 360px, height: 100vh.
+  Dark:  bg #0d1117, border-left: 3px solid [colorTipo]
+  Light: bg #ffffff, border-left: 3px solid [colorTipo], box-shadow fuerte
+  Contenido idéntico a V1 (ID, tipo, tamaño, precio, lista incluidos, botón reservar).
+
+── PANEL INFERIOR (portrait < 768px) ───────────────────────
+  Ocupa el 34% inferior de la pantalla.
+  Dark:  bg #0d1117, border-top: 2px solid [colorTipo]
+  Light: bg #ffffff, border-top: 2px solid [colorTipo]
+  Versión compacta del panel lateral: nombre, precio grande, tipo, botón reservar.
+  Si nada seleccionado: mostrar instrucciones con ícono 👆 y "Toca un espacio para ver info".
+
+── LEYENDA (mobile: colapso en icono ℹ️) ────────────────────
+  Desktop: leyenda flotante abajo-izquierda (igual que V1).
+  Mobile: botón [ℹ️] que despliega modal/drawer con la leyenda completa.
+
+── BOTONES DE ZOOM (mobile) ─────────────────────────────────
+  Dos botones flotantes [+] [-] en la esquina inferior derecha del canvas,
+  tamaño 48×48px, bg guinda #8b1028, texto blanco, border-radius 50%.
+  Solo visibles en portrait.
+
+── HINT DE CARGA ────────────────────────────────────────────
+  Pantalla de carga con:
+    Logo "Y·200" grande pulsando (CSS animation: pulse 1s ease-in-out infinite)
+    Barra de progreso: simular 0→100% en 2.5s (setTimeout)
+    Texto: "Cargando Zona Comercial..."
+  Al terminar: fadeOut con CSS transition, después removerse del DOM.
+
+============================================================
+SECCIÓN I — TOGGLE DARK MODE / LIGHT MODE (★ NUEVA FUNCIONALIDAD)
+============================================================
+Estado reactivo Vue: const isDark = ref(true)
+
+Al cambiar:
+```js
+const toggleTheme = () => {
+  isDark.value = !isDark.value
+  localStorage.setItem('demoTheme', isDark.value ? 'dark' : 'light')
+  applyTheme(isDark.value)
+}
+
+const applyTheme = (dark) => {
+  // Fondo del renderer
+  renderer.setClearColor(dark ? 0x0a0a0a : 0xf4f4f4, 1)
+
+  // Fog
+  scene.fog = dark
+    ? new THREE.FogExp2(0x0a0a0a, 0.018)
+    : new THREE.FogExp2(0xe8e8e8, 0.010)
+
+  // Suelo
+  gsap.to(groundMaterial.color, { r: dark?0.06:0.83, g: dark?0.06:0.83, b: dark?0.06:0.83, duration:0.6 })
+
+  // Luz ambiental
+  gsap.to(ambientLight, { intensity: dark ? 0.25 : 0.7, duration: 0.6 })
+
+  // Luz direccional
+  gsap.to(dirLight, { intensity: dark ? 1.4 : 1.2, duration: 0.6 })
+
+  // Luces de acento (solo dark)
+  accentLights.forEach(l => gsap.to(l, { intensity: dark ? 0.5 : 0, duration: 0.6 }))
+
+  // UI: cambiar clases CSS del container padre
+  document.getElementById('demo-root').className = dark ? 'demo-dark' : 'demo-light'
+}
+```
+
+CSS variables para temas (en la sección <style> del componente Vue):
+```css
+.demo-dark {
+  --bg-panel:    #0d1117;
+  --bg-header:   rgba(0,0,0,0.85);
+  --text-primary:#f0f0f0;
+  --text-secondary:#9ca3af;
+  --border-subtle:#1f2937;
+}
+.demo-light {
+  --bg-panel:    #ffffff;
+  --bg-header:   rgba(255,255,255,0.92);
+  --text-primary:#111827;
+  --text-secondary:#6b7280;
+  --border-subtle:#e5e7eb;
+}
+```
+
+Usar estas variables en todos los elementos UI (panels, navbar, leyenda).
+
+============================================================
+SECCIÓN J — DATOS DE ESPACIOS (igual que V1, no cambiar)
+============================================================
+Mismo array SPACES y constante VENDIDOS del PROMPT_DEMO_LAYOUT.txt.
+Precios: L/C/B = $8,500 MXN, M = $5,500 MXN (C y B = $9,500 MXN).
+
+============================================================
+SECCIÓN K — LOOP DE ANIMACIÓN PRINCIPAL
+============================================================
+```js
+const clock = new THREE.Clock()
+let animFrameId
+
+const animate = () => {
+  animFrameId = requestAnimationFrame(animate)
+  const delta = clock.getDelta()
+  const elapsed = clock.getElapsedTime()
+
+  // 1. Actualizar controles de cámara (damping)
+  updateCameraControls(delta)
+
+  // 2. Animar peatones
+  animatePeatones(elapsed, delta)
+
+  // 3. Animar figuras en gradas (bounce sutil)
+  animateGradaFigures(elapsed)
+
+  // 4. Hover de stand (raycasting)
+  if (needsRaycast) updateHover()
+
+  // 5. Pulsación del stand seleccionado (escala Y del techo ±0.005)
+  if (selectedMesh) {
+    const techo = selectedMesh.userData.techoMesh
+    if (techo) techo.scale.y = 1 + Math.sin(elapsed * 2) * 0.02
+  }
+
+  // 6. Flechas de Paso de Gente (opacidad pulsante)
+  animarFlechas(elapsed)
+
+  renderer.render(scene, camera)
+}
+
+animate()
+
+// Cleanup en onUnmounted:
+cancelAnimationFrame(animFrameId)
+renderer.dispose()
+```
+
+============================================================
+SECCIÓN L — OPTIMIZACIONES DE RENDIMIENTO MÓVIL
+============================================================
+- En dispositivos de bajo rendimiento (detectar con < 4 CPU cores o GPU tier):
+  * Reducir número de peatones a 8 (en vez de 20)
+  * Desactivar sombras: renderer.shadowMap.enabled = false
+  * Reducir calidad shadow map a 512
+  * Usar renderer.setPixelRatio(1) en lugar de devicePixelRatio
+
+- Detectar rendimiento con:
+  ```js
+  const isLowEnd = navigator.hardwareConcurrency <= 2
+  if (isLowEnd) { /* ajustes de bajo rendimiento */ }
+  ```
+
+- Geometrías compartidas: crear una sola geometría por tipo y reutilizar con clone() o
+  InstancedMesh para las gradas/figuras repetitivas.
+
+- Raycasting: solo ejecutar en mousemove/touchmove, no en cada frame.
+  Usar throttle de 50ms para el evento de mouse.
+
+============================================================
+SECCIÓN M — FALLBACK 2D (sin WebGL)
+============================================================
+Si Three.js falla al inicializar, mostrar vista SVG 2D top-down.
+El SVG debe:
+  - Ser responsive (viewBox escalable)
+  - Mostrar todas las secciones del layout con sus colores
+  - Ser interactivo: hover y click en los mismos stands
+  - Abrir el mismo panel de info al hacer click
+
+```js
+const initScene = () => {
+  try {
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
+    // ...inicialización normal
+  } catch(e) {
+    console.warn('WebGL no disponible, usando vista 2D', e)
+    usarVista2D.value = true
+  }
+}
+```
+
+El SVG 2D tiene exactamente los mismos datos y la misma lógica de UI que la vista 3D.
+
+============================================================
+SECCIÓN N — PÁGINA /demo-prueba/paid (SIN CAMBIOS DE V1)
+============================================================
+La página Paid.vue del V1 ya está bien diseñada. Mantener sin cambios.
+Solo verificar que funcione correctamente con los query params.
+
+============================================================
+SECCIÓN O — VERIFICACIÓN FINAL
+============================================================
+Antes de dar por terminada la implementación, verificar:
+
+MOBILE PORTRAIT:
+  □ En iPhone SE (375×667): canvas ocupa 58vh, panel inferior visible sin scroll externo
+  □ Las figuras de peatones se ven caminando en el Paso de Gente
+  □ Tap en stand abre panel inferior con info y botón de reserva
+  □ Pinch-to-zoom funciona correctamente
+  □ Botones de zoom [+][-] visibles y funcionales
+  □ NO se pide rotar el teléfono en ningún momento
+  □ La leyenda es accesible mediante botón [ℹ️]
+
+DARK MODE:
+  □ Fondo negro, niebla oscura, luces de acento rojas y frías visibles
+  □ Panel lateral/inferior con fondo #0d1117 y texto blanco
+  □ Navbar semitransparente oscuro
+
+LIGHT MODE (al presionar toggle ☀️):
+  □ Fondo cambia a #f4f4f4 suavemente
+  □ Niebla clara, sin luces de acento de colores
+  □ Paneles con fondo blanco y texto oscuro
+  □ Navbar blanco semitransparente
+  □ Los stands mantienen sus colores (morado/rojo/verde/turquesa visible sobre blanco)
+  □ Sombras más nítidas y visibles en modo claro
+
+3D CALIDAD:
+  □ Sombras suaves (PCFSoftShadowMap) visibles en suelo y entre stands
+  □ Cada stand tiene techo de carpa con textura de color
+  □ Letrero frontal con ID del espacio legible
+  □ Glow/PointLight aparece al hacer hover en stands disponibles
+  □ Wireframe dorado visible en stand seleccionado
+  □ Peatones animados caminando de un lado al otro en Paso de Gente
+  □ Figuras de espectadores en gradas con leve animación
+  □ Pista con asfalto, líneas de carril, bandera de cuadros y barreras
+
+GENERAL:
+  □ Toggle dark/light funciona sin recargar la página
+  □ Preferencia de tema se guarda en localStorage
+  □ Pantalla de carga aparece y desaparece correctamente
+  □ Counter de disponibles se actualiza si se implementa futura lógica
+  □ Botón "Reservar Espacio" redirige a /demo-prueba/paid con params correctos
+  □ npm run build sin errores
+
+NO hacer deploy a producción hasta que el usuario confirme.

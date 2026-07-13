@@ -1,0 +1,599 @@
+=========================================================
+PROMPT — MEJORAS V3: CITAS, SLOTS, CONTACTO, PERFIL,
+         LANDING Y DEPLOY
+=========================================================
+
+STACK: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Color primario: guinda (#8b1028). darkMode: 'class'.
+URL producción: https://lightcyan-mallard-509513.hostingersite.com/
+
+=========================================================
+CONTEXTO — LO QUE EXISTE HOY
+=========================================================
+
+- MAX_CITAS en User/Dashboard.vue usa: props.evento?.max_citas_por_comprador ?? 12
+  ⚠️ El fallback es 12, pero si el evento dice 3, debería mostrar 3.
+
+- timeSlots en Restauranteros/Show.vue está HARDCODEADO:
+  ['09:00','09:30','10:00'...] → siempre de 30 en 30 min.
+  No lee tiempo_entre_citas_minutos del evento.
+
+- La duración de la cita viene de servicio.duracion_minutos (fijo en BD).
+  El evento tiene tiempo_entre_citas_minutos pero no se usa en el calendario.
+
+- Restauranteros/Show.vue línea 265-267: muestra telefono del proveedor públicamente.
+- Restauranteros/Show.vue línea 287: texto hardcodeado "30 minutos · Sin costo para el empresario"
+- Restauranteros/Show.vue línea 120: texto hardcodeado "30 minutos · Sin costo · Gobierno de Yucatán"
+
+- User model $fillable: name, email, password, telefono, curp,
+  active_role, rol_seleccionado, necesidades, perfil_completo, sitio_web
+  ⚠️ Faltan: rfc, municipio, nombre_empresa
+
+- CompletarPerfilController::store() solo guarda: telefono, curp
+
+- EventoRegistroController::registrarProveedor() actualmente registra
+  también como comprador si tiene rol cliente → CAMBIAR a registro independiente.
+
+- Welcome.vue: tiene sección "Proveedores Destacados" y link "Proveedores" en navbar.
+
+=========================================================
+CAMBIO 1 — MAX CITAS: MOSTRAR EL LÍMITE REAL DEL EVENTO
+=========================================================
+
+PROBLEMA:
+  User/Dashboard.vue: const MAX_CITAS = computed(() => props.evento?.max_citas_por_comprador ?? 12)
+  El fallback 12 es incorrecto. Si el evento tiene max_citas_por_comprador = 3,
+  debe mostrar "0/3", no "0/12".
+
+CORRECCIÓN en User/Dashboard.vue:
+  const MAX_CITAS = computed(() => props.evento?.max_citas_por_comprador ?? 3)
+  // Cambiar fallback de 12 → 3 (el default del modelo es 3)
+
+  Verificar también que CitaPublicaController::dashboard() pase el evento
+  completo incluyendo max_citas_por_comprador al prop 'evento'.
+  Buscar en el método: Inertia::render('User/Dashboard', [...])
+  y confirmar que 'evento' incluye max_citas_por_comprador.
+
+CORRECCIÓN en Restaurantero/Panel.vue:
+  Buscar donde se muestra "Citas usadas X/Y" o el stat de total en evento.
+  Asegurarse de que el denominador use evento.max_citas_por_comprador
+  y no un valor hardcodeado.
+
+=========================================================
+CAMBIO 2 — SLOTS DEL CALENDARIO DINÁMICOS SEGÚN EL EVENTO
+=========================================================
+
+OBJETIVO: Si el evento tiene tiempo_entre_citas_minutos = 10,
+el calendario debe mostrar slots de 10 min (10:00, 10:10, 10:20...).
+Si es 30, slots de 30. Solo permitir múltiplos de 5.
+
+2.1 — MIGRACIÓN: Validar tiempo_entre_citas_minutos como múltiplo de 5
+
+  En EventoController::store() y update():
+  Agregar regla de validación:
+    'tiempo_entre_citas_minutos' => [
+        'nullable', 'integer', 'min:5', 'max:120',
+        function ($attribute, $value, $fail) {
+            if ($value % 5 !== 0) {
+                $fail('El tiempo entre citas debe ser múltiplo de 5 (5, 10, 15, 20, 25, 30...).');
+            }
+        },
+    ],
+
+  En el formulario admin (Admin/Eventos/Index.vue):
+  Agregar hint debajo del input: "Debe ser múltiplo de 5 (ej: 10, 15, 30)"
+  Agregar step="5" al input type="number" para forzar múltiplos de 5.
+
+2.2 — PASAR tiempo_entre_citas_minutos AL FRONTEND
+
+  En RestauranteroPublicoController::show():
+  El prop 'evento' ya se pasa. Verificar que incluya tiempo_entre_citas_minutos.
+  Si no lo incluye, agregarlo al array:
+    'evento' => $evento ? [
+        'nombre'                         => $evento->nombre,
+        'tiempo_entre_citas_minutos'     => $evento->tiempo_entre_citas_minutos ?? 30,
+        // ... resto de campos existentes
+    ] : null,
+
+  También actualizar HandleInertiaRequests::share() → 'eventoActivo'
+  para incluir tiempo_entre_citas_minutos.
+
+2.3 — CALENDAR DINÁMICO en Restauranteros/Show.vue
+
+  ANTES (línea 46 aprox):
+    const timeSlots = ['09:00','09:30','10:00','10:30',...];  // hardcodeado cada 30min
+
+  DESPUÉS — Generar timeSlots dinámicamente:
+
+  const intervalo = computed(() => {
+      const t = props.evento?.tiempo_entre_citas_minutos ?? 30;
+      // Asegurar múltiplo de 5, mínimo 5
+      return Math.max(5, Math.round(t / 5) * 5);
+  });
+
+  const timeSlots = computed(() => {
+      const slots = [];
+      const inicio = 9 * 60;   // 09:00 en minutos
+      const fin    = 16 * 60;  // 16:00 en minutos (último inicio posible)
+      const paso   = intervalo.value;
+      for (let min = inicio; min < fin; min += paso) {
+          const hh = String(Math.floor(min / 60)).padStart(2, '0');
+          const mm = String(min % 60).padStart(2, '0');
+          slots.push(`${hh}:${mm}`);
+      }
+      return slots;
+  });
+
+  NOTA: timeSlots era const array → ahora es computed. Actualizar todas
+  las referencias a timeSlots en el template para usar timeSlots.value
+  (o simplemente timeSlots si se usa en el template directamente con Vue 3).
+
+2.4 — DURACIÓN DE LA CITA: sincronizar con el evento
+
+  En CitaPublicaController::store():
+  La duración actual viene de servicio.duracion_minutos.
+  Cambiar para que use el tiempo del evento si existe:
+
+    $duracion = $evento->tiempo_entre_citas_minutos
+                ?? $servicio->duracion_minutos
+                ?? 30;
+    $fin = $inicio->copy()->addMinutes($duracion);
+
+  También actualizar el Servicio del proveedor cuando el admin crea/activa
+  un evento: en EventoController::activar(), actualizar todos los servicios
+  de proveedores aprobados en ese evento:
+    Servicio::whereIn('restaurantero_id',
+        Restaurantero::where('edicion_id', $evento->id)->pluck('id')
+    )->update(['duracion_minutos' => $evento->tiempo_entre_citas_minutos ?? 30]);
+
+2.5 — TEXTO DINÁMICO en Restauranteros/Show.vue
+
+  ANTES (texto hardcodeado en dos lugares):
+    "30 minutos · Sin costo para el empresario"
+    "30 minutos · Sin costo · Gobierno de Yucatán"
+
+  DESPUÉS — Usar el valor real del evento:
+
+  // En <script setup>:
+  const duracionTexto = computed(() => {
+      const min = props.evento?.tiempo_entre_citas_minutos ?? 30;
+      return `${min} minutos · Sin costo · Gobierno de Yucatán`;
+  });
+
+  // En el template, reemplazar las dos líneas hardcodeadas por:
+  {{ duracionTexto }}
+
+=========================================================
+CAMBIO 3 — OCULTAR INFORMACIÓN DE CONTACTO DEL PROVEEDOR
+=========================================================
+
+REGLA: El teléfono del proveedor es información privada. Solo el admin lo ve.
+
+3.1 — Restauranteros/Show.vue (página pública del proveedor):
+  Buscar y eliminar completamente el bloque que muestra restaurantero.telefono:
+
+  ELIMINAR estas líneas (aprox línea 265-268):
+    <div v-if="restaurantero.telefono" class="flex items-center gap-2.5 ...">
+      ...
+      {{ restaurantero.telefono }}
+    </div>
+
+  También buscar y eliminar: restaurantero.direccion si se muestra públicamente.
+  La dirección física tampoco debe mostrarse al público en el perfil del proveedor.
+
+3.2 — RestauranteroPublicoController::show():
+  El objeto $restaurantero que se pasa al frontend NO debe incluir telefono ni direccion.
+  Cambiar el load/only del restaurantero para excluirlos:
+
+  // En el return de Inertia::render, en lugar de pasar $restaurantero completo:
+  'restaurantero' => array_merge(
+      $restaurantero->only([
+          'id', 'nombre_restaurante', 'descripcion', 'municipio',
+          'categoria', 'logo_path', 'foto_path', 'productos_top',
+          'categorias_json', 'sitio_web', 'redes_sociales',
+          'activo', 'aprobado',
+      ]),
+      ['citas_count' => $restaurantero->citas->count()]
+  ),
+  // NO incluir: telefono, rfc, direccion, user_id
+
+3.3 — Restaurantero/Panel.vue (panel del proveedor):
+  Buscar el teléfono del CLIENTE en la vista de citas del proveedor.
+  Línea aprox 516: cita.cliente.telefono
+  MANTENER: El proveedor SÍ puede ver el teléfono del comprador que agendó
+  con él (para coordinar), solo ocultar el teléfono del proveedor al público.
+
+3.4 — RestauranteroPanelController::index():
+  Verificar que el array de mapCita que devuelve las citas al panel del proveedor
+  incluya los datos del cliente (nombre, email, teléfono) — eso está bien.
+  Solo asegurarse de que el restaurantero no exponga su propio teléfono
+  en las rutas públicas.
+
+=========================================================
+CAMBIO 4 — REGISTRO INDEPENDIENTE AL EVENTO (sin auto-dual)
+=========================================================
+
+REVERTIR el cambio del prompt anterior que hacía registro dual automático.
+
+NUEVA LÓGICA en EventoRegistroController::registrarProveedor():
+  Registrar SOLO como proveedor, sin tocar el rol de comprador.
+  Si el usuario tiene ambos roles, debe registrarse al evento
+  por separado: una vez como proveedor y otra como comprador.
+
+  ELIMINAR el bloque que auto-registra como comprador:
+    // ❌ ELIMINAR ESTE BLOQUE COMPLETO:
+    if ($tieneRolCliente) {
+        // registro automático como comprador...
+    }
+
+  Dejar registrarProveedor() solo registrando tipo = 'proveedor'.
+  Dejar registrarComprador() solo registrando tipo = 'comprador'.
+
+ACTUALIZAR la UI en TabEventos.vue (o donde se muestre el CTA):
+
+  Para usuario con AMBOS roles, mostrar DOS botones separados
+  (si la ventana correspondiente está abierta para cada uno):
+
+  <!-- Botón de proveedor (si ventana de proveedores abierta) -->
+  <button v-if="esProveedor && ventanaProveedoresAbierta && !registradoComoProveedor"
+    @click="registrarAlEvento('proveedor')">
+    Registrarme como Proveedor
+  </button>
+
+  <!-- Botón de comprador (si ventana de compradores abierta) -->
+  <button v-if="esComprador && ventanaCompradoresAbierta && !registradoComoComprador"
+    @click="registrarAlEvento('comprador')">
+    Registrarme como Comprador
+  </button>
+
+  Si solo tiene un rol, mostrar solo el botón correspondiente.
+  Los botones son independientes y se muestran/ocultan según la ventana temporal.
+
+=========================================================
+CAMBIO 5 — NOTIFICACIONES AL PROVEEDOR CUANDO SE AGENDA CITA
+=========================================================
+
+VERIFICAR que el flujo funcione correctamente de punta a punta:
+
+5.1 — CitaPublicaController::store() — Verificar notificación al proveedor:
+  Buscar el bloque de notificaciones (aprox al final de store()).
+  Confirmar que existe:
+
+    if ($proveedorUserId = $cita->restaurantero->user?->id) {
+        Notificacion::crear(
+            $proveedorUserId,
+            'cita_nueva',
+            'Nueva cita solicitada',
+            "{$cita->cliente->name} agendó una cita contigo para el {$fechaFmt}.",
+            $cita->id
+        );
+    }
+
+  Si no existe, agregarlo. Si existe, verificar que $cita->restaurantero->user
+  esté cargado (eager load) antes del bloque.
+
+5.2 — Restaurantero/Panel.vue — Verificar acciones sobre citas pendientes:
+  Las citas pendientes deben mostrar los botones: Aceptar · Rechazar · Reagendar
+  Verificar que existen y funcionan en la lista todasLasCitas.
+
+  Si los botones solo aparecen en /proveedor/citas pero no en /proveedor/panel,
+  agregarlos también en el panel principal para las citas pendientes.
+
+  El formato de los botones debe ser:
+    <button @click="accion('aceptar', cita)" v-if="cita.estado === 'pendiente'">
+      Aceptar
+    </button>
+    <button @click="accion('rechazar', cita)" v-if="cita.estado === 'pendiente'">
+      Rechazar
+    </button>
+    <button @click="abrirReagendar(cita)"
+      v-if="['pendiente','confirmada'].includes(cita.estado)">
+      Reagendar
+    </button>
+
+5.3 — Verificar rutas del proveedor en routes/web.php:
+  Confirmar que existen:
+    PATCH /proveedor/citas/{cita}/aceptar  → restaurantero.citas.aceptar
+    PATCH /proveedor/citas/{cita}/rechazar → restaurantero.citas.rechazar
+    POST  /proveedor/citas/{cita}/reagendar → restaurantero.citas.reagendar
+
+5.4 — RestauranteroCitasController — Verificar que al aceptar/rechazar:
+  - Se actualiza el estado en la BD
+  - Se envía email al comprador
+  - Se crea notificación in-app al comprador
+  Si alguno de estos falta, agregarlo.
+
+=========================================================
+CAMBIO 6 — TÍTULO "PROVEEDORES DEL EVENTO [NOMBRE]"
+=========================================================
+
+Archivo: resources/js/Pages/Restauranteros/Index.vue
+Archivo: resources/js/Pages/Restauranteros/Show.vue (título de sección si aplica)
+
+6.1 — En la página /restauranteros (Restauranteros/Index.vue):
+  Buscar el título de la página o el h1/h2 que dice "Proveedores" o similar.
+  Cambiar para que muestre el nombre del evento activo si existe:
+
+  // En <script setup>:
+  const page = usePage();
+  const eventoActivo = computed(() => page.props.eventoActivo);
+  const tituloPagina = computed(() =>
+      eventoActivo.value
+          ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
+          : 'Proveedores'
+  );
+
+  // En el template, reemplazar el título hardcodeado por:
+  {{ tituloPagina }}
+
+6.2 — En Restaurantero/Panel.vue (panel del proveedor):
+  Buscar el título del panel o el header que dice "Panel Proveedor" o similar.
+  Si hay una sección que lista proveedores del evento, cambiar su título:
+  "Proveedores de [nombre evento]" o simplemente el título del panel
+  que haga referencia al evento activo si existe.
+
+  En el <template #header>:
+  const eventoActivo = computed(() => page.props.eventoActivo);
+
+  // Título dinámico:
+  <h1>Panel Proveedor</h1>
+  <p v-if="eventoActivo">Evento activo: {{ eventoActivo.nombre }}</p>
+
+=========================================================
+CAMBIO 7 — PERFIL DEL COMPRADOR: AGREGAR CURP, RFC, MUNICIPIO
+=========================================================
+
+7.1 — MIGRACIÓN para agregar campos al modelo User:
+
+  php artisan make:migration add_profile_fields_to_users_table
+
+  Schema::table('users', function (Blueprint $table) {
+      $table->string('rfc', 13)->nullable()->after('curp');
+      $table->string('municipio', 100)->nullable()->after('rfc');
+      $table->string('nombre_empresa', 200)->nullable()->after('municipio');
+  });
+
+  Agregar a User::$fillable: 'rfc', 'municipio', 'nombre_empresa'
+
+  php artisan migrate
+
+7.2 — ACTUALIZAR CompletarPerfilController:
+
+  store(): Agregar validación y guardado de nuevos campos:
+    $request->validate([
+        'telefono'      => ['required', 'string', 'max:20'],
+        'curp'          => ['nullable', 'string', 'max:18',
+                            'regex:/^[A-Z]{4}[0-9]{6}[HM][A-Z]{5}[0-9A-Z][0-9]$/i'],
+        'rfc'           => ['nullable', 'string', 'max:13',
+                            'regex:/^[A-ZÑ&]{3,4}[0-9]{6}[A-Z0-9]{3}$/i'],
+        'municipio'     => ['nullable', 'string', 'max:100'],
+        'nombre_empresa'=> ['nullable', 'string', 'max:200'],
+    ]);
+
+    $request->user()->update([
+        'telefono'       => $request->telefono,
+        'curp'           => $request->curp ? strtoupper($request->curp) : null,
+        'rfc'            => $request->rfc ? strtoupper($request->rfc) : null,
+        'municipio'      => $request->municipio,
+        'nombre_empresa' => $request->nombre_empresa,
+        'perfil_completo'=> true,
+    ]);
+
+  actualizarComprador(): Agregar los mismos campos:
+    $request->validate([
+        'name'          => ['required', 'string', 'max:255'],
+        'telefono'      => ['nullable', 'string', 'max:20'],
+        'curp'          => ['nullable', 'string', 'max:18'],
+        'rfc'           => ['nullable', 'string', 'max:13'],
+        'municipio'     => ['nullable', 'string', 'max:100'],
+        'nombre_empresa'=> ['nullable', 'string', 'max:200'],
+        'sitio_web'     => ['nullable', 'url', 'max:200'],
+        'necesidades'   => ['nullable', 'string', 'max:2000'],
+    ]);
+
+    $request->user()->update([
+        'name'          => $request->name,
+        'telefono'      => $request->telefono,
+        'curp'          => $request->curp ? strtoupper($request->curp) : null,
+        'rfc'           => $request->rfc ? strtoupper($request->rfc) : null,
+        'municipio'     => $request->municipio,
+        'nombre_empresa'=> $request->nombre_empresa,
+        'sitio_web'     => $request->sitio_web,
+        'necesidades'   => $request->necesidades,
+    ]);
+
+7.3 — ACTUALIZAR Auth/CompletarPerfil.vue:
+
+  Agregar campos al useForm:
+    const form = useForm({
+        telefono: '',
+        curp: '',
+        rfc: '',
+        municipio: '',
+        nombre_empresa: '',
+    });
+
+  Agregar campos al formulario (después del campo CURP existente):
+
+    <!-- RFC -->
+    <div>
+      <label class="...">RFC <span class="text-gray-400">(opcional)</span></label>
+      <input v-model="form.rfc" type="text" maxlength="13"
+        class="... uppercase" placeholder="XXXX000000XXX"
+        @input="form.rfc = form.rfc.replace(/[^a-zA-ZñÑ&0-9]/g,'').toUpperCase().slice(0,13)" />
+      <InputError :message="form.errors.rfc" />
+    </div>
+
+    <!-- Municipio -->
+    <div>
+      <label class="...">Municipio <span class="text-gray-400">(opcional)</span></label>
+      <input v-model="form.municipio" type="text" maxlength="100"
+        class="..." placeholder="Mérida" />
+      <InputError :message="form.errors.municipio" />
+    </div>
+
+    <!-- Nombre de empresa -->
+    <div>
+      <label class="...">Nombre de empresa <span class="text-gray-400">(opcional)</span></label>
+      <input v-model="form.nombre_empresa" type="text" maxlength="200"
+        class="..." placeholder="Mi Empresa S.A. de C.V." />
+      <InputError :message="form.errors.nombre_empresa" />
+    </div>
+
+7.4 — ACTUALIZAR el modal de edición de perfil en User/Dashboard.vue:
+  Agregar los mismos campos (rfc, municipio, nombre_empresa) al formPerfil
+  y al template del modal de edición del comprador.
+
+7.5 — ACTUALIZAR HandleInertiaRequests:
+  El auth.user compartido ya incluye los campos del user->only([...]).
+  Agregar 'rfc', 'municipio', 'nombre_empresa' a la lista del only() si no están.
+
+=========================================================
+CAMBIO 8 — PERFIL DEL PROVEEDOR: CAMPOS DEL FORMULARIO IYEM
+=========================================================
+
+INSTRUCCIÓN: Antes de escribir código, visitar la URL del formulario de IYEM:
+  https://docs.google.com/forms/d/e/1FAIpQLScYazeJ2CUnQaE82CAVnSAuMRmsBmtElHh5l7uSgus5iuv85g/viewform
+
+Leer TODOS los campos del formulario. Comparar con los campos que ya tiene
+el modelo Restaurantero:
+  nombre_restaurante, descripcion, telefono, direccion, municipio, categoria,
+  logo_path, foto_path, productos_top, categorias_json, rfc, sitio_web, redes_sociales
+
+Los campos que pide el formulario del IYEM y que NO están en el modelo,
+agregarlos mediante migración y actualizando el modelo y los formularios.
+
+CAMPOS COMUNES QUE PROBABLEMENTE FALTAN (verificar contra el formulario):
+  - nombre_contacto (nombre del representante, distinto al nombre empresa)
+  - cargo_contacto (puesto del representante)
+  - correo_empresa (email de la empresa, distinto al del usuario)
+  - num_empleados (número de empleados)
+  - años_operacion (años de operación)
+  - tipo_empresa (persona física / persona moral / microempresa / etc.)
+  - principales_clientes (a quién le vende)
+  - exporta (¿exporta? sí/no)
+  - certificaciones (ISO, etc.)
+  - necesidades_empresa (qué busca en el evento, desde el lado del proveedor)
+
+PARA CADA CAMPO NUEVO ENCONTRADO EN EL FORMULARIO:
+  1. Agregar a la migración: add_iyem_fields_to_restauranteros_table
+  2. Agregar a Restaurantero::$fillable
+  3. Agregar al formulario en Restaurantero/Panel.vue (modal de edición de perfil)
+  4. Agregar a ProveedorPerfilController::store() con validación
+  5. Agregar a los datos que el admin puede ver en Admin/Restauranteros/Show.vue
+
+=========================================================
+CAMBIO 9 — QUITAR "PROVEEDORES" DE LA LANDING
+=========================================================
+
+Archivo: resources/js/Pages/Welcome.vue
+
+9.1 — QUITAR del NAVBAR (desktop y móvil):
+
+  Desktop navbar (aprox línea 128-133):
+    ELIMINAR:
+    <Link :href="route('restauranteros.index')"
+      class="...">
+      Proveedores
+    </Link>
+
+  Mobile menu (aprox línea 186):
+    ELIMINAR:
+    <Link :href="route('restauranteros.index')" ...>Proveedores</Link>
+
+9.2 — QUITAR botón "Explorar Proveedores" del HERO:
+
+  En la sección hero (aprox línea 269-272):
+    ELIMINAR el botón/link secundario:
+    <Link :href="route('restauranteros.index')" ...>
+      Explorar Proveedores
+    </Link>
+  Dejar SOLO el botón primario "Comenzar ahora — Es gratuito".
+
+9.3 — QUITAR la sección "PROVEEDORES DESTACADOS":
+
+  Buscar la sección que renderiza proveedoresDestacados o la grid de cards
+  de proveedores (aprox usando v-for con proveedoresDestacados).
+  ELIMINAR toda esa sección del template.
+
+9.4 — QUITAR el stat de "Proveedores activos" de la sección de STATS:
+
+  Aprox línea 293-294:
+    ELIMINAR:
+    <div>{{ countProveedores }}+</div>
+    <div>Proveedores activos</div>
+  (o reemplazar con otro stat más relevante como "Eventos realizados")
+
+9.5 — LIMPIAR el <script setup>:
+  Eliminar variables que ya no se usan:
+    - countProveedores (ref)
+    - proveedoresDestacados (computed)
+    - La parte del countUp que incrementa countProveedores
+
+9.6 — LIMPIAR LandingController:
+  En app/Http/Controllers/LandingController.php:
+  Si el método index() hace query de restauranteros para pasarlos a la vista,
+  eliminar esa consulta ya que no se usan más.
+  Eliminar el prop 'restauranteros' del Inertia::render().
+
+9.7 — LIMPIAR Welcome.vue props:
+  Eliminar restauranteros: Array del defineProps().
+
+9.8 — ACTUALIZAR SECCIÓN "PARA QUIÉN ES" en la landing:
+  Hay texto que menciona "Encuentra proveedores verificados por el IYEM"
+  y un botón "Explorar proveedores" (aprox línea 444-446).
+  ELIMINAR ese botón. Cambiar el texto de la sección comprador
+  para no mencionar "explorar proveedores" como CTA directo.
+
+=========================================================
+CAMBIO 10 — VERIFICACIÓN FINAL Y DEPLOY
+=========================================================
+
+VERIFICACIÓN ANTES DEL DEPLOY:
+
+  □ grep "max_citas_por_comprador ?? 12" Dashboard.vue → 0 resultados (debe ser ?? 3)
+  □ timeSlots en Show.vue es ahora computed y usa intervalo del evento
+  □ "30 minutos" hardcodeado → reemplazado con valor dinámico
+  □ restaurantero.telefono NO se muestra en /restauranteros/{id}
+  □ Registro al evento proveedor y comprador son independientes
+  □ Notificación al proveedor se crea al agendar cita
+  □ Botones aceptar/rechazar/reagendar visibles en citas pendientes del panel proveedor
+  □ Título "Proveedores del Evento: [nombre]" aparece en /restauranteros
+  □ CompletarPerfil tiene campos: telefono, curp, rfc, municipio, nombre_empresa
+  □ Campos del formulario IYEM agregados al perfil del proveedor
+  □ Link "Proveedores" eliminado del navbar de la landing
+  □ Sección "Proveedores Destacados" eliminada de la landing
+  □ Botón "Explorar Proveedores" eliminado del hero y del CTA
+  □ npm run build sin errores
+  □ Todo se ve bien en dark mode y light mode
+  □ Responsivo en 375px (móvil)
+
+DEPLOY:
+  npm run build
+
+  # Servidor SSH:
+  cd /home/usuario/impulsate
+  git pull origin main
+  composer install --no-dev --optimize-autoloader
+  php artisan migrate --force
+  php artisan optimize:clear
+  php artisan config:cache
+  php artisan route:cache
+  php artisan view:cache
+  chmod -R 755 storage bootstrap/cache
+
+  # Copiar assets: public/build/ → public_html/build/
+
+  # Verificar post-deploy:
+  php artisan route:list | grep restaurantero
+  tail -20 storage/logs/laravel.log
+  # Probar en producción:
+  #   - /restauranteros muestra "Proveedores del Evento: [nombre]"
+  #   - Ver perfil de proveedor: NO muestra teléfono
+  #   - Calendar de proveedor muestra slots según tiempo_entre_citas del evento
+  #   - Completar perfil pide los nuevos campos
+  #   - Landing sin sección de proveedores ni link en navbar
+
+=========================================================
+FIN DEL PROMPT
+=========================================================

@@ -89,4 +89,34 @@ class UserAdminController extends Controller
 
         return back()->with('success', 'Usuario eliminado correctamente.');
     }
+
+    public function editar(User $user)
+    {
+        return Inertia::render('Admin/Clientes/Editar', [
+            'cliente' => $user->only([
+                'id', 'name', 'email', 'telefono', 'rfc', 'municipio',
+                'nombre_empresa', 'sitio_web', 'camara_asociacion', 'nombre_establecimiento',
+            ]),
+        ]);
+    }
+
+    public function actualizar(Request $request, User $user)
+    {
+        $validated = $request->validate([
+            'name'                   => 'required|string|max:255',
+            'email'                  => 'required|email|max:255|unique:users,email,' . $user->id,
+            'telefono'               => 'nullable|string|max:30',
+            'rfc'                    => 'nullable|string|max:13',
+            'municipio'              => 'nullable|string|max:100',
+            'nombre_empresa'         => 'nullable|string|max:255',
+            'sitio_web'              => 'nullable|url|max:255',
+            'camara_asociacion'      => 'nullable|string|max:255',
+            'nombre_establecimiento' => 'nullable|string|max:255',
+        ]);
+
+        $user->update($validated);
+
+        return redirect()->route('admin.clientes.editar', $user)
+            ->with('success', 'Comprador actualizado correctamente.');
+    }
 }

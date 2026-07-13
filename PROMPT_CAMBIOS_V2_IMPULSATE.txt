@@ -1,0 +1,766 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — IMPULSATE · CAMBIOS V2
+6 ajustes sobre el sistema actual
+Archivo: PROMPT_CAMBIOS_V2_IMPULSATE.txt
+Fecha: Julio 2026
+================================================================================
+
+STACK:  Laravel 11 · Inertia.js · Vue 3 · Tailwind CSS (darkMode:'class')
+Color:  guinda #8B1028  (NUNCA azul/índigo)
+URL:    impulsate.iyemyucatan.com
+
+LEE TODOS LOS ARCHIVOS MENCIONADOS ANTES DE MODIFICAR CUALQUIERA.
+Verifica siempre los nombres reales de campos, relaciones y rutas.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — AUTO-REGISTRO AL EVENTO: PROVEEDOR (perfil 100% completo)
+════════════════════════════════════════════════════════════════════════════════
+
+Cuando un proveedor complete su perfil al 100%, el sistema debe registrarlo
+automáticamente al evento activo de Restaurantes como proveedor aprobado.
+
+CAMPOS OBLIGATORIOS para considerarlo completo (ajusta si alguno ya existe):
+
+  Del modelo Restaurantero:
+    - nombre           (nombre del negocio)
+    - descripcion
+    - telefono
+    - municipio
+    - rfc
+    - sitio_web
+    - categoria_id     (o 'categoria' según cómo esté en tu BD — verifica)
+    - foto             (imagen del negocio)
+    - credito_tipo     ('si'|'a_negociar'|'no')
+    - pago_contraentrega
+    - acepta_factura
+    - entrega_domicilio
+    - cobertura
+    - forma_entrega
+
+  Relación productos:
+    - Al menos 1 producto con foto (whereNotNull('foto'))
+
+  CAMPOS NO OBLIGATORIOS (NO se validan para perfil_completo):
+    - tiempo_vida_anaquel, aplica_tiempo_vida
+    - req_tabla_nutrimental, req_etiquetado_nom, req_codigo_barras
+    - req_registro_marca, req_cert_calidad
+    - apoyo_tabla_nutrimental, apoyo_etiquetado_nom, apoyo_registro_marca
+    - requiere_refrigeracion, requiere_congelacion
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: app/Models/Restaurantero.php
+────────────────────────────────────────────────────────────────────────────────
+
+Reemplaza (o crea) calcularPerfilCompleto() con esta versión exacta:
+
+    public function calcularPerfilCompleto(): bool
+    {
+        $camposRequeridos = [
+            'nombre',
+            'descripcion',
+            'telefono',
+            'municipio',
+            'rfc',
+            'sitio_web',
+            'credito_tipo',
+            'pago_contraentrega',
+            'acepta_factura',
+            'entrega_domicilio',
+            'cobertura',
+            'forma_entrega',
+        ];
+
+        foreach ($camposRequeridos as $campo) {
+            $valor = $this->$campo;
+            // null y string vacío = incompleto; false (bool) = válido
+            if (is_null($valor) || $valor === '') {
+                return false;
+            }
+        }
+
+        // categoria_id O categoria (usa el que exista en tu tabla)
+        $tieneCategoria = !empty($this->categoria_id) || !empty($this->categoria);
+        if (!$tieneCategoria) return false;
+
+        // Imagen del negocio
+        if (empty($this->foto)) return false;
+
+        // Al menos 1 producto con foto
+        $tieneProductoConFoto = $this->productos()
+            ->whereNotNull('foto')
+            ->where('foto', '!=', '')
+            ->exists();
+        if (!$tieneProductoConFoto) return false;
+
+        return true;
+    }
+
+En el mismo modelo, asegúrate de que el boot() ejecute la lógica de
+auto-registro cuando el perfil se complete:
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::saved(function (Restaurantero $restaurantero) {
+            $completo = $restaurantero->calcularPerfilCompleto();
+
+            // Actualiza la columna perfil_completo (evita loop con updateQuietly)
+            if ((bool)$restaurantero->perfil_completo !== $completo) {
+                $restaurantero->updateQuietly(['perfil_completo' => $completo]);
+                if ($restaurantero->user_id) {
+                    \DB::table('users')
+                        ->where('id', $restaurantero->user_id)
+                        ->update(['perfil_completo' => $completo]);
+                }
+            }
+
+            // Auto-registro al evento solo cuando acaba de completarse
+            if ($completo && !$restaurantero->getOriginal('perfil_completo')) {
+                static::autoRegistrarAlEvento($restaurantero);
+            }
+        });
+    }
+
+    protected static function autoRegistrarAlEvento(Restaurantero $restaurantero): void
+    {
+        $evento = \App\Models\Evento::where('activo', true)->latest()->first();
+        if (!$evento) return;
+
+        $yaRegistrado = \DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $restaurantero->user_id)
+            ->where('tipo',      'proveedor')
+            ->exists();
+
+        if ($yaRegistrado) return;
+
+        \DB::table('evento_usuario')->insert([
+            'evento_id'     => $evento->id,
+            'user_id'       => $restaurantero->user_id,
+            'tipo'          => 'proveedor',
+            'estado'        => 'aprobado',
+            'respondido_at' => now(),
+            'created_at'    => now(),
+            'updated_at'    => now(),
+        ]);
+
+        // Vincular edicion al evento (si el modelo Restaurantero tiene edicion_id)
+        \DB::table('restauranteros')
+            ->where('id', $restaurantero->id)
+            ->update(['edicion_id' => $evento->id]);
+
+        // Notificación interna
+        if (class_exists(\App\Models\Notificacion::class)) {
+            \App\Models\Notificacion::crear(
+                $restaurantero->user_id,
+                'perfil_aprobado',
+                '¡Tu perfil está completo!',
+                'Tu perfil de proveedor fue aprobado automáticamente. Ya apareces en el directorio del evento "' . $evento->nombre . '".'
+            );
+        }
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — AUTO-REGISTRO AL EVENTO: COMPRADOR (perfil 100% + es_restaurantero)
+════════════════════════════════════════════════════════════════════════════════
+
+Los compradores que completan su perfil Y marcan "¿Eres restaurantero?" se
+registran automáticamente al evento activo como compradores aprobados.
+Los que NO son restauranteros: completan su perfil pero NO van al evento.
+
+────────────────────────────────────────────────────────────────────────────────
+Migración: agrega es_restaurantero a users si no existe todavía
+────────────────────────────────────────────────────────────────────────────────
+
+    php artisan make:migration add_es_restaurantero_to_users_table
+
+    // up():
+    Schema::table('users', function (Blueprint $table) {
+        if (!Schema::hasColumn('users', 'es_restaurantero')) {
+            $table->boolean('es_restaurantero')->default(false)->after('perfil_completo');
+        }
+    });
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: app/Http/Controllers/Auth/CompletarPerfilController.php
+(o el controller que maneja perfil.completar.store — verifica el nombre real)
+────────────────────────────────────────────────────────────────────────────────
+
+En el método store(), después de guardar todos los datos del comprador,
+agrega este bloque de auto-registro:
+
+    // Marcar perfil completo
+    $user->update(['perfil_completo' => true]);
+
+    // Auto-registro si es restaurantero
+    if ($request->boolean('es_restaurantero')) {
+        $user->update(['es_restaurantero' => true]);
+
+        $evento = \App\Models\Evento::where('activo', true)->latest()->first();
+        if ($evento) {
+            $yaRegistrado = \DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id',   $user->id)
+                ->where('tipo',      'comprador')
+                ->exists();
+
+            if (!$yaRegistrado) {
+                \DB::table('evento_usuario')->insert([
+                    'evento_id'     => $evento->id,
+                    'user_id'       => $user->id,
+                    'tipo'          => 'comprador',
+                    'estado'        => 'aprobado',
+                    'respondido_at' => now(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+            }
+
+            if (class_exists(\App\Models\Notificacion::class)) {
+                \App\Models\Notificacion::crear(
+                    $user->id,
+                    'evento_aprobado',
+                    '¡Bienvenido al evento!',
+                    'Tu registro al evento "' . $evento->nombre . '" fue aprobado. Ya puedes ver los proveedores y agendar citas.'
+                );
+            }
+        }
+    }
+
+    return redirect()->route('user.dashboard')
+        ->with('success', '¡Perfil completado con éxito!');
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 3 — AGENDA / CREAR: compradores = TODOS los registrados en la plataforma
+════════════════════════════════════════════════════════════════════════════════
+
+Actualmente la lista de compradores en /admin/agenda/crear filtra solo los
+que ya están en el evento activo. El cliente pide que aparezcan TODOS los
+compradores (clientes) registrados en la plataforma.
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: app/Http/Controllers/Admin/AgendaController.php → método crear()
+────────────────────────────────────────────────────────────────────────────────
+
+Reemplaza el query de $compradores por:
+
+    // TODOS los usuarios con rol cliente registrados en la plataforma
+    $compradores = \App\Models\User::role('cliente')
+        ->select('id', 'name', 'nombre_empresa', 'municipio', 'es_restaurantero')
+        ->orderBy('nombre_empresa')
+        ->orderBy('name')
+        ->get()
+        ->map(function ($u) {
+            return [
+                'id'            => $u->id,
+                'nombre'        => $u->nombre_empresa ?? $u->name,
+                'municipio'     => $u->municipio,
+                'es_restaurantero' => (bool)$u->es_restaurantero,
+            ];
+        });
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: resources/js/Pages/Admin/Agenda/Crear.vue
+────────────────────────────────────────────────────────────────────────────────
+
+Reemplaza la lista de chips de compradores por un selector desplegable
+con búsqueda (searchable select):
+
+En <script setup>, agrega:
+    const buscarComprador = ref('');
+
+    const compradoresFiltrados = computed(() => {
+        if (!buscarComprador.value.trim()) return props.compradores;
+        const q = buscarComprador.value.toLowerCase();
+        return props.compradores.filter(c =>
+            c.nombre.toLowerCase().includes(q) ||
+            (c.municipio && c.municipio.toLowerCase().includes(q))
+        );
+    });
+
+En el template, REEMPLAZA la sección de compradores por:
+
+    <div>
+        <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wide">
+            Compradores registrados en la plataforma
+        </p>
+
+        <!-- Búsqueda -->
+        <div class="relative mb-3">
+            <input
+                v-model="buscarComprador"
+                type="text"
+                placeholder="Buscar por nombre o municipio..."
+                class="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700
+                       bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white
+                       focus:outline-none focus:border-guinda-500 transition-colors" />
+            <span class="absolute right-3 top-2.5 text-gray-400 text-sm">
+                {{ compradoresFiltrados.length }}
+            </span>
+        </div>
+
+        <!-- Lista desplegable scrolleable -->
+        <div class="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden
+                    max-h-64 overflow-y-auto bg-white dark:bg-gray-900">
+            <div
+                v-for="c in compradoresFiltrados"
+                :key="c.id"
+                @click="!yaAsignado(c.id) && (compradorActivo = c)"
+                :class="[
+                    'flex items-center gap-3 px-4 py-2.5 cursor-pointer border-b border-gray-100 dark:border-gray-800 transition-colors text-sm',
+                    compradorActivo?.id === c.id
+                        ? 'bg-guinda-50 dark:bg-guinda-900/20 text-guinda-800 dark:text-guinda-300'
+                        : yaAsignado(c.id)
+                        ? 'bg-gray-50 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
+                        : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-800 dark:text-gray-200'
+                ]">
+                <!-- Check si ya está asignado -->
+                <span v-if="yaAsignado(c.id)" class="text-green-500 flex-shrink-0">✓</span>
+                <span v-else-if="compradorActivo?.id === c.id"
+                    class="w-3 h-3 rounded-full bg-guinda-600 flex-shrink-0"></span>
+                <span v-else class="w-3 h-3 rounded-full border-2 border-gray-300 flex-shrink-0"></span>
+
+                <div class="flex-1 min-w-0">
+                    <p class="font-semibold truncate">{{ c.nombre }}</p>
+                    <p v-if="c.municipio" class="text-xs text-gray-400 truncate">{{ c.municipio }}</p>
+                </div>
+
+                <span v-if="c.es_restaurantero"
+                    class="text-[10px] font-bold bg-guinda-50 text-guinda-700
+                           dark:bg-guinda-900/30 dark:text-guinda-400 px-2 py-0.5 rounded-full flex-shrink-0">
+                    Rest.
+                </span>
+            </div>
+            <div v-if="compradoresFiltrados.length === 0"
+                class="py-8 text-center text-gray-400 text-sm">
+                No se encontraron compradores
+            </div>
+        </div>
+
+        <!-- Comprador seleccionado activo -->
+        <div v-if="compradorActivo && !yaAsignado(compradorActivo.id)"
+            class="mt-3 flex items-center gap-2 px-3 py-2 bg-guinda-50 dark:bg-guinda-900/20
+                   border border-guinda-300 rounded-xl text-sm text-guinda-700 dark:text-guinda-300">
+            <span class="font-semibold flex-1">{{ compradorActivo.nombre }}</span>
+            <span class="text-xs opacity-70">seleccionado — haz click en un slot libre</span>
+            <button type="button" @click="compradorActivo = null"
+                class="text-guinda-400 hover:text-guinda-700 ml-1 text-lg leading-none">×</button>
+        </div>
+    </div>
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 4 — MI PANEL (/mi-panel): agregar "¿Eres restaurantero?" en editar datos
+════════════════════════════════════════════════════════════════════════════════
+
+El comprador puede no haber marcado "¿Eres restaurantero?" la primera vez.
+Debe poder activarlo desde la sección de editar sus datos en /mi-panel.
+
+────────────────────────────────────────────────────────────────────────────────
+Paso A — Encuentra el archivo Vue del panel de comprador
+────────────────────────────────────────────────────────────────────────────────
+
+Busca el archivo que maneja la ruta user.dashboard (/mi-panel).
+Probablemente es uno de:
+    resources/js/Pages/User/Dashboard.vue
+    resources/js/Pages/MiPanel.vue
+    resources/js/Pages/User/MiPanel.vue
+
+Lee ese archivo completo antes de modificarlo.
+
+────────────────────────────────────────────────────────────────────────────────
+Paso B — Agrega el campo en el formulario de edición
+────────────────────────────────────────────────────────────────────────────────
+
+En el useForm del componente, agrega:
+    es_restaurantero: props.auth?.user?.es_restaurantero ?? false,
+
+En el template, en la sección "Editar mis datos" (busca el form de edición),
+agrega DESPUÉS del campo de necesidades (o al final de los campos):
+
+    <!-- ¿Eres restaurantero? -->
+    <div class="border-2 rounded-2xl p-4 transition-colors mt-4"
+        :class="form.es_restaurantero
+            ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-900/10'
+            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'">
+        <label class="flex items-start gap-3 cursor-pointer">
+            <input
+                type="checkbox"
+                v-model="form.es_restaurantero"
+                class="accent-guinda-700 w-5 h-5 mt-0.5 flex-shrink-0" />
+            <div>
+                <p class="text-sm font-bold text-gray-800 dark:text-gray-200">
+                    ¿Eres restaurantero?
+                </p>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
+                    Soy dueño o encargado de un restaurante, cafetería, hotel u otro
+                    establecimiento de alimentos. Al activar esta opción, podré
+                    participar en el evento y agendar citas con proveedores.
+                </p>
+                <Transition name="fade">
+                    <p v-if="form.es_restaurantero && !auth.user.es_restaurantero"
+                        class="mt-2 text-xs font-semibold text-green-700 dark:text-green-400">
+                        ✅ Al guardar, quedarás registrado en el evento activo.
+                    </p>
+                    <p v-else-if="form.es_restaurantero && auth.user.es_restaurantero"
+                        class="mt-2 text-xs text-green-600 dark:text-green-400">
+                        ✅ Ya estás registrado como restaurantero.
+                    </p>
+                </Transition>
+            </div>
+        </label>
+    </div>
+
+────────────────────────────────────────────────────────────────────────────────
+Paso C — Controller que guarda los datos del comprador
+────────────────────────────────────────────────────────────────────────────────
+
+Busca el controller que maneja el update del perfil del comprador en /mi-panel.
+Probablemente es: app/Http/Controllers/User/PerfilController.php
+o el método update() dentro del controller del dashboard.
+
+En el método update(), agrega:
+
+    // Validación
+    $request->validate([
+        // ... validaciones existentes ...
+        'es_restaurantero' => 'boolean',
+    ]);
+
+    // Guardar (junto con los demás campos)
+    $cambioARestaurantero = $request->boolean('es_restaurantero')
+                            && !$user->es_restaurantero;
+
+    $user->update([
+        // ... campos existentes ...
+        'es_restaurantero' => $request->boolean('es_restaurantero'),
+    ]);
+
+    // Si acaba de marcarse como restaurantero, auto-registrar al evento
+    if ($cambioARestaurantero && $user->perfil_completo) {
+        $evento = \App\Models\Evento::where('activo', true)->latest()->first();
+        if ($evento) {
+            $yaRegistrado = \DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id',   $user->id)
+                ->where('tipo',      'comprador')
+                ->exists();
+
+            if (!$yaRegistrado) {
+                \DB::table('evento_usuario')->insert([
+                    'evento_id'     => $evento->id,
+                    'user_id'       => $user->id,
+                    'tipo'          => 'comprador',
+                    'estado'        => 'aprobado',
+                    'respondido_at' => now(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+
+                if (class_exists(\App\Models\Notificacion::class)) {
+                    \App\Models\Notificacion::crear(
+                        $user->id,
+                        'evento_aprobado',
+                        '¡Ahora eres parte del evento!',
+                        'Tu registro como restaurantero al evento "' . $evento->nombre . '" fue activado.'
+                    );
+                }
+            }
+        }
+    }
+
+    return back()->with('success', 'Datos actualizados correctamente.');
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 5 — "Ver Proveedores" en la sección Alimentos y Bebidas
+════════════════════════════════════════════════════════════════════════════════
+
+En la sección "Alimentos y Bebidas — Encuentro de Negocios IMPÚLSATE Edición
+Restaurantes" hay un link que dice "Más información". Debes cambiarlo a
+"Ver Proveedores".
+
+────────────────────────────────────────────────────────────────────────────────
+Paso A — Localiza el archivo
+────────────────────────────────────────────────────────────────────────────────
+
+Ejecuta este comando para encontrar el archivo:
+
+    grep -r "Más información" resources/js/ resources/views/ --include="*.vue" --include="*.blade.php" --include="*.html" -l
+
+También busca por el texto de la sección:
+
+    grep -r "Alimentos y Bebidas" resources/ --include="*.vue" --include="*.blade.php" -l
+    grep -r "Encuentro de Negocios" resources/ --include="*.vue" --include="*.blade.php" -l
+    grep -r "CANIRAC" resources/ --include="*.vue" --include="*.blade.php" -l
+    grep -r "Ver Proveedores\|Más información" resources/ --include="*.vue" --include="*.blade.php" -l
+
+────────────────────────────────────────────────────────────────────────────────
+Paso B — Aplicar el cambio
+────────────────────────────────────────────────────────────────────────────────
+
+Una vez localizado el archivo, busca la línea que contiene el texto del link.
+Puede aparecer como:
+    "Más información"
+    '>Más información<'
+    :href="..." ...>Más información</a>
+    [Más información](...)
+
+Reemplaza únicamente el texto visible del link:
+    Más información  →  Ver Proveedores
+
+Mantén el href sin cambios: https://impulsate.iyemyucatan.com/proveedores
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 6 — MODAL "Completa tu perfil" al entrar al panel del proveedor
+════════════════════════════════════════════════════════════════════════════════
+
+Cuando un proveedor ya registrado entra a su panel (/proveedor/panel) y su
+perfil NO está completo (restaurantero.perfil_completo === false), debe
+aparecer un modal que le indique qué le falta completar y lo motive a hacerlo.
+
+El modal aparece SOLO UNA VEZ por sesión (se guarda en sessionStorage para no
+molestar en cada navegación dentro del panel).
+
+────────────────────────────────────────────────────────────────────────────────
+Archivo: resources/js/Pages/Restaurantero/Panel.vue
+────────────────────────────────────────────────────────────────────────────────
+
+En <script setup>, agrega al inicio:
+
+    import { onMounted } from 'vue';
+
+    // Props que ya existen — verifica que 'restaurantero' llegue con perfil_completo
+    // y con los campos necesarios para calcular qué falta
+
+    // Estado del modal
+    const mostrarModal = ref(false);
+
+    // Calcular campos faltantes para mostrar en el modal
+    const camposFaltantes = computed(() => {
+        const r = props.restaurantero;
+        if (!r) return [];
+        const faltantes = [];
+        if (!r.nombre)            faltantes.push('Nombre del negocio');
+        if (!r.descripcion)       faltantes.push('Descripción del negocio');
+        if (!r.telefono)          faltantes.push('Teléfono');
+        if (!r.municipio)         faltantes.push('Municipio');
+        if (!r.rfc)               faltantes.push('RFC');
+        if (!r.sitio_web)         faltantes.push('Sitio web');
+        if (!r.categoria_id && !r.categoria) faltantes.push('Categoría');
+        if (!r.foto)              faltantes.push('Imagen del negocio');
+        if (!r.credito_tipo)      faltantes.push('Condiciones de crédito');
+        if (r.pago_contraentrega === null || r.pago_contraentrega === undefined)
+                                  faltantes.push('Pago contraentrega');
+        if (r.acepta_factura === null || r.acepta_factura === undefined)
+                                  faltantes.push('Emisión de factura');
+        if (r.entrega_domicilio === null || r.entrega_domicilio === undefined)
+                                  faltantes.push('Entrega a domicilio');
+        if (!r.cobertura)         faltantes.push('Cobertura de entrega');
+        if (!r.forma_entrega)     faltantes.push('Forma de entrega');
+        if (!r.tiene_producto_con_foto) faltantes.push('Al menos 1 producto con foto');
+        return faltantes;
+    });
+
+    // Mostrar modal solo si perfil incompleto y no se mostró en esta sesión
+    onMounted(() => {
+        if (!props.restaurantero?.perfil_completo) {
+            const yaVisto = sessionStorage.getItem('modal_perfil_visto');
+            if (!yaVisto) {
+                mostrarModal.value = true;
+                sessionStorage.setItem('modal_perfil_visto', '1');
+            }
+        }
+    });
+
+NOTA: Si el prop restaurantero no trae tiene_producto_con_foto, pásalo desde
+el controller:
+
+    Archivo: app/Http/Controllers/RestauranteroController.php (o el que sirve Panel.vue)
+    En el return de Inertia::render, agrega a restaurantero:
+        'tiene_producto_con_foto' => $restaurantero->productos()
+            ->whereNotNull('foto')->where('foto','!=','')->exists(),
+
+────────────────────────────────────────────────────────────────────────────────
+En el template de Panel.vue, agrega el modal ANTES del cierre de </template>
+o como primer elemento dentro del div principal:
+────────────────────────────────────────────────────────────────────────────────
+
+    <!-- MODAL: Completa tu perfil -->
+    <Transition name="fade">
+        <div v-if="mostrarModal"
+            class="fixed inset-0 z-50 flex items-center justify-center px-4
+                   bg-black/60 backdrop-blur-sm">
+            <div class="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl shadow-2xl
+                        border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <!-- Header guinda -->
+                <div class="bg-guinda-800 px-6 py-5 text-white">
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 class="text-lg font-black">¡Completa tu perfil!</h2>
+                            <p class="text-guinda-200 text-sm mt-1">
+                                Tu perfil está incompleto. Complétalo para aparecer
+                                en el directorio y ser aprobado automáticamente en el evento.
+                            </p>
+                        </div>
+                        <button @click="mostrarModal = false"
+                            class="text-guinda-300 hover:text-white transition-colors flex-shrink-0 text-2xl leading-none mt-0.5">
+                            ×
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Barra de progreso -->
+                <div class="px-6 pt-5">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                            Progreso de tu perfil
+                        </span>
+                        <span class="text-xs font-bold text-guinda-700">
+                            {{ Math.round(((15 - camposFaltantes.length) / 15) * 100) }}%
+                        </span>
+                    </div>
+                    <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div class="h-full bg-guinda-700 rounded-full transition-all duration-500"
+                            :style="{ width: Math.round(((15 - camposFaltantes.length) / 15) * 100) + '%' }">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista de campos faltantes -->
+                <div class="px-6 py-4 max-h-48 overflow-y-auto">
+                    <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase
+                               tracking-wide mb-3">
+                        Te falta completar:
+                    </p>
+                    <ul class="space-y-1.5">
+                        <li v-for="campo in camposFaltantes" :key="campo"
+                            class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                            <span class="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/30
+                                         text-amber-600 dark:text-amber-400 flex items-center
+                                         justify-center text-xs flex-shrink-0 font-bold">!</span>
+                            {{ campo }}
+                        </li>
+                    </ul>
+                    <div v-if="camposFaltantes.length === 0"
+                        class="text-sm text-green-600 font-semibold py-2">
+                        ✅ ¡Todo listo! Guarda los cambios para activar tu perfil.
+                    </div>
+                </div>
+
+                <!-- Acciones -->
+                <div class="px-6 pb-6 flex gap-3">
+                    <button @click="mostrarModal = false"
+                        class="flex-1 py-3 border border-gray-300 dark:border-gray-600
+                               text-gray-600 dark:text-gray-400 font-semibold rounded-xl
+                               text-sm hover:border-gray-400 transition-colors">
+                        Más tarde
+                    </button>
+                    <button @click="mostrarModal = false"
+                        class="flex-[2] py-3 bg-guinda-800 hover:bg-guinda-700
+                               text-white font-bold rounded-xl text-sm transition-colors
+                               shadow-sm">
+                        Completar ahora →
+                    </button>
+                </div>
+            </div>
+        </div>
+    </Transition>
+
+Agrega el estilo de transición si no existe (al final del bloque <style> o
+en el bloque de estilos global del archivo):
+
+    <style scoped>
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+    </style>
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN DE LOS 6 CAMBIOS
+════════════════════════════════════════════════════════════════════════════════
+
+CAMBIO 1 — Auto-registro proveedor:
+  1. Crea un proveedor nuevo (sin perfil completo)
+  2. Entra al panel y llena TODOS los campos requeridos incluyendo foto y producto
+  3. Guarda
+  4. Verifica en evento_usuario: debe existir fila tipo='proveedor' estado='aprobado'
+  5. Verifica restaurantero.perfil_completo = 1 en BD
+  6. Verifica que aparece en el directorio público
+
+CAMBIO 2 — Auto-registro comprador:
+  a) Con es_restaurantero = true:
+     - Registra comprador nuevo, llena perfil, marca "¿Eres restaurantero?"
+     - Verifica evento_usuario: tipo='comprador' estado='aprobado'
+  b) Con es_restaurantero = false:
+     - Registra comprador nuevo, llena perfil, NO marca "¿Eres restaurantero?"
+     - Verifica que NO existe fila en evento_usuario
+
+CAMBIO 3 — Lista compradores en agenda:
+  1. Ve a /admin/agenda/crear
+  2. Selecciona un proveedor
+  3. Verifica que la lista de compradores muestra TODOS los usuarios con rol cliente
+  4. Busca por nombre o municipio — filtra correctamente
+  5. Selecciona un comprador de la lista, asígnalo a un slot
+  6. Verifica que el comprador queda marcado con ✓
+
+CAMBIO 4 — ¿Eres restaurantero? en Mi Panel:
+  1. Entra a /mi-panel con un usuario que tiene es_restaurantero=false
+  2. Localiza la sección "Editar mis datos"
+  3. Activa el checkbox "¿Eres restaurantero?"
+  4. Guarda los cambios
+  5. Verifica que aparece en evento_usuario como comprador aprobado
+
+CAMBIO 5 — "Ver Proveedores":
+  1. Ve a la sección donde aparece el evento "Alimentos y Bebidas"
+  2. Verifica que el link dice "Ver Proveedores" (no "Más información")
+  3. Verifica que el href apunta a https://impulsate.iyemyucatan.com/proveedores
+
+CAMBIO 6 — Modal al entrar al panel del proveedor:
+  1. Abre una sesión nueva con un proveedor que tiene perfil incompleto
+  2. Ve a /proveedor/panel
+  3. Verifica que aparece el modal con los campos faltantes
+  4. Verifica la barra de progreso porcentual
+  5. Cierra el modal con "Más tarde" → debe cerrarse
+  6. Navega a otra sección y regresa a /proveedor/panel
+  7. Verifica que el modal NO vuelve a aparecer en la misma sesión
+  8. Abre una ventana de incógnito → el modal debe aparecer nuevamente
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY A PRODUCCIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+Ejecuta en este orden en el servidor:
+
+    # 1. Actualiza el código
+    cd /var/www/html/citas
+    git pull origin main         # o sube los archivos manualmente
+
+    # 2. Dependencias PHP (si hay nuevas)
+    composer install --no-dev --optimize-autoloader
+
+    # 3. Migraciones (el campo es_restaurantero y cualquier otra nueva)
+    php artisan migrate --force
+
+    # 4. Compila los assets Vue/JS (REQUERIDO — hay cambios en .vue)
+    npm ci
+    npm run build
+
+    # 5. Limpia caché de Laravel
+    php artisan optimize
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+
+    # 6. Reinicia colas si usas jobs para correos
+    php artisan queue:restart
+
+No hay seeders nuevos en este prompt.
+No hay rollback necesario para los cambios de Vue (son archivos estáticos).
+
+Si algo falla tras el deploy:
+    php artisan migrate:rollback --step=1   (solo si hubo error en migraciones)
+    php artisan cache:clear
+    php artisan optimize:clear
+
+================================================================================
+FIN DEL PROMPT — CAMBIOS V2
+================================================================================

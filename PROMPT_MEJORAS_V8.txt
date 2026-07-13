@@ -1,0 +1,313 @@
+PROMPT PARA CLAUDE CODE - IMPULSATE V8
+==========================================
+Proyecto: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Ruta: C:\xampp\htdocs\citas
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo/blue-*.
+Texto en español con acentos correctos. Modo claro y oscuro. Responsivo.
+
+⚠ INSTRUCCIÓN CRÍTICA: NO hacer deploy hasta recibir confirmación explícita del usuario.
+Antes del deploy, generar un boceto HTML estático (ver CAMBIO 3) y esperar aprobación.
+
+CONTEXTO RELEVANTE
+------------------
+PERFIL DE COMPRADOR (Admin/Clientes/Show.vue):
+  - Actualmente muestra: email, fecha registro, count de citas, historial de citas (con nombre
+    del proveedor, fecha, estado, notas). Nada más.
+  - FALTAN en pantalla: telefono, nombre_empresa, municipio, rfc, sitio_web,
+    camara_asociacion, nombre_establecimiento, curp. Todos ya existen en la tabla `users`.
+  - FALTA: eventos a los que ha asistido (tabla evento_usuario → Evento).
+  - BUG: MAX_CITAS = 12 hardcodeado — no existe relación User→Evento en el modelo User,
+    así que hay que hacer el join a través de las citas o de evento_usuario.
+  - El controlador (UserAdminController::show) carga solo citas con restaurantero.nombre_restaurante.
+    No carga evento_usuario ni los campos de perfil adicionales.
+
+PERFIL DE PROVEEDOR (Admin/Restauranteros/Show.vue):
+  - El modelo Restaurantero tiene MUCHOS campos que el admin nunca ve: razon_social,
+    nombre_representante, curp_representante, fecha_inicio_operaciones, num_empleados,
+    domicilio_en_yucatan, mercado_meta, tiempo_vida_anaquel, requisitos_alimentos,
+    apoyo_requisitos, requiere_refrigeracion (boolean), requiere_congelacion (boolean),
+    rfc, sitio_web, redes_sociales, productos_top (array JSON), categorias_json (array JSON).
+  - El controlador (RestauranteroAdminController::show) carga: user, servicios, horarios,
+    citas paginadas (con servicio y cliente), citasCalendario. No carga eventos del proveedor.
+  - Las citas no muestran a qué evento pertenecen (campo edicion_id/evento_id en Cita).
+  - La vista actual tiene secciones de: info general (nombre, teléfono, municipio, descripción),
+    categoría, estado, servicios, horarios, calendario, tabla de citas. Le faltan todos los
+    campos de perfil extendido listados arriba.
+
+RELACIÓN USUARIOS↔EVENTOS:
+  - Tabla pivote `evento_usuario` con columnas: evento_id, user_id, tipo (comprador/proveedor),
+    estado (pendiente/aprobado/rechazado), respondido_at.
+  - El modelo User NO tiene actualmente definida la relación belongsToMany con Evento a través
+    de evento_usuario — debe agregarse.
+  - El modelo Restaurantero tampoco la tiene directamente, pero su user_id sí puede usarse.
+
+==========================================
+CAMBIO 1: Perfil completo del Comprador (Admin)
+==========================================
+PARTE A — Backend: UserAdminController::show()
+
+Ampliar la carga de datos para que la vista reciba TODA la información del comprador:
+
+```php
+public function show(User $user): Response
+{
+    $user->load([
+        // Citas ordenadas por fecha desc, con proveedor y evento asociado
+        'citasComoCliente' => function ($q) {
+            $q->with([
+                'restaurantero:id,nombre_restaurante,logo_path',
+                'evento:id,nombre',           // Cita tiene edicion_id → Evento
+            ])->orderByDesc('inicio');
+        },
+    ]);
+
+    // Eventos a los que ha asistido (como comprador o proveedor)
+    $eventosAsistidos = DB::table('evento_usuario')
+        ->join('eventos', 'evento_usuario.evento_id', '=', 'eventos.id')
+        ->where('evento_usuario.user_id', $user->id)
+        ->select(
+            'eventos.id',
+            'eventos.nombre',
+            'eventos.fecha_hora_inicio',
+            'eventos.fecha_hora_fin',
+            'eventos.activa',
+            'evento_usuario.tipo',
+            'evento_usuario.estado',
+        )
+        ->orderByDesc('eventos.fecha_hora_inicio')
+        ->get();
+
+    // Estadísticas rápidas
+    $totalCitas    = $user->citasComoCliente()->count();
+    $citasAcept    = $user->citasComoCliente()->where('estado', 'confirmada')->count();
+    $citasPend     = $user->citasComoCliente()->where('estado', 'pendiente')->count();
+
+    return Inertia::render('Admin/Clientes/Show', [
+        'cliente'          => $user,
+        'eventosAsistidos' => $eventosAsistidos,
+        'stats'            => [
+            'total'     => $totalCitas,
+            'aceptadas' => $citasAcept,
+            'pendientes'=> $citasPend,
+        ],
+    ]);
+}
+```
+Agregar `use Illuminate\Support\Facades\DB;` si no existe en el controller.
+
+PARTE B — Frontend: Admin/Clientes/Show.vue (reescritura completa del layout)
+
+Reorganizar la vista en un layout de 3 columnas en desktop, con las siguientes secciones:
+
+SECCIÓN 1 — Tarjeta de identidad (columna izquierda, ~1/3 de ancho):
+  - Avatar con iniciales (ya existe, mantener).
+  - Nombre completo + badge de rol (Comprador / Comprador & Proveedor).
+  - Fecha de registro y estado de perfil (completo/incompleto).
+  - DATOS DE CONTACTO (mostrar con ícono SVG y label, valor o "—" si vacío):
+    • Correo electrónico
+    • Teléfono
+  - DATOS DE PERFIL:
+    • Empresa (nombre_empresa)
+    • Municipio
+    • RFC
+    • CURP
+    • Página web (como link clickeable si existe, target="_blank")
+    • Cámara/Asociación (badge "CANIRAC" o "Ninguna" o "No especificado" si null)
+    • Nombre del establecimiento (solo si camara_asociacion = 'CANIRAC')
+  - ESTADÍSTICAS rápidas en 3 chips pequeños: "X citas totales", "X aceptadas", "X pendientes".
+  - ACCIONES: botón Eliminar (rojo, con modal de confirmación — igual al actual).
+
+SECCIÓN 2 — Eventos asistidos (columna derecha superior, ocupa 2/3 de ancho):
+  - Encabezado: "Participación en Eventos".
+  - Si no hay eventos: estado vacío con ícono y mensaje "No ha participado en ningún evento".
+  - Si hay eventos: lista de tarjetas, una por evento. Cada tarjeta muestra:
+    • Nombre del evento
+    • Fecha del evento (formatFecha)
+    • Badge de tipo: "Comprador" (guinda) / "Proveedor" (verde) — según evento_usuario.tipo
+    • Badge de estado: "Aprobado" (verde) / "Pendiente" (ámbar) / "Rechazado" (rojo)
+    • Badge "Activo" o "Finalizado" según evento.activa y fechas
+
+SECCIÓN 3 — Historial de citas (columna derecha inferior, ancho completo):
+  - Encabezado: "Historial de Citas" + contador total.
+  - Tabla con columnas: Proveedor | Evento | Fecha | Hora inicio–fin | Estado | Notas
+  - Si `cita.evento` existe, mostrar su nombre en la columna Evento; si no, "—".
+  - Mantener badges de estado con colores actuales.
+  - Si lista vacía: estado vacío actual (mantener).
+
+LABELS EN ESPAÑOL para estados de cita: pendiente→"Pendiente", confirmada→"Confirmada",
+cancelada→"Cancelada", completada→"Completada", reagendada→"Reagendada".
+
+==========================================
+CAMBIO 2: Perfil completo del Proveedor (Admin)
+==========================================
+PARTE A — Backend: RestauranteroAdminController::show()
+
+Ampliar la carga para incluir todos los campos de perfil extendido y eventos:
+
+```php
+public function show(Restaurantero $restaurantero)
+{
+    $restaurantero->load([
+        'user',
+        'servicios',
+        'horarios',
+    ]);
+
+    $categorias = Restaurantero::$categorias;
+
+    // Citas del proveedor con evento asociado
+    $citas = Cita::with([
+        'servicio:id,nombre,duracion_minutos,precio',
+        'cliente:id,name,email,telefono',
+        'evento:id,nombre',       // Cita::evento() ya existe: belongsTo Evento, FK edicion_id
+    ])
+        ->where('restaurantero_id', $restaurantero->id)
+        ->orderByDesc('inicio')
+        ->paginate(20);
+
+    // Eventos en que el proveedor participó (vía user_id del restaurantero)
+    $eventosParticipados = [];
+    if ($restaurantero->user_id) {
+        $eventosParticipados = DB::table('evento_usuario')
+            ->join('eventos', 'evento_usuario.evento_id', '=', 'eventos.id')
+            ->where('evento_usuario.user_id', $restaurantero->user_id)
+            ->where('evento_usuario.tipo', 'proveedor')
+            ->select(
+                'eventos.id',
+                'eventos.nombre',
+                'eventos.fecha_hora_inicio',
+                'eventos.fecha_hora_fin',
+                'eventos.activa',
+                'evento_usuario.estado',
+            )
+            ->orderByDesc('eventos.fecha_hora_inicio')
+            ->get();
+    }
+
+    // Estadísticas
+    $totalCitas     = Cita::where('restaurantero_id', $restaurantero->id)->count();
+    $citasAcept     = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'confirmada')->count();
+    $citasPend      = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'pendiente')->count();
+
+    $citasCalendario = Cita::where('restaurantero_id', $restaurantero->id)
+        ->with(['servicio', 'cliente'])
+        ->get()
+        ->map(function ($cita) { /* ... mismo código actual ... */ });
+
+    return Inertia::render('Admin/Restauranteros/Show', [
+        'restaurantero'       => $restaurantero,
+        'citas'               => $citas,
+        'citasCalendario'     => $citasCalendario,
+        'categorias'          => $categorias,
+        'eventosParticipados' => $eventosParticipados,
+        'stats'               => [
+            'total'     => $totalCitas,
+            'aceptadas' => $citasAcept,
+            'pendientes'=> $citasPend,
+        ],
+    ]);
+}
+```
+
+PARTE B — Frontend: Admin/Restauranteros/Show.vue (nueva sección de datos extendidos)
+
+NO eliminar las secciones existentes (edición de perfil, categoría, servicios, horarios,
+calendario, tabla de citas) — solo AGREGAR las secciones que faltan y expandir la info visible.
+
+NUEVA SECCIÓN — "Datos del Representante y Empresa" (card nuevo, después de "Información general"):
+Mostrar en grid 2 columnas los siguientes campos de Restaurantero (valor o "—" si vacío):
+  • Razón social (razon_social)
+  • Nombre del representante (nombre_representante)
+  • CURP del representante (curp_representante)
+  • RFC (rfc)
+  • Fecha de inicio de operaciones (fecha_inicio_operaciones — formatear como fecha corta)
+  • Número de empleados (num_empleados)
+  • Domicilio en Yucatán: badge "Sí" (verde) / "No" (rojo) — campo boolean domicilio_en_yucatan
+  • Sitio web (link clickeable si existe)
+  • Redes sociales (redes_sociales — mostrar como texto o link)
+
+NUEVA SECCIÓN — "Características del Producto/Servicio":
+  • Mercado meta (mercado_meta) — texto
+  • Tiempo de vida en anaquel (tiempo_vida_anaquel) — texto
+  • Requisitos alimentarios (requisitos_alimentos) — texto
+  • Apoyo en trámites de requisitos: badge Sí/No (apoyo_requisitos — boolean)
+  • Requiere refrigeración: badge Sí/No (requiere_refrigeracion — boolean)
+  • Requiere congelación: badge Sí/No (requiere_congelacion — boolean)
+
+NUEVA SECCIÓN — "Productos" (si productos_top tiene items):
+  Lista visual de chips/badges con los nombres de los productos del proveedor.
+  Si está vacía: "No ha registrado productos aún."
+
+NUEVA SECCIÓN — "Participación en Eventos":
+  Igual que en el perfil del comprador, pero solo tipo 'proveedor'.
+  Tarjetas con nombre del evento, fecha, estado (aprobado/pendiente/rechazado), activo/finalizado.
+
+AMPLIAR la tabla de citas existente:
+  Agregar columna "Evento" (mostrando cita.evento.nombre o "—") entre "Proveedor/Servicio"
+  y "Fecha". Agregar columna "Comprador" visible en desktop.
+  Mostrar también: cita.cliente.email en tooltip o subtexto si hay espacio.
+
+ESTADÍSTICAS rápidas: agregar 3 chips de stats (total citas, aceptadas, pendientes) en la
+sección de encabezado del proveedor, junto al badge de Activo/Inactivo.
+
+==========================================
+CAMBIO 3: Boceto HTML estático (OBLIGATORIO ANTES DEL DEPLOY)
+==========================================
+Crear el archivo `bocetos_v8.html` en la raíz del proyecto con un boceto completo
+de las dos vistas ampliadas: perfil de comprador y perfil de proveedor.
+
+El boceto debe:
+1. Usar HTML + CSS inline (sin dependencias externas salvo quizá Tailwind CDN para agilizar).
+2. Mostrar datos ficticios realistas (nombre, correo, teléfono, empresa, municipio, RFC, etc.)
+   para que el usuario pueda evaluar el layout y contenido real, no placeholders vacíos.
+3. Incluir una sección por cada perfil:
+   - Perfil Comprador: identidad/contacto, datos de perfil (empresa/RFC/CURP/municipio/
+     cámara/establecimiento), eventos asistidos (con badges de tipo y estado), historial
+     de citas (tabla con columnas: Proveedor, Evento, Fecha, Estado, Notas).
+   - Perfil Proveedor: datos del representante/empresa, características del producto,
+     lista de productos, participación en eventos, tabla de citas ampliada con columna
+     de Evento y Comprador.
+4. Usar la paleta guinda (#8b1028) para acentos, badges primarios, encabezados.
+5. Simular tanto modo claro como oscuro (puede ser con dos secciones: "Modo Claro" y
+   "Modo Oscuro" en el mismo archivo, o con un botón toggle JS simple).
+6. Ser responsivo (usar flexbox/grid para que se vea bien en pantallas de 375px a 1280px).
+
+Después de crear el boceto:
+- Presentar el archivo al usuario (mcp__cowork__present_files).
+- Mostrar el mensaje: "Por favor abre bocetos_v8.html en tu navegador y confirma si el
+  diseño está bien antes de que aplique los cambios al código real. Escribe 'aprobado'
+  para continuar o dime qué cambiar."
+- NO modificar ningún archivo .php ni .vue hasta recibir confirmación.
+
+==========================================
+CAMBIO 4: Deploy (solo tras confirmación del boceto)
+==========================================
+Cuando el usuario confirme el boceto con "aprobado" o similar:
+
+1. Aplicar los cambios de CAMBIO 1 y CAMBIO 2 al código real.
+2. `npm run build`
+3. `git add . && git commit -m "V8: perfiles completos comprador y proveedor en panel admin"`
+4. `git push`
+5. SSH Hostinger:
+   - `git pull`
+   - `composer install --no-dev --optimize-autoloader`
+   - `php artisan optimize:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache`
+   - Copiar `public/build/` a la ruta del subdominio impulsate.iyemyucatan.com
+6. Verificar en producción:
+   - https://impulsate.iyemyucatan.com/admin/clientes/38 muestra todos los campos.
+   - https://impulsate.iyemyucatan.com/admin/restauranteros/14 muestra todos los campos.
+
+==========================================
+VERIFICACIÓN FINAL
+==========================================
+- [ ] Boceto HTML generado y presentado antes de tocar cualquier archivo de código.
+- [ ] Perfil comprador muestra: nombre, correo, teléfono, empresa, municipio, RFC, CURP,
+      sitio web, cámara/asociación, nombre establecimiento, eventos asistidos con badges
+      de tipo y estado, historial de citas con columna de Evento.
+- [ ] Perfil proveedor muestra: todos los datos de identidad/representante, campos de
+      producto (refrigeración, congelación, mercado meta, etc.), lista de productos,
+      participación en eventos, tabla de citas ampliada con columna Evento y Comprador.
+- [ ] Ambas vistas funcionan en modo claro y oscuro, son responsivas en móvil y desktop.
+- [ ] Estados de citas en español: Pendiente, Confirmada, Cancelada, Completada, Reagendada.
+- [ ] Secciones vacías muestran estado vacío con ícono (no crashean ni muestran null/undefined).
+- [ ] Deploy realizado solo tras confirmación explícita del usuario sobre el boceto.

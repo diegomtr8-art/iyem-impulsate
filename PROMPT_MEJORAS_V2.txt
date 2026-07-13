@@ -1,0 +1,721 @@
+=========================================================
+PROMPT — MEJORAS V2: EVENTOS, REGISTRO DUAL, CUENTAS
+         REGRESIVAS, SOLICITUDES Y BUG DE SWITCH DE ROL
+=========================================================
+
+STACK: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Color primario: guinda (#8b1028). darkMode: 'class'.
+URL producción: https://lightcyan-mallard-509513.hostingersite.com/
+Hosting: Hostinger Business con SSH.
+
+=========================================================
+CONTEXTO — LO QUE YA EXISTE (no recrear)
+=========================================================
+
+- Tabla eventos: nombre, activa, fecha_hora_inicio, fecha_hora_fin,
+  fecha_hora_inicio_proveedores, fecha_hora_inicio_compradores,
+  max_citas_por_comprador, tiempo_entre_citas_minutos
+  ⚠️ FALTAN: fecha_hora_fin_proveedores, fecha_hora_fin_compradores
+
+- Tabla evento_usuario: evento_id, user_id, tipo, estado, motivo_rechazo, respondido_at
+
+- HandleInertiaRequests comparte: eventoActivo, registradoEnEvento (solo bool, no estado)
+
+- SwitchRoleController: usa redirect()->route('dashboard')
+  AppLayout.vue: router.post(switch.role, {}, { onFinish: () => switchingRole=false })
+  ⚠️ BUG: no fuerza recarga de props compartidas después del switch
+
+- EventoRegistroController: registra comprador y proveedor por separado,
+  cada uno como solicitud pendiente. NO registra ambos roles a la vez.
+
+- Paneles: no tienen pestaña de "Eventos", el registro se muestra como
+  card inline en el dashboard, sin separación por fase temporal.
+
+=========================================================
+CAMBIO 1 — MIGRACIÓN: FECHAS FIN DE VENTANAS
+=========================================================
+
+Crear migración: add_fecha_fin_ventanas_to_eventos_table
+
+Schema::table('eventos', function (Blueprint $table) {
+    // Fin del período de registro de proveedores
+    $table->dateTime('fecha_hora_fin_proveedores')
+          ->nullable()->after('fecha_hora_inicio_proveedores');
+    // Fin del período de agendado de compradores (puede diferir de fecha_hora_fin)
+    $table->dateTime('fecha_hora_fin_compradores')
+          ->nullable()->after('fecha_hora_inicio_compradores');
+});
+
+Actualizar modelo Evento.php:
+- Agregar los dos campos a $fillable
+- Agregar los dos campos a casts() como 'datetime'
+- Actualizar el método activo():
+  Un evento se considera activo si activa=true Y now() <= fecha_hora_fin
+  (o fecha_hora_fin es null). Sin cambios en esa lógica.
+
+- Agregar métodos de utilidad al modelo:
+
+  // ¿Está abierto el registro de proveedores?
+  public function registroProveedoresAbierto(): bool {
+      $inicio = $this->fecha_hora_inicio_proveedores;
+      $fin    = $this->fecha_hora_fin_proveedores;
+      if ($inicio && now()->lt($inicio)) return false;
+      if ($fin && now()->gt($fin)) return false;
+      return true;
+  }
+
+  // ¿Está abierto el registro de compradores?
+  public function registroCompradoresAbierto(): bool {
+      $inicio = $this->fecha_hora_inicio_compradores;
+      $fin    = $this->fecha_hora_fin_compradores ?? $this->fecha_hora_fin;
+      if ($inicio && now()->lt($inicio)) return false;
+      if ($fin && now()->gt($fin)) return false;
+      return true;
+  }
+
+  // Segundos hasta que abre el registro de proveedores (null si ya abrió)
+  public function segundosHastaProveedores(): ?int {
+      if (!$this->fecha_hora_inicio_proveedores) return null;
+      $diff = now()->diffInSeconds($this->fecha_hora_inicio_proveedores, false);
+      return $diff > 0 ? $diff : null;
+  }
+
+  // Segundos hasta que abre el registro de compradores
+  public function segundosHastaCompradores(): ?int {
+      if (!$this->fecha_hora_inicio_compradores) return null;
+      $diff = now()->diffInSeconds($this->fecha_hora_inicio_compradores, false);
+      return $diff > 0 ? $diff : null;
+  }
+
+Actualizar EventoRegistroController: respetar las nuevas fechas fin en
+registrarProveedor() y registrarComprador():
+
+En registrarProveedor():
+  if ($evento->fecha_hora_fin_proveedores &&
+      now()->gt($evento->fecha_hora_fin_proveedores)) {
+      return back()->withErrors(['error' =>
+          'El período de registro de proveedores ya cerró el ' .
+          $evento->fecha_hora_fin_proveedores->format('d/m/Y H:i') . '.']);
+  }
+
+En registrarComprador():
+  $finCompradores = $evento->fecha_hora_fin_compradores ?? $evento->fecha_hora_fin;
+  if ($finCompradores && now()->gt($finCompradores)) {
+      return back()->withErrors(['error' =>
+          'El período de registro de compradores ya cerró.']);
+  }
+
+php artisan migrate
+
+=========================================================
+CAMBIO 2 — REGISTRO DUAL AL EVENTO (usuario con ambos roles)
+=========================================================
+
+Archivo: app/Http/Controllers/EventoRegistroController.php
+
+LÓGICA ACTUAL:
+  registrarProveedor() solo registra como proveedor.
+  registrarComprador() solo registra como comprador.
+
+NUEVA LÓGICA:
+
+En registrarProveedor():
+  Después de insertar/actualizar el registro de proveedor, verificar:
+
+  $tieneRolCliente = $user->hasRole('cliente');
+
+  if ($tieneRolCliente) {
+      // El usuario tiene ambos roles → registrar también como comprador
+      // si el registro de compradores ya está disponible o va a abrirse
+      $registroComprador = DB::table('evento_usuario')
+          ->where('evento_id', $evento->id)
+          ->where('user_id', $user->id)
+          ->where('tipo', 'comprador')
+          ->first();
+
+      if (!$registroComprador) {
+          DB::table('evento_usuario')->insert([
+              'evento_id'  => $evento->id,
+              'user_id'    => $user->id,
+              'tipo'       => 'comprador',
+              'estado'     => 'pendiente',
+              'created_at' => now(),
+              'updated_at' => now(),
+          ]);
+          // Notificar al admin de la solicitud de comprador también
+          if ($admin = User::role('admin')->first()) {
+              Notificacion::crear($admin->id, 'solicitud_registro',
+                  'Nueva solicitud dual (proveedor+comprador)',
+                  $user->name . ' solicita unirse a "' . $evento->nombre .
+                  '" como proveedor Y comprador.');
+          }
+          $mensajeExtra = ' También te registramos como comprador en este evento.';
+      } else {
+          $mensajeExtra = '';
+      }
+      return back()->with('success',
+          'Tu solicitud de proveedor fue enviada.' . $mensajeExtra .
+          ' El administrador la revisará pronto.');
+  }
+
+En registrarComprador():
+  NO cambiar — el comprador solo se registra como comprador.
+  Si tiene rol proveedor, el registro de proveedor es independiente.
+
+Actualizar la vista de los paneles:
+  En el panel de proveedor, cuando el usuario tiene ambos roles y aún
+  NO está registrado en el evento:
+  - Mostrar UN SOLO botón "Registrarme al evento (como proveedor y comprador)"
+  - Texto explicativo: "Al registrarte como proveedor también quedarás
+    inscrito como comprador para poder agendar citas."
+  - Si el registro de proveedores NO está abierto pero SÍ el de compradores:
+    mostrar solo el botón de comprador.
+
+=========================================================
+CAMBIO 3 — PESTAÑA "EVENTOS" EN PANELES DE PROVEEDOR Y COMPRADOR
+=========================================================
+
+OBJETIVO: Separar la lógica de eventos del dashboard principal.
+El dashboard sigue igual pero el registro al evento se mueve
+a una pestaña dedicada "Eventos".
+
+3.1 — ACTUALIZAR CONTROLADORES para pasar lista de todos los eventos:
+
+En CitaPublicaController::dashboard() agregar:
+  $todosLosEventos = Evento::orderByDesc('fecha_hora_inicio')->get()
+      ->map(function($ev) use ($request) {
+          $registro = DB::table('evento_usuario')
+              ->where('evento_id', $ev->id)
+              ->where('user_id', $request->user()->id)
+              ->get(); // puede tener tipo=comprador y/o tipo=proveedor
+          return [
+              'id'                           => $ev->id,
+              'nombre'                       => $ev->nombre,
+              'sector_economico'             => $ev->sector_economico,
+              'activa'                       => $ev->activa,
+              'fecha_hora_inicio'            => $ev->fecha_hora_inicio?->toISOString(),
+              'fecha_hora_fin'               => $ev->fecha_hora_fin?->toISOString(),
+              'fecha_hora_inicio_proveedores'=> $ev->fecha_hora_inicio_proveedores?->toISOString(),
+              'fecha_hora_fin_proveedores'   => $ev->fecha_hora_fin_proveedores?->toISOString(),
+              'fecha_hora_inicio_compradores'=> $ev->fecha_hora_inicio_compradores?->toISOString(),
+              'fecha_hora_fin_compradores'   => $ev->fecha_hora_fin_compradores?->toISOString(),
+              'max_citas_por_comprador'      => $ev->max_citas_por_comprador,
+              'tiempo_entre_citas_minutos'   => $ev->tiempo_entre_citas_minutos,
+              'registro_proveedor_abierto'   => $ev->registroProveedoresAbierto(),
+              'registro_comprador_abierto'   => $ev->registroCompradoresAbierto(),
+              'segundos_hasta_proveedores'   => $ev->segundosHastaProveedores(),
+              'segundos_hasta_compradores'   => $ev->segundosHastaCompradores(),
+              'mi_registro' => [
+                  'comprador' => $registro->firstWhere('tipo', 'comprador'),
+                  'proveedor' => $registro->firstWhere('tipo', 'proveedor'),
+              ],
+          ];
+      });
+
+  Pasar 'eventos' => $todosLosEventos al Inertia::render()
+
+Hacer lo mismo en RestauranteroPanelController::index()
+
+3.2 — CREAR COMPONENTE: resources/js/Components/TabEventos.vue
+
+Props:
+  eventos: Array           (lista de todos los eventos)
+  userRoles: Array         (roles del usuario: ['cliente', 'restaurantero'])
+  tieneDualRol: Boolean
+
+Estructura de la vista:
+
+SECCIÓN A — Evento Activo (si existe)
+  Card grande con:
+  - Badge "EN CURSO" (verde animado pulse)
+  - Nombre del evento, sector, fechas
+  - Timeline visual de 4 fases con indicador de fase actual:
+    [Reg. Proveedores] → [Reg. Compradores] → [Evento Presencial] → [Finalizado]
+    La fase actual se resalta con color guinda
+  - Estado del usuario en el evento (ver sección 3.3)
+  - Cuenta regresiva (ver Cambio 4)
+
+SECCIÓN B — Eventos Próximos (activa=false, fecha_hora_inicio > now())
+  Si los hay: lista de cards compactas con nombre, fecha y "Próximamente"
+
+SECCIÓN C — Eventos Anteriores (activa=false, fecha_hora_fin < now() o archivados)
+  Lista compacta con nombre, fecha y "Finalizado"
+  Sin botones de registro
+
+3.3 — LÓGICA DE REGISTRO según ventana temporal y rol:
+
+En el evento activo, mostrar el bloque correcto según quién es el usuario:
+
+CASO: Solo Proveedor (hasRole restaurantero, NO cliente)
+  - Si ventana proveedores abierta Y no registrado:
+    → Botón "Solicitar registro como Proveedor"
+  - Si ventana proveedores cerrada Y no registrado:
+    → Mensaje "El período de registro de proveedores ha cerrado."
+  - Si registrado (pendiente/aprobado/rechazado):
+    → Badge con estado correspondiente
+
+CASO: Solo Comprador (hasRole cliente, NO restaurantero)
+  - Si ventana compradores NO ha abierto:
+    → Cuenta regresiva hasta apertura (NO mostrar botón aún)
+    → Mensaje: "El registro para compradores abre el [fecha]"
+  - Si ventana compradores abierta Y no registrado:
+    → Botón "Solicitar registro como Comprador"
+  - Si registrado: badge con estado
+
+CASO: Ambos roles (tieneDualRol = true)
+  - Si ventana proveedores abierta Y no registrado como proveedor:
+    → Botón "Registrarme al evento" (registra ambos)
+    → Texto: "Al registrarte como proveedor también quedarás inscrito como comprador."
+  - Si registrado como proveedor (pendiente/aprobado):
+    → Mostrar estado proveedor
+    → Si la ventana de compradores está abierta y NO está registrado como comprador:
+       → Botón adicional "También registrarme como Comprador"
+  - Siempre mostrar ambos estados si están registrados en ambos roles
+
+3.4 — INTEGRAR TabEventos en los paneles:
+
+En User/Dashboard.vue:
+  Agregar tabs en la parte superior: "Mis Citas" | "Eventos"
+  - Tab "Mis Citas": contenido actual del dashboard
+  - Tab "Eventos": renderizar <TabEventos :eventos="eventos" ... />
+  Recordar: el card de registro al evento que está inline en el dashboard
+  DEBE QUITARSE del dashboard principal (se mueve a la pestaña Eventos)
+
+En Restaurantero/Panel.vue:
+  Agregar tabs: "Mi Panel" | "Mis Citas" | "Eventos"
+  - Tab "Mi Panel": stats y calendario (contenido actual)
+  - Tab "Mis Citas": link o contenido de citas
+  - Tab "Eventos": renderizar <TabEventos :eventos="eventos" ... />
+  El card de registro inline del panel proveedor DEBE QUITARSE del panel principal
+
+=========================================================
+CAMBIO 4 — CUENTAS REGRESIVAS EN LA PESTAÑA EVENTOS
+=========================================================
+
+Crear componente: resources/js/Components/CuentaRegresiva.vue
+
+Props:
+  segundos: Number          (segundos hasta el evento objetivo, desde el servidor)
+  label: String             (ej: "Apertura de registro de proveedores en")
+  labelCero: String         (ej: "¡El registro de proveedores ya está abierto!")
+
+Lógica:
+  - Al montar, iniciar countdown con setInterval cada 1 segundo
+  - Calcular días, horas, minutos, segundos restantes
+  - Cuando llega a 0: emitir evento 'completed', mostrar labelCero
+  - Al llegar a 0: emitir 'completed' y llamar router.reload() después de 3 segundos
+    para que el panel se actualice con el nuevo estado (apertura de registro)
+  - Limpiar el intervalo en onUnmounted
+
+DISEÑO del componente (Tailwind, dark mode):
+  - Fondo: bg-guinda-50 dark:bg-guinda-950/20, borde guinda
+  - Label en la parte superior, tamaño pequeño
+  - Los 4 bloques: DD | HH | MM | SS con el número grande (text-3xl font-bold)
+    y la etiqueta debajo (días, horas, min, seg) en texto pequeño
+  - Separador ":" entre bloques
+  - Cuando quedan menos de 1 hora: los bloques de horas/minutos/seg se vuelven
+    text-red-600 dark:text-red-400 para indicar urgencia
+  - En móvil: los 4 bloques en una fila con números más pequeños (text-2xl)
+
+USO en TabEventos.vue:
+  Mostrar CuentaRegresiva SOLO cuando la ventana correspondiente no ha abierto:
+
+  // Para proveedores: cuando aún no abre el registro de proveedores
+  <CuentaRegresiva
+    v-if="evento.segundos_hasta_proveedores"
+    :segundos="evento.segundos_hasta_proveedores"
+    label="El registro de proveedores abre en:"
+    label-cero="¡El registro de proveedores ya está abierto!" />
+
+  // Para compradores: cuando el registro de compradores no ha abierto
+  <CuentaRegresiva
+    v-if="evento.segundos_hasta_compradores && !registroProveedorAbierto"
+    :segundos="evento.segundos_hasta_compradores"
+    label="El agendado de citas abre en:"
+    label-cero="¡Ya puedes registrarte como comprador!" />
+
+NOTA: Los segundos vienen del servidor en el prop del componente.
+El cliente hace countdown local desde ese valor. Al llegar a 0 hace
+router.reload() para obtener el estado actualizado del servidor.
+
+=========================================================
+CAMBIO 5 — FORMULARIO DE EVENTO ADMIN: FECHAS FIN DE VENTANAS
+=========================================================
+
+Archivo: resources/js/Pages/Admin/Eventos/Index.vue
+
+5.1 — AGREGAR CAMPOS al formulario de creación/edición:
+
+En el form ref, agregar:
+  fecha_hora_fin_proveedores: '',
+  fecha_hora_fin_compradores: '',
+
+En el template, agregar los nuevos campos después de cada inicio:
+
+  <!-- Ventana Proveedores -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div>
+      <label>Inicio registro proveedores</label>
+      <input type="datetime-local" v-model="form.fecha_hora_inicio_proveedores" />
+    </div>
+    <div>
+      <label>Fin registro proveedores
+        <span class="text-xs text-gray-400">(puede extenderse)</span>
+      </label>
+      <input type="datetime-local" v-model="form.fecha_hora_fin_proveedores" />
+    </div>
+  </div>
+
+  <!-- Ventana Compradores -->
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div>
+      <label>Inicio agendado compradores</label>
+      <input type="datetime-local" v-model="form.fecha_hora_inicio_compradores" />
+    </div>
+    <div>
+      <label>Fin agendado compradores
+        <span class="text-xs text-gray-400">(puede extenderse)</span>
+      </label>
+      <input type="datetime-local" v-model="form.fecha_hora_fin_compradores" />
+    </div>
+  </div>
+
+5.2 — AGREGAR al diagrama visual de la secuencia (ya existe en el form):
+
+  [Ahora] → [Inicio Reg. Prov.] → [Fin Reg. Prov.]
+          → [Inicio Reg. Comp.] → [Fin Reg. Comp.]
+          → [Evento Presencial] → [Fin Evento]
+
+5.3 — ACTUALIZAR EventoController::store() y (nuevo) update():
+
+Agregar validación para los nuevos campos:
+  'fecha_hora_fin_proveedores' => 'nullable|date|after_or_equal:fecha_hora_inicio_proveedores',
+  'fecha_hora_fin_compradores' => 'nullable|date|after_or_equal:fecha_hora_inicio_compradores',
+
+Guardar los nuevos campos en el create/update.
+
+5.4 — AGREGAR RUTA y método update() en EventoController:
+
+  // En routes/web.php dentro del grupo admin:
+  Route::patch('/eventos/{evento}', [EventoController::class, 'update'])
+      ->name('admin.eventos.update');
+
+  // EventoController::update():
+  public function update(Request $request, Evento $evento) {
+      $request->validate([...mismos campos que store...]);
+      $evento->update([...mismos campos...]);
+      return back()->with('success', 'Evento actualizado.');
+  }
+
+5.5 — AGREGAR BOTÓN "Editar" en la card del evento (activo y archivados):
+  Botón que abre un modal de edición pre-llenado con los datos actuales.
+  Útil para extender fechas sin archivar el evento.
+
+5.6 — ACTUALIZAR HandleInertiaRequests para pasar los nuevos campos:
+  En 'eventoActivo', agregar a ->only([...]):
+    'fecha_hora_fin_proveedores', 'fecha_hora_fin_compradores'
+
+=========================================================
+CAMBIO 6 — VISTA DE SOLICITUDES: PREVIEW DE PERFIL COMPLETO
+=========================================================
+
+Archivo: resources/js/Pages/Admin/Eventos/Solicitudes.vue
+Archivo: app/Http/Controllers/Admin/EventoSolicitudesController.php
+
+6.1 — ENRIQUECER los datos que devuelve el controlador:
+
+En index(), al construir el mapear():
+  Para proveedores incluir TODO el restaurantero:
+    nombre_restaurante, descripcion, categoria, municipio, rfc,
+    telefono, sitio_web, redes_sociales, productos_top, logo_path,
+    foto_path, activo, aprobado, created_at, citas_count (count de citas históricas)
+  Para compradores incluir todo del user:
+    name, email, telefono, necesidades, sitio_web, created_at,
+    citas_historico (count de citas en eventos anteriores)
+
+6.2 — NUEVO MODAL "Ver Perfil Completo" en la vista de Solicitudes:
+
+Agregar en <script setup>:
+  const modalPerfil = ref(false);
+  const solicitudPreview = ref(null);
+  const abrirPerfil = (solicitud) => {
+      solicitudPreview.value = solicitud;
+      modalPerfil.value = true;
+  };
+
+DISEÑO DEL MODAL (max-w-2xl, responsivo):
+
+  Para PROVEEDOR muestra:
+    - Logo/foto en la parte superior
+    - Nombre empresa + badges: Aprobado globalmente / Pendiente aprobación
+    - Descripción completa
+    - Grid de datos: RFC | Municipio | Teléfono | Sitio web | Categoría
+    - Redes sociales (si las tiene)
+    - Productos top (hasta 5, con nombre y descripción)
+    - Historial: "X citas en eventos anteriores"
+    - Fecha de registro en la plataforma
+    - Al final: Botones Aprobar y Rechazar (misma acción que las tarjetas)
+
+  Para COMPRADOR muestra:
+    - Avatar con iniciales o foto
+    - Nombre completo + email
+    - Teléfono | Sitio web
+    - Necesidades/intereses (campo necesidades del user)
+    - Historial: "X citas en eventos anteriores"
+    - Fecha de registro en la plataforma
+    - Al final: Botones Aprobar y Rechazar
+
+6.3 — MEJORAR las tarjetas de solicitud (vista lista):
+
+ANTES: card simple con nombre y botones.
+DESPUÉS: card con más info visible sin abrir modal:
+
+  Para PROVEEDOR card:
+    - Logo (img 40px) o inicial
+    - Nombre empresa (bold) | Nombre del usuario debajo (gris)
+    - Badge categoría | Badge municipio
+    - "Aprobado globalmente" o "Pendiente aprobación global" (advertencia)
+    - Fecha de solicitud
+    - Botón "Ver perfil completo" → abre modal
+    - Botón "Aprobar" (verde) | "Rechazar" (rojo)
+
+  Para COMPRADOR card:
+    - Avatar inicial
+    - Nombre completo (bold) | Email debajo
+    - Teléfono si lo tiene | Necesidades en texto truncado (1 línea)
+    - Fecha de solicitud
+    - Botón "Ver perfil" → abre modal
+    - Botón "Aprobar" | "Rechazar"
+
+6.4 — APROBAR UNO A UNO con confirmación visual (no alert()):
+
+En lugar de usar confirm() nativo del browser:
+  Al hacer clic en "Aprobar": mostrar mini-confirm inline en la misma card:
+    "¿Confirmar aprobación de [nombre]?"
+    [Sí, aprobar] [Cancelar]
+  Esto evita el alert() y queda más profesional.
+
+6.5 — INDICADOR DE CARGA en cada tarjeta:
+  Cada tarjeta debe tener su propio estado de carga independiente:
+  const procesandoId = ref(null)
+  Al aprobar/rechazar: procesandoId.value = solicitud.id
+  La tarjeta muestra un spinner y deshabilita los botones mientras procesa.
+
+=========================================================
+CAMBIO 7 — BUG: SWITCH DE ROL NO ACTUALIZA EL FRONTEND
+=========================================================
+
+CAUSA DEL BUG:
+  SwitchRoleController hace redirect()->route('dashboard').
+  Inertia intercepta el redirect y navega internamente, pero los props
+  compartidos (auth.user.active_role, registradoEnEvento) no se refrescan
+  completamente en todos los navegadores porque Inertia reutiliza la
+  instancia de Vue sin hacer una visita completa.
+
+CORRECCIÓN EN BACKEND (SwitchRoleController.php):
+
+  // ANTES:
+  return redirect()->route('dashboard');
+
+  // DESPUÉS: Forzar visita completa de Inertia
+  return Inertia::location(route('dashboard'));
+
+  // Inertia::location() hace un redirect HTTP real (302) que obliga al
+  // browser a hacer una visita completa, recargando todos los shared props.
+  // Importar: use Inertia\Inertia;
+
+CORRECCIÓN EN FRONTEND (AppLayout.vue):
+
+  // ANTES:
+  router.post(route('switch.role'), {}, {
+      onFinish: () => { switchingRole.value = false; },
+  });
+
+  // DESPUÉS: añadir onSuccess para limpiar estado,
+  // Inertia::location() ya maneja el reload, pero por si acaso:
+  router.post(route('switch.role'), {}, {
+      onSuccess: () => {
+          switchingRole.value = false;
+          // No necesitamos router.reload() porque Inertia::location hace
+          // una visita completa del servidor
+      },
+      onError: () => { switchingRole.value = false; },
+      onFinish: () => { switchingRole.value = false; },
+  });
+
+VERIFICACIÓN ADICIONAL — Reactivity de active_role:
+
+  En AppLayout.vue, el computed activeRole debe reaccionar a cambios:
+  const activeRole = computed(() => page.props.auth?.user?.active_role ?? 'comprador');
+
+  Verificar que este computed se use (no una variable local) en TODOS
+  los v-if que deciden qué mostrar según el rol activo.
+  Buscar en AppLayout.vue cualquier referencia hardcodeada a 'proveedor'
+  o 'comprador' que no use este computed y corregirla.
+
+VERIFICACIÓN EN TODOS LOS NAVEGADORES:
+
+  Revisar los siguientes casos en Chrome, Firefox, Safari y Edge:
+  1. Usuario con dual rol entra como Comprador → hace switch → debe llegar a /proveedor/panel
+  2. Usuario con dual rol entra como Proveedor → hace switch → debe llegar a /mi-panel
+  3. Después del switch, el navbar debe mostrar el nuevo rol activo correctamente
+  4. Los botones del navbar (Mis Citas / Mi Negocio) deben cambiar según el rol activo
+  5. La campana de notificaciones debe seguir funcionando después del switch
+
+  Fix adicional para Safari (que tiene comportamientos distintos con redirects):
+  En SwitchRoleController, asegurarse de que la sesión se guarde antes
+  del redirect:
+    $request->session()->save(); // antes del return
+    return Inertia::location(route('dashboard'));
+
+=========================================================
+CAMBIO 8 — ACTUALIZAR HandleInertiaRequests
+=========================================================
+
+El shared prop 'registradoEnEvento' actualmente solo devuelve bool.
+Actualizarlo para incluir el estado completo de cada registro:
+
+  'registradoEnEvento' => fn () => function() use ($request) {
+      $evento = Evento::activo();
+      if (!$evento || !$request->user()) {
+          return ['comprador' => null, 'proveedor' => null];
+      }
+      $registros = DB::table('evento_usuario')
+          ->where('evento_id', $evento->id)
+          ->where('user_id', $request->user()->id)
+          ->get()
+          ->keyBy('tipo');
+
+      return [
+          'comprador' => $registros->has('comprador') ? [
+              'estado'         => $registros['comprador']->estado,
+              'motivo_rechazo' => $registros['comprador']->motivo_rechazo,
+          ] : null,
+          'proveedor' => $registros->has('proveedor') ? [
+              'estado'         => $registros['proveedor']->estado,
+              'motivo_rechazo' => $registros['proveedor']->motivo_rechazo,
+          ] : null,
+      ];
+  },
+
+  // También agregar los nuevos campos de fecha al eventoActivo:
+  'eventoActivo' => fn () => Evento::activo()?->only([
+      'id', 'nombre', 'sector_economico', 'max_citas_por_comprador',
+      'fecha_hora_inicio', 'fecha_hora_fin',
+      'fecha_hora_inicio_proveedores', 'fecha_hora_fin_proveedores',
+      'fecha_hora_inicio_compradores', 'fecha_hora_fin_compradores',
+      'tiempo_entre_citas_minutos',
+  ]),
+
+=========================================================
+CAMBIO 9 — DARK MODE, RESPONSIVE Y CALIDAD
+=========================================================
+
+Para TODOS los componentes nuevos y modificados:
+
+DARK MODE — cada elemento nuevo debe tener dark::
+  bg-white → dark:bg-gray-900
+  bg-gray-50 → dark:bg-gray-900
+  text-gray-700 → dark:text-gray-300
+  border-gray-200 → dark:border-gray-700
+  (ver reglas completas en el prompt de auditoría anterior)
+
+COLORES — NO usar azul. Estados de registro:
+  pendiente  → amber (bg-amber-50 text-amber-700 border-amber-200 / dark variants)
+  aprobado   → green (bg-emerald-50 text-emerald-700 / dark variants)
+  rechazado  → red (bg-red-50 text-red-700 / dark variants)
+
+RESPONSIVO MÓVIL (375px):
+  - Pestaña "Eventos" en paneles:
+    Tabs en fila, scrollable si no caben: overflow-x-auto
+  - CuentaRegresiva: 4 bloques en fila, números más pequeños en móvil
+  - Modal de perfil completo: mx-3 w-full, scroll interno (max-h-[85vh] overflow-y-auto)
+  - Solicitudes admin: cards apiladas, botones full-width en móvil
+  - Formulario de evento: grid de 1 columna en móvil, 2 en sm:
+
+TABS (en paneles de usuario):
+  - Usar un diseño de tabs con borde inferior, no pastillas
+  - Clase activa: border-b-2 border-guinda-700 text-guinda-700
+  - Clase inactiva: text-gray-500 hover:text-gray-700
+  - En móvil: overflow-x-auto para que los tabs no se corten
+
+=========================================================
+ORDEN DE IMPLEMENTACIÓN
+=========================================================
+
+1. php artisan make:migration add_fecha_fin_ventanas_to_eventos_table
+   → php artisan migrate
+
+2. Actualizar Evento.php (fillable, casts, nuevos métodos)
+
+3. Actualizar EventoRegistroController:
+   - Respetar fecha_hora_fin_proveedores y fecha_hora_fin_compradores
+   - Registro dual (proveedor + comprador si tiene ambos roles)
+
+4. Actualizar HandleInertiaRequests (registradoEnEvento con estado + nuevos campos)
+
+5. Crear componente CuentaRegresiva.vue
+
+6. Crear componente TabEventos.vue (con lógica de fases y CTAs correctos)
+
+7. Integrar TabEventos en User/Dashboard.vue y Restaurantero/Panel.vue
+   + Remover los cards de registro inline del dashboard/panel principal
+
+8. Actualizar formulario Admin/Eventos/Index.vue (nuevos campos + botón editar)
+   + Agregar EventoController::update() + ruta PATCH
+
+9. Mejorar Solicitudes.vue (modal de perfil, mini-confirm, estado de carga)
+   + Enriquecer datos en EventoSolicitudesController::index()
+
+10. Corregir bug de switch de rol:
+    - SwitchRoleController: redirect() → Inertia::location()
+    - AppLayout.vue: onSuccess/onError handlers
+    - Probar en Chrome, Firefox, Safari, Edge
+
+11. npm run build
+
+12. Verificación final:
+    □ Registro dual funciona (usuario con ambos roles)
+    □ Cuenta regresiva llega a 0 y la página se recarga
+    □ Pestaña Eventos muestra evento activo, próximos y anteriores
+    □ Modal de perfil completo muestra toda la info
+    □ Switch de rol actualiza el UI en todos los navegadores
+    □ Todo se ve bien en 375px, dark mode y light mode
+
+=========================================================
+CAMBIO 10 — DEPLOY A PRODUCCIÓN
+=========================================================
+
+Solo ejecutar cuando todos los cambios estén verificados localmente.
+
+  npm run build
+
+  # Servidor SSH:
+  cd /home/usuario/impulsate
+  git pull origin main
+  composer install --no-dev --optimize-autoloader
+  php artisan migrate --force
+  php artisan optimize:clear
+  php artisan config:cache
+  php artisan route:cache
+  php artisan view:cache
+  chmod -R 755 storage bootstrap/cache
+
+  # Copiar: public/build/ → public_html/build/
+
+  # Verificar:
+  php artisan route:list | grep eventos
+  tail -20 storage/logs/laravel.log
+
+POST-DEPLOY CHECKLIST:
+  □ Switch de rol funciona en móvil y desktop
+  □ Pestaña Eventos carga en ambos paneles
+  □ Cuenta regresiva visible para usuarios no registrados
+  □ Registro dual envía solicitud de proveedor y comprador
+  □ Admin puede ver perfil completo en solicitudes
+  □ Aprobar/rechazar uno a uno funciona sin recargar toda la página
+  □ Los nuevos campos de fecha en eventos se guardan correctamente
+
+=========================================================
+FIN DEL PROMPT
+=========================================================

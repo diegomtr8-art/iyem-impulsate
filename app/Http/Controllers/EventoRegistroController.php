@@ -19,6 +19,10 @@ class EventoRegistroController extends Controller
             throw ValidationException::withMessages(['error' => 'Necesitas el rol de comprador para registrarte.']);
         }
 
+        if (!$user->es_restaurantero) {
+            throw ValidationException::withMessages(['error' => 'Solo los restauranteros pueden registrarse a este evento. Marca "¿Eres restaurantero?" en tu perfil para participar.']);
+        }
+
         if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
             throw ValidationException::withMessages(['error' => 'Este evento ya ha finalizado.']);
         }

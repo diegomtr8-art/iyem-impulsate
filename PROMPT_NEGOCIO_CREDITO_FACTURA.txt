@@ -1,0 +1,455 @@
+PROMPT PARA CLAUDE CODE — Perfil de negocio realmente completo + condiciones de crédito + facturación
+=============================================================================================================
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3 + Tailwind, darkMode 'class')
+Color primario: guinda (#8b1028). NUNCA azul/indigo.
+
+
+===========================================================================
+DIAGNÓSTICO — por qué hoy hay proveedores "con perfil completo" sin fotos
+===========================================================================
+Hay DOS cosas distintas que se llaman "perfil completo" en el sistema y no están conectadas entre sí:
+
+1. `users.perfil_completo` (boolean) — se marca en `CompletarPerfilController::store()` cuando el
+   usuario llena un formulario GENÉRICO (teléfono, CURP, RFC personal, municipio, nombre de empresa,
+   cámara/asociación). Es el mismo para compradores y proveedores, y es el único que usa hoy el
+   middleware `EnsureProfileComplete` para bloquear el acceso a la plataforma.
+2. El perfil DE NEGOCIO del proveedor (logo, productos, descripción, RFC del negocio, etc.) se llena
+   en un formulario totalmente distinto — el modal "Editar perfil de negocio" dentro de
+   `resources/js/Pages/Restaurantero/Panel.vue` (variable `formPerfil`, función `submitPerfil()`),
+   que envía a `ProveedorPerfilController::store()`. Ese formulario NO marca ningún campo de
+   "completo" — solo guarda lo que se le envíe, y casi todos sus campos son `nullable`.
+
+Por eso un proveedor puede tener `users.perfil_completo = true` (llenó el formulario genérico) sin
+haber subido nunca logo ni productos — exactamente el problema reportado.
+
+Dato interesante: `Panel.vue` YA tiene una barra de progreso informal para esto
+(`perfilPorcentaje` y `perfilCamposFaltantes`, líneas 182-207), pero es solo cosmética — no bloquea
+nada ni se usa en el badge del admin ni en el directorio público. Este prompt la actualiza y, sobre
+todo, crea un criterio real y guardado en base de datos para "perfil completo de negocio".
+
+IMPORTANTE — esto ACTUALIZA el prompt anterior (`PROMPT_PERFIL_COMPLETO_PROVEEDORES.txt`, si ya se
+aplicó): ese prompt usaba `users.perfil_completo` tanto para el badge de
+Admin > Restauranteros > Show como para el filtro de la sección "Explora los proveedores de la
+plataforma". Con este cambio, AMBOS deben usar el nuevo criterio de `restauranteros.perfil_completo`
+(ver Punto 1) en vez de `users.perfil_completo`. Las instrucciones de abajo ya indican el código
+final correcto — si ese prompt anterior no se ha aplicado todavía, aplica directamente esta versión.
+
+Dos campos existentes que NO se incluyen como requisito de "perfil completo" y por qué:
+- `categoria` (la categoría/sector mostrada en los filtros) solo la puede asignar el ADMIN
+  (`RestauranteroAdminController::updateCategoria()`), el proveedor no la edita en su propio
+  formulario. Si se exigiera para "perfil completo", un proveedor podría llenar todo correctamente y
+  seguir sin poder completarlo hasta que el admin le asigne categoría — un callejón sin salida
+  confuso. Por eso no se incluye. Si Diego prefiere que sí cuente, hay que avisar explícitamente
+  porque cambia el flujo (el admin tendría que asignar categoría ANTES de que el proveedor pueda
+  quedar completo).
+- `direccion` ya existe como variable en `formPerfil` y se envía al backend (línea 108 y 136 de
+  Panel.vue), pero NO tiene ningún `<input>` visible en el formulario actual — es un campo "fantasma"
+  que hoy nunca se puede llenar desde la interfaz. Por la misma razón que `categoria`, no se incluye
+  como requisito. Si se quiere usar, primero hay que agregarle un input real al formulario (cambio
+  menor, no incluido aquí para no ampliar el alcance).
+
+
+===========================================================================
+PUNTO 1 — Definir y guardar "perfil completo de negocio" en restauranteros
+===========================================================================
+1A. Migración
+------------------
+php artisan make:migration add_credito_factura_y_perfil_completo_to_restauranteros_table
+
+```php
+public function up(): void
+{
+    Schema::table('restauranteros', function (Blueprint $table) {
+        $table->boolean('acepta_credito')->default(false)->after('sitio_web');
+        $table->decimal('credito_monto_maximo', 10, 2)->nullable()->after('acepta_credito');
+        $table->unsignedInteger('credito_tiempo_cantidad')->nullable()->after('credito_monto_maximo');
+        $table->string('credito_tiempo_unidad', 20)->nullable()->after('credito_tiempo_cantidad'); // dias|semanas|meses
+        $table->boolean('pago_contraentrega')->default(false)->after('credito_tiempo_unidad');
+        $table->boolean('factura')->default(false)->after('pago_contraentrega');
+        $table->string('regimen_fiscal')->nullable()->after('factura');
+        $table->boolean('perfil_completo')->default(false)->after('regimen_fiscal');
+    });
+}
+
+public function down(): void
+{
+    Schema::table('restauranteros', function (Blueprint $table) {
+        $table->dropColumn([
+            'acepta_credito', 'credito_monto_maximo', 'credito_tiempo_cantidad',
+            'credito_tiempo_unidad', 'pago_contraentrega', 'factura', 'regimen_fiscal',
+            'perfil_completo',
+        ]);
+    });
+}
+```
+Nota: `restauranteros.rfc` ya existe (no se agrega), solo se usa de forma condicional (ver Punto 3).
+
+1B. Modelo — app/Models/Restaurantero.php
+----------------------------------------------
+Agregar al `$fillable` (línea 27-60): `'acepta_credito'`, `'credito_monto_maximo'`,
+`'credito_tiempo_cantidad'`, `'credito_tiempo_unidad'`, `'pago_contraentrega'`, `'factura'`,
+`'regimen_fiscal'`. NO agregar `'perfil_completo'` al fillable — se calcula solo, nunca se asigna
+por formulario (ver abajo).
+
+Agregar a `casts()` (línea 62-78): `'acepta_credito' => 'boolean'`, `'pago_contraentrega' =>
+'boolean'`, `'factura' => 'boolean'`, `'perfil_completo' => 'boolean'`,
+`'credito_monto_maximo' => 'decimal:2'`, `'credito_tiempo_cantidad' => 'integer'`.
+
+Agregar el cálculo automático y el método público:
+```php
+protected static function booted(): void
+{
+    static::saving(function (Restaurantero $r) {
+        $r->perfil_completo = $r->calcularPerfilCompleto();
+    });
+}
+
+public function calcularPerfilCompleto(): bool
+{
+    $infoBasica = filled($this->nombre_restaurante)
+        && filled($this->descripcion)
+        && filled($this->telefono)
+        && filled($this->municipio);
+
+    $tieneLogo = filled($this->logo_path);
+
+    $tieneProducto = !empty($this->productos_top)
+        && collect($this->productos_top)->contains(fn ($p) => filled($p['nombre'] ?? ($p ?? null)));
+
+    $facturaOk = !$this->factura || (filled($this->rfc) && filled($this->regimen_fiscal));
+
+    $creditoOk = !$this->acepta_credito || (
+        filled($this->credito_monto_maximo)
+        && filled($this->credito_tiempo_cantidad)
+        && filled($this->credito_tiempo_unidad)
+    );
+
+    return $infoBasica && $tieneLogo && $tieneProducto && $facturaOk && $creditoOk;
+}
+```
+Al usar un evento `saving`, `perfil_completo` se recalcula automáticamente cada vez que se guarda el
+modelo desde CUALQUIER controlador (el del proveedor, el del admin, aprobación, etc.) — no hay que
+recordar llamarlo manualmente en varios lugares.
+
+1C. Actualizar el badge en Admin > Restauranteros > Show
+--------------------------------------------------------------
+Archivo: resources/js/Pages/Admin/Restauranteros/Show.vue
+
+Si ya se agregó el badge del prompt anterior usando `restaurantero.user?.perfil_completo`, cambiarlo
+para usar el nuevo campo calculado:
+```html
+<span :class="restaurantero.perfil_completo
+        ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/20'
+        : 'bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/20'"
+    class="text-xs font-semibold px-2.5 py-1 rounded-full border">
+    {{ restaurantero.perfil_completo ? 'Perfil completo' : 'Perfil incompleto' }}
+</span>
+```
+Y el aviso amarillo debajo (si se agregó) igual debe leer `restaurantero.perfil_completo` en vez de
+`restaurantero.user?.perfil_completo`.
+
+1D. Actualizar el filtro del directorio público "Explora los proveedores de la plataforma"
+------------------------------------------------------------------------------------------------
+Archivo: app/Http/Controllers/RestauranteroPublicoController.php::index()
+
+Si ya se agregó `$proveedoresPlataforma` del prompt anterior con
+`->whereHas('user', fn ($q) => $q->where('perfil_completo', true))`, cambiar esa condición por:
+```php
+$proveedoresPlataforma = Restaurantero::query()
+    ->where('activo', true)
+    ->where('aprobado', true)
+    ->where('perfil_completo', true)   // <- nuevo criterio real, en vez del whereHas a users
+    ->withCount('citas')
+    ->orderByDesc('created_at')
+    ->paginate(8, ['*'], 'plataforma_page')
+    ->withQueryString();
+```
+
+
+===========================================================================
+PUNTO 2 — Crédito, plazo y pago contraentrega
+===========================================================================
+2A. Backend — app/Http/Controllers/ProveedorPerfilController.php
+--------------------------------------------------------------------
+Agregar `use Illuminate\Validation\Rule;` al inicio del archivo.
+
+En la validación de `store()` (línea 40-65), agregar:
+```php
+'acepta_credito'          => ['required', 'boolean'],
+'credito_monto_maximo'    => ['nullable', 'numeric', 'min:0', Rule::requiredIf((bool) $request->boolean('acepta_credito'))],
+'credito_tiempo_cantidad' => ['nullable', 'integer', 'min:1', Rule::requiredIf((bool) $request->boolean('acepta_credito'))],
+'credito_tiempo_unidad'   => ['nullable', 'in:dias,semanas,meses', Rule::requiredIf((bool) $request->boolean('acepta_credito'))],
+'pago_contraentrega'      => ['required', 'boolean'],
+```
+
+Después de las líneas que ya convierten booleanos (línea 74-76), agregar:
+```php
+$data['acepta_credito']     = filter_var($request->acepta_credito, FILTER_VALIDATE_BOOLEAN);
+$data['pago_contraentrega'] = filter_var($request->pago_contraentrega, FILTER_VALIDATE_BOOLEAN);
+$data['credito_monto_maximo']    = $data['acepta_credito'] ? $request->credito_monto_maximo : null;
+$data['credito_tiempo_cantidad'] = $data['acepta_credito'] ? $request->credito_tiempo_cantidad : null;
+$data['credito_tiempo_unidad']   = $data['acepta_credito'] ? $request->credito_tiempo_unidad : null;
+```
+
+2B. Frontend — resources/js/Pages/Restaurantero/Panel.vue
+-----------------------------------------------------------------
+En `formPerfil` (línea 91-113), agregar:
+```js
+acepta_credito:          props.restaurantero.acepta_credito ?? false,
+credito_monto_maximo:    props.restaurantero.credito_monto_maximo ?? '',
+credito_tiempo_cantidad: props.restaurantero.credito_tiempo_cantidad ?? '',
+credito_tiempo_unidad:   props.restaurantero.credito_tiempo_unidad ?? '',
+pago_contraentrega:      props.restaurantero.pago_contraentrega ?? false,
+```
+
+En `submitPerfil()` (línea 117-155), agregar al FormData:
+```js
+fd.append('acepta_credito', formPerfil.acepta_credito ? '1' : '0');
+if (formPerfil.acepta_credito) {
+    fd.append('credito_monto_maximo', formPerfil.credito_monto_maximo || '');
+    fd.append('credito_tiempo_cantidad', formPerfil.credito_tiempo_cantidad || '');
+    fd.append('credito_tiempo_unidad', formPerfil.credito_tiempo_unidad || '');
+}
+fd.append('pago_contraentrega', formPerfil.pago_contraentrega ? '1' : '0');
+```
+
+En el template, agregar una sección nueva justo después de "Información legal y operativa" (después
+de la línea 837, antes de "Foto / Logo" en línea 839):
+```html
+<!-- Crédito y forma de pago -->
+<div>
+    <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Crédito y forma de pago</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Aceptas pagos a crédito? *</label>
+            <select v-model="formPerfil.acepta_credito"
+                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                <option :value="false">No</option>
+                <option :value="true">Sí</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Manejas pago contraentrega? *</label>
+            <select v-model="formPerfil.pago_contraentrega"
+                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                <option :value="false">No</option>
+                <option :value="true">Sí</option>
+            </select>
+        </div>
+
+        <template v-if="formPerfil.acepta_credito">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Crédito hasta (MXN) *</label>
+                <input v-model.number="formPerfil.credito_monto_maximo" type="number" min="0" step="0.01" placeholder="50000"
+                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+            </div>
+            <div class="flex gap-2">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plazo de crédito *</label>
+                    <input v-model.number="formPerfil.credito_tiempo_cantidad" type="number" min="1" placeholder="30"
+                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
+                </div>
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad *</label>
+                    <select v-model="formPerfil.credito_tiempo_unidad"
+                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                        <option value="">— Elegir —</option>
+                        <option value="dias">Días</option>
+                        <option value="semanas">Semanas</option>
+                        <option value="meses">Meses</option>
+                    </select>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+```
+
+
+===========================================================================
+PUNTO 3 — Facturación: RFC y régimen fiscal
+===========================================================================
+3A. Backend
+---------------
+En la misma validación de `ProveedorPerfilController::store()`, agregar:
+```php
+'factura'        => ['required', 'boolean'],
+'regimen_fiscal' => ['nullable', 'string', 'max:150', Rule::requiredIf((bool) $request->boolean('factura'))],
+```
+Y cambiar la regla ya existente de `'rfc' => ['nullable', 'string', 'max:13']` (línea 58) por:
+```php
+'rfc' => ['nullable', 'string', 'max:13', Rule::requiredIf((bool) $request->boolean('factura'))],
+```
+
+Junto a los demás booleanos:
+```php
+$data['factura']        = filter_var($request->factura, FILTER_VALIDATE_BOOLEAN);
+$data['regimen_fiscal']  = $data['factura'] ? $request->regimen_fiscal : null;
+```
+(`rfc` ya se incluye en `$data = $request->only([...])`, línea 67-72 — no necesita cambio adicional
+ahí, solo la regla de validación arriba.)
+
+3B. Frontend — Panel.vue
+-----------------------------
+En `formPerfil`, agregar:
+```js
+factura:        props.restaurantero.factura ?? false,
+regimen_fiscal:  props.restaurantero.regimen_fiscal || '',
+```
+En `submitPerfil()`:
+```js
+fd.append('factura', formPerfil.factura ? '1' : '0');
+if (formPerfil.factura) {
+    fd.append('regimen_fiscal', formPerfil.regimen_fiscal || '');
+}
+```
+(El `rfc` ya se envía siempre, línea 138 existente — no cambia.)
+
+Agregar al mismo bloque "Crédito y forma de pago" del Punto 2 (o justo debajo, como su propia
+sub-sección, según se vea mejor visualmente):
+```html
+<div class="sm:col-span-2 border-t border-gray-100 dark:border-gray-800 pt-4 mt-2">
+    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Emites factura? *</label>
+    <select v-model="formPerfil.factura"
+        class="w-full sm:w-1/2 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+        <option :value="false">No</option>
+        <option :value="true">Sí</option>
+    </select>
+</div>
+<template v-if="formPerfil.factura">
+    <div class="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">RFC *</label>
+            <input v-model="formPerfil.rfc" type="text" maxlength="13" placeholder="XXXX000000XXX"
+                @input="formPerfil.rfc = formPerfil.rfc.toUpperCase()"
+                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 uppercase" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Régimen fiscal *</label>
+            <select v-model="formPerfil.regimen_fiscal"
+                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
+                <option value="">— Elegir —</option>
+                <option value="Persona Física con Actividades Empresariales y Profesionales">Persona Física con Actividades Empresariales y Profesionales</option>
+                <option value="Régimen Simplificado de Confianza (RESICO)">Régimen Simplificado de Confianza (RESICO)</option>
+                <option value="Régimen General de Personas Morales">Régimen General de Personas Morales</option>
+                <option value="Régimen de Incorporación Fiscal (RIF)">Régimen de Incorporación Fiscal (RIF)</option>
+                <option value="Sueldos y Salarios e Ingresos Asimilados a Salarios">Sueldos y Salarios e Ingresos Asimilados a Salarios</option>
+                <option value="Arrendamiento">Arrendamiento</option>
+                <option value="Otro">Otro</option>
+            </select>
+        </div>
+    </div>
+</template>
+```
+Nota: esta lista de régimen fiscal es un set reducido de los más comunes para negocios pequeños/
+medianos, no el catálogo completo del SAT (22 regímenes). Es suficiente para mostrar la información
+en el perfil; si en el futuro se necesita generar CFDI real desde la plataforma, ahí sí habría que
+usar el catálogo oficial completo del SAT.
+
+OJO: el campo `rfc` aquí es el RFC DEL NEGOCIO (columna `restauranteros.rfc`), distinto del RFC
+PERSONAL que ya se captura en `CompletarPerfilController` (columna `users.rfc`). Son dos campos
+distintos a propósito (uno es de la persona, otro del negocio) — no hay que confundirlos ni fusionar
+las columnas.
+
+3C. Actualizar la barra de progreso informal de Panel.vue (cosmética, no bloqueante)
+------------------------------------------------------------------------------------------
+Reemplazar `perfilPorcentaje` (línea 182-195) por:
+```js
+const perfilPorcentaje = computed(() => {
+    const r = props.restaurantero;
+    if (!r) return 0;
+    let pct = 0;
+    if (r.nombre_restaurante) pct += 10;
+    if (r.descripcion)        pct += 10;
+    if (r.telefono)           pct += 10;
+    if (r.municipio)          pct += 10;
+    if (r.logo_path)          pct += 15;
+    if (r.productos_top?.length > 0) pct += 20;
+    if (r.acepta_credito !== null && r.acepta_credito !== undefined) pct += 5;
+    if (r.pago_contraentrega !== null && r.pago_contraentrega !== undefined) pct += 5;
+    if (r.factura !== null && r.factura !== undefined) pct += 5;
+    if (!r.factura || (r.rfc && r.regimen_fiscal)) pct += 10;
+    return pct;
+});
+```
+Y `perfilCamposFaltantes` (línea 197-207) — quitar la línea `if (!r?.rfc) f.push('RFC')` (el RFC ya
+no es obligatorio salvo que facture) y agregar:
+```js
+const perfilCamposFaltantes = computed(() => {
+    const r = props.restaurantero;
+    const f = [];
+    if (!r?.descripcion)              f.push('Descripción');
+    if (!r?.municipio)                f.push('Municipio');
+    if (!r?.logo_path)                f.push('Logo');
+    if (!r?.productos_top?.length)    f.push('Al menos 1 producto');
+    if (!r?.telefono)                 f.push('Teléfono');
+    if (r?.factura && (!r?.rfc || !r?.regimen_fiscal)) f.push('RFC y régimen fiscal (porque facturas)');
+    return f;
+});
+```
+
+3D. Mostrar las condiciones comerciales en el perfil público
+------------------------------------------------------------------
+Archivo: resources/js/Pages/Restauranteros/Show.vue
+
+`RestauranteroPublicoController::show()` ya oculta `rfc` del payload público
+(`makeHidden(['telefono', 'rfc', 'direccion'])`, línea 140) — esto se queda igual, el RFC del negocio
+NO se muestra públicamente, solo internamente al proveedor y al admin. Lo que SÍ se muestra
+públicamente es si factura (sin el RFC) y el régimen fiscal, además de las condiciones de crédito.
+
+Agregar, justo después del bloque de "Productos / Servicios Top" (después de la línea 414, antes
+del bloque de contacto en la línea 416):
+```html
+<!-- Condiciones comerciales -->
+<div v-if="restaurantero.acepta_credito || restaurantero.pago_contraentrega || restaurantero.factura"
+    class="border-t border-gray-100 dark:border-gray-800 pt-4 mb-2">
+    <h3 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Condiciones comerciales</h3>
+    <div class="flex flex-wrap gap-2">
+        <span v-if="restaurantero.acepta_credito"
+            class="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 px-3 py-1.5 rounded-full">
+            💳 Acepta crédito hasta ${{ Number(restaurantero.credito_monto_maximo).toLocaleString('es-MX') }} MXN
+            · {{ restaurantero.credito_tiempo_cantidad }} {{ { dias: 'días', semanas: 'semanas', meses: 'meses' }[restaurantero.credito_tiempo_unidad] }}
+        </span>
+        <span v-else class="inline-flex items-center gap-1 text-xs font-medium bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-full">
+            No maneja crédito
+        </span>
+        <span v-if="restaurantero.pago_contraentrega"
+            class="inline-flex items-center gap-1 text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-500/20 px-3 py-1.5 rounded-full">
+            📦 Acepta pago contraentrega
+        </span>
+        <span v-if="restaurantero.factura"
+            class="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 px-3 py-1.5 rounded-full">
+            🧾 Emite factura{{ restaurantero.regimen_fiscal ? ' · ' + restaurantero.regimen_fiscal : '' }}
+        </span>
+        <span v-else class="inline-flex items-center gap-1 text-xs font-medium bg-gray-50 dark:bg-gray-800 text-gray-500 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1.5 rounded-full">
+            No emite factura
+        </span>
+    </div>
+</div>
+```
+
+
+===========================================================================
+DEPLOY
+===========================================================================
+1. php artisan make:migration add_credito_factura_y_perfil_completo_to_restauranteros_table (1A)
+2. npm run build
+3. git add -A && git commit -m "feat: perfil de negocio completo real (logo+producto+info), crédito, pago contraentrega y facturación" && git push
+4. SSH servidor: git pull && composer install --no-dev --optimize-autoloader && npm run build && php artisan migrate --force && php artisan optimize:clear
+5. Verificación:
+   a. Abrir el perfil de un proveedor que hoy NO tenga logo ni productos → debe verse "Perfil
+      incompleto" en el admin, y NO debe aparecer en "Explora los proveedores de la plataforma" en
+      la página pública (aunque su `users.perfil_completo` siga en true).
+   b. Como ese proveedor, entrar a su Panel y llenar logo + al menos 1 producto + descripción +
+      teléfono + municipio + responder crédito/contraentrega/factura → al guardar, debe pasar a
+      "Perfil completo" automáticamente (sin tocar nada más) y aparecer en el directorio público.
+   c. Marcar "Sí" en "¿Emites factura?" sin llenar RFC o régimen fiscal → debe bloquear el guardado
+      con error de validación.
+   d. Marcar "Sí" en "¿Aceptas crédito?" sin llenar monto o plazo → debe bloquear el guardado.
+   e. Guardar con factura = No y crédito = No → debe guardar sin pedir esos campos, y el perfil debe
+      poder quedar completo igual si lo demás está lleno.
+   f. Revisar el perfil público de un proveedor con crédito/contraentrega/factura llenos → deben
+      verse los badges de "Condiciones comerciales", y el RFC del negocio NO debe aparecer en el
+      HTML de esa página (sigue oculto).
+   g. Confirmar que el RFC personal del usuario (`users.rfc`, de Completar Perfil) y el RFC del
+      negocio (`restauranteros.rfc`) son independientes y no se pisan entre sí.

@@ -132,7 +132,7 @@ const formatFecha = (fecha) => {
                                 class="block text-center text-sm font-bold py-2.5 rounded-xl
                                        bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
                                        text-white transition-colors shadow-sm">
-                                Más información
+                                Ver Proveedores
                             </Link>
                         </div>
                     </div>
@@ -215,7 +215,7 @@ const formatFecha = (fecha) => {
                         :href="route('proveedores.index')"
                         class="block text-center text-xs font-bold py-1.5 rounded-lg
                                bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
-                        Más información
+                        Ver Proveedores
                     </Link>
                 </div>
             </div>

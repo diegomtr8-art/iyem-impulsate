@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bocetos V7 — Impulsate</title>
+<style>
+  :root { --guinda: #8b1028; --guinda-dark: #45060f; --guinda-light: #f9e8eb; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f3f4f6; color: #111827; line-height: 1.5; }
+  h1.page-title { background: linear-gradient(135deg, #45060f, #8b1028); color: #fff; padding: 24px 32px; font-size: 24px; font-weight: 900; }
+  .section { max-width: 1100px; margin: 32px auto; padding: 0 16px; }
+  .section-title { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: #6b7280; margin-bottom: 12px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }
+  .cambio-label { display: inline-block; background: var(--guinda); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; margin-bottom: 8px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .card h3 { font-size: 16px; font-weight: 700; color: #374151; margin-bottom: 16px; }
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 14px; background: #f9fafb; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-weight: 600; font-size: 12px; }
+  td { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; }
+  tr:hover td { background: #fafafa; }
+  /* Badges */
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+  .badge-guinda { background: #f9e8eb; color: #8b1028; border: 1px solid #f0c6ce; }
+  .badge-amber { background: #fffbeb; color: #92400e; }
+  .badge-emerald { background: #ecfdf5; color: #065f46; }
+  .badge-sky { background: #f0f9ff; color: #0c4a6e; }
+  /* Sidebar */
+  .sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; font-size: 14px; font-weight: 500; color: #6b7280; margin-bottom: 2px; }
+  .sidebar-item.active { background: #f9e8eb; color: #8b1028; font-weight: 700; }
+  /* Forms */
+  .form-group { margin-bottom: 16px; }
+  label.form-label { display: block; font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+  input[type=text], input[type=email], input[type=tel], textarea, select {
+    width: 100%; border: 1px solid #d1d5db; border-radius: 10px; padding: 10px 14px; font-size: 14px; color: #111827; outline: none;
+  }
+  input:focus, textarea:focus { border-color: var(--guinda); box-shadow: 0 0 0 3px rgba(139,16,40,.1); }
+  .radio-card { display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border: 1px solid #d1d5db; border-radius: 12px; cursor: pointer; font-size: 14px; margin-right: 8px; }
+  .radio-card.selected { border-color: var(--guinda); background: #f9e8eb; font-weight: 600; color: var(--guinda-dark); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; padding: 10px 20px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; border: none; }
+  .btn-guinda { background: var(--guinda); color: #fff; }
+  .btn-guinda:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-gray { background: #f3f4f6; color: #374151; }
+  /* Checkbox */
+  .checkbox-row { display: flex; align-items: flex-start; gap: 10px; }
+  .checkbox-row input[type=checkbox] { margin-top: 2px; accent-color: var(--guinda); width: 16px; height: 16px; }
+  /* Banner */
+  .banner-amber { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+  .banner-guinda { background: #f9e8eb; border: 1px solid #f0c6ce; border-radius: 12px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+  .info-icon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+  .info-icon.amber { background: #fde68a; color: #92400e; }
+  .info-icon.guinda { background: #f0c6ce; color: #8b1028; }
+  /* Screen mock */
+  .screen-mock { border: 2px solid #e5e7eb; border-radius: 16px; overflow: hidden; }
+  .screen-header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 12px 20px; display: flex; align-items: center; justify-between; gap: 12px; }
+  .screen-body { background: #f9fafb; padding: 24px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+  .text-sm { font-size: 13px; }
+  .text-xs { font-size: 11px; }
+  .text-guinda { color: var(--guinda); }
+  .text-gray { color: #6b7280; }
+  .underline { text-decoration: underline; }
+  .mt-2 { margin-top: 8px; }
+  .mt-4 { margin-top: 16px; }
+  .aviso-box { background: #f9e8eb; border: 1px solid #f0c6ce; border-radius: 12px; padding: 20px; }
+  .aviso-box h4 { font-size: 13px; font-weight: 700; color: #8b1028; margin-bottom: 10px; }
+  .aviso-box p { font-size: 13px; color: #374151; line-height: 1.6; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">🎨 Bocetos V7 — Impulsate</h1>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMBIO 2+3: GESTIÓN USUARIOS — BADGES Y MENÚ -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="cambio-label">CAMBIO 2 + 3</div>
+  <div class="section-title">Panel Admin — Menú "Compradores" + Badges amigables en Gestión Usuarios</div>
+
+  <div class="card">
+    <div style="display:flex; gap:0; height:460px; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden;">
+      <!-- Sidebar -->
+      <div style="width:200px; background:#fff; border-right:1px solid #e5e7eb; padding:16px 8px; flex-shrink:0;">
+        <img src="/images/logo_impulsate.png" alt="" style="height:28px; margin-bottom:20px; margin-left:8px;" onerror="this.style.display='none'">
+        <div style="font-size:11px;font-weight:700;color:#8b1028;padding:0 12px 8px;letter-spacing:.05em;">ADMIN</div>
+        <div class="sidebar-item">🏠 Dashboard</div>
+        <div class="sidebar-item">🏢 Proveedores</div>
+        <div class="sidebar-item">📅 Citas</div>
+        <div class="sidebar-item active">👥 Compradores</div>
+        <!-- ANTES decía "Usuarios" — AHORA dice "Compradores" ✅ -->
+        <div class="sidebar-item">📊 Métricas</div>
+        <div class="sidebar-item">🎪 Eventos</div>
+        <div style="border-top:1px solid #f0c6ce;margin:12px 8px;"></div>
+        <div style="font-size:9px;font-weight:700;color:#c0516a;padding:0 12px 6px;letter-spacing:.1em;text-transform:uppercase;">SUPER ADMIN</div>
+        <div class="sidebar-item">⚙️ Gestión Usuarios</div>
+        <div class="sidebar-item">✉️ Plantillas Correo</div>
+        <div class="sidebar-item">📢 Publicidad</div>
+      </div>
+      <!-- Content -->
+      <div style="flex:1; overflow:auto; padding:24px; background:#f9fafb;">
+        <h1 style="font-size:20px;font-weight:800;margin-bottom:4px;">Gestión de Usuarios</h1>
+        <p class="text-sm text-gray" style="margin-bottom:16px;">42 usuarios registrados</p>
+        <div style="display:flex;gap:12px;margin-bottom:16px;">
+          <input type="text" placeholder="Buscar por nombre, email o empresa…" style="flex:1;max-width:340px;font-size:13px;" />
+          <select style="font-size:13px;padding:8px 14px;border-radius:10px;border:1px solid #d1d5db;">
+            <option>Todos los roles</option>
+            <option>Comprador</option>
+            <option>Proveedor</option>
+            <option>Admin</option>
+            <option>Super Admin</option>
+          </select>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <table>
+            <thead>
+              <tr>
+                <th>Usuario</th><th>Empresa</th><th>Roles</th><th>Registro</th><th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div style="font-weight:600;">María López</div><div class="text-xs text-gray">maria@empresa.com</div></td>
+                <td class="text-sm text-gray">Restaurante El Sol</td>
+                <td><span class="badge badge-emerald">Proveedor</span> <span class="badge badge-sky">Comprador</span></td>
+                <td class="text-sm text-gray">12 jun 2026</td>
+                <td>✏️</td>
+              </tr>
+              <tr>
+                <td><div style="font-weight:600;">Carlos Ruiz</div><div class="text-xs text-gray">carlos@negocio.mx</div></td>
+                <td class="text-sm text-gray">Tecnología MX</td>
+                <td><span class="badge badge-sky">Comprador</span></td>
+                <td class="text-sm text-gray">08 jun 2026</td>
+                <td>✏️</td>
+              </tr>
+              <tr>
+                <td><div style="font-weight:600;">Diego Martínez</div><div class="text-xs text-gray">diego@iyem.gob.mx</div></td>
+                <td class="text-sm text-gray">—</td>
+                <td><span class="badge badge-guinda">Super Admin</span> <span class="badge badge-amber">Admin</span></td>
+                <td class="text-sm text-gray">01 jun 2026</td>
+                <td>✏️</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-gray mt-2" style="color:#10b981;font-weight:600;">✅ Antes mostraba JSON crudo de objetos Spatie. Ahora muestra "Comprador", "Proveedor", "Admin", "Super Admin".</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMBIO 4A: AVISO DE PRIVACIDAD — PÁRRAFOS FALTANTES -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="cambio-label">CAMBIO 4A</div>
+  <div class="section-title">Aviso de Privacidad — Párrafos nuevos agregados</div>
+  <div class="card">
+    <h3>Sección: Finalidades secundarias (párrafo de oposición — nuevo ✅)</h3>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;margin-bottom:16px;">
+      <p class="text-sm" style="line-height:1.7;">
+        Si usted no desea que sus datos sean utilizados con estas finalidades secundarias, podrá manifestarlo al momento de su
+        registro o posteriormente de forma personal y por escrito en las oficinas del Instituto Yucateco de Emprendedores o a
+        través del siguiente correo electrónico:
+        <strong>solicitudes.iyem@transparenciayucatan.org.mx</strong>
+      </p>
+    </div>
+
+    <h3>Sección nueva: Origen de datos y medidas de seguridad (nuevo ✅)</h3>
+    <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:16px;">
+      <p class="text-sm" style="line-height:1.7;margin-bottom:8px;">
+        Los datos personales se obtienen directamente de la persona solicitante.
+      </p>
+      <p class="text-sm" style="line-height:1.7;">
+        Se informa que el Instituto ha implementado medidas de seguridad físicas, técnicas y administrativas para proteger
+        los datos personales contra daño, pérdida, alteración, destrucción o acceso no autorizado, garantizando su
+        confidencialidad, integridad y disponibilidad.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMBIO 4D: PANTALLA /aceptar-aviso -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="cambio-label">CAMBIO 4D</div>
+  <div class="section-title">Nueva pantalla: /aceptar-aviso (mostrada a cualquier usuario sin acepta_aviso_at)</div>
+  <div class="card">
+    <div style="max-width:500px;margin:0 auto;padding:24px;background:#f9fafb;border-radius:16px;">
+      <div style="text-align:center;margin-bottom:24px;">
+        <div style="width:48px;height:48px;background:var(--guinda);border-radius:12px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:24px;">🔒</div>
+        <h2 style="font-size:20px;font-weight:800;">Aviso de Privacidad</h2>
+        <p class="text-sm text-gray" style="margin-top:4px;">Antes de continuar, necesitas leer y aceptar nuestro Aviso de Privacidad.</p>
+      </div>
+      <div class="aviso-box" style="margin-bottom:20px;">
+        <h4>Resumen del Aviso de Privacidad</h4>
+        <p><strong>Responsable:</strong> Instituto Yucateco de Emprendedores (IYEM), Mérida, Yucatán.</p>
+        <p><strong>Finalidad:</strong> Verificar tu identidad, asignarte espacios en eventos y comunicarte sobre logística.</p>
+        <p><strong>Datos:</strong> Nombre, correo, teléfono, CURP, RFC, municipio, datos del negocio.</p>
+        <a href="#" class="text-sm text-guinda underline" style="display:inline-block;margin-top:6px;">📄 Leer el Aviso completo →</a>
+      </div>
+      <div class="checkbox-row" style="margin-bottom:16px;">
+        <input type="checkbox" id="acepta_demo" />
+        <label for="acepta_demo" class="text-sm" style="cursor:pointer;line-height:1.6;">
+          He leído y acepto el <span class="text-guinda underline">Aviso de Privacidad</span> del Instituto Yucateco de Emprendedores (IYEM).
+        </label>
+      </div>
+      <button class="btn btn-guinda" style="width:100%;margin-bottom:12px;" disabled>Aceptar y continuar</button>
+      <div style="text-align:center;">
+        <a href="#" class="text-xs text-gray underline">No acepto — cerrar sesión</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMBIO 4F + 4G: REGISTRO Y LOGIN -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="cambio-label">CAMBIO 4F + 4G</div>
+  <div class="section-title">Registro: checkbox siempre visible — Login: aviso informativo</div>
+  <div class="grid-2" style="gap:24px;">
+    <!-- Registro -->
+    <div class="card">
+      <h3>Registro (parte inferior del formulario)</h3>
+      <div style="border-top:1px solid #e5e7eb;padding-top:16px;">
+        <div class="form-group">
+          <label class="form-label">Confirmar contraseña</label>
+          <input type="text" placeholder="••••••••" />
+        </div>
+        <div class="checkbox-row" style="padding:12px;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:16px;">
+          <input type="checkbox" id="reg_aviso" />
+          <label for="reg_aviso" class="text-sm" style="cursor:pointer;line-height:1.6;">
+            Al registrarme, acepto el <span class="text-guinda underline">Aviso de Privacidad</span> del Instituto Yucateco de Emprendedores (IYEM).
+          </label>
+        </div>
+        <button class="btn btn-guinda" style="width:100%;opacity:0.5;" disabled>Crear cuenta gratis</button>
+        <p class="text-xs text-gray" style="margin-top:8px;text-align:center;">Botón deshabilitado hasta marcar el checkbox ✅</p>
+      </div>
+    </div>
+    <!-- Login -->
+    <div class="card">
+      <h3>Login (parte inferior)</h3>
+      <div style="border-top:1px solid #e5e7eb;padding-top:16px;">
+        <div class="form-group">
+          <input type="text" placeholder="••••••••" />
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+          <label class="text-sm">☑ Recordarme</label>
+          <a href="#" class="text-sm text-guinda">Olvidé mi contraseña</a>
+        </div>
+        <button class="btn btn-guinda" style="width:100%;margin-bottom:12px;">Iniciar sesión</button>
+        <p class="text-sm text-gray" style="text-align:center;margin-bottom:8px;">¿No tienes cuenta? <span class="text-guinda underline">Regístrate gratis</span></p>
+        <p class="text-xs" style="text-align:center;color:#9ca3af;">
+          Al ingresar, aceptas nuestro <span style="color:#8b1028;text-decoration:underline;">Aviso de Privacidad</span>.
+        </p>
+        <!-- ✅ NUEVO: texto informativo pequeño debajo del formulario -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMBIO 5C: COMPLETAR PERFIL — CÁMARA/ASOCIACIÓN -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="cambio-label">CAMBIO 5</div>
+  <div class="section-title">CompletarPerfil + Dashboard — Radio buttons CANIRAC/Ninguna</div>
+  <div class="card">
+    <h3>Formulario "Completa tu perfil" — sección nueva</h3>
+    <div style="max-width:480px;">
+      <div class="form-group">
+        <label class="form-label">¿Pertenece a alguna cámara o asociación? <span style="color:#9ca3af;">(opcional)</span></label>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <label class="radio-card selected">
+            <input type="radio" name="camara" value="CANIRAC" checked style="accent-color:var(--guinda);" />
+            CANIRAC
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="camara" value="Ninguna" style="accent-color:var(--guinda);" />
+            Ninguna
+          </label>
+        </div>
+      </div>
+      <!-- Campo condicional visible cuando CANIRAC está seleccionado -->
+      <div class="form-group" style="background:#fff8f9;border:1px solid #fde;border-radius:12px;padding:16px;">
+        <label class="form-label">Nombre del restaurante, cafetería o establecimiento de alimentos <span style="color:#ef4444;">*</span></label>
+        <input type="text" placeholder="Ej. Restaurante El Mesón de San Juan" />
+        <p class="text-xs text-gray" style="margin-top:6px;">Campo visible únicamente cuando se selecciona CANIRAC ✅</p>
+      </div>
+    </div>
+
+    <hr class="divider" />
+
+    <h3>Dashboard comprador — banner para usuarios sin camara_asociacion</h3>
+    <div class="banner-amber">
+      <div class="info-icon amber">ℹ</div>
+      <div>
+        <p class="text-sm" style="font-weight:700;color:#92400e;">Tenemos una pregunta nueva para ti</p>
+        <p class="text-sm" style="color:#78350f;margin-top:2px;">¿Perteneces a alguna cámara o asociación (CANIRAC u otra)?
+          <a href="#" class="underline" style="font-weight:700;">Actualizar mi perfil →</a></p>
+      </div>
+    </div>
+    <p class="text-xs text-gray">Este banner aparece cuando camara_asociacion es NULL — no es bloqueante, el usuario puede ignorarlo. ✅</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- CAMBIO 1: AVISO — BORRADO DE EVENTOS -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="cambio-label" style="background:#dc2626;">CAMBIO 1 — REQUIERE CONFIRMACIÓN</div>
+  <div class="section-title">Borrado de eventos — Pendiente de confirmación del usuario</div>
+  <div class="card" style="border-color:#fca5a5;">
+    <div class="banner-amber" style="background:#fff1f2;border-color:#fca5a5;">
+      <div class="info-icon" style="background:#fee2e2;color:#dc2626;">⚠</div>
+      <div>
+        <p class="text-sm" style="font-weight:700;color:#dc2626;">Acción destructiva — Sin revisar aún</p>
+        <p class="text-sm" style="color:#991b1b;margin-top:4px;">
+          El borrado de la tabla <code>eventos</code>, <code>citas</code> y <code>evento_usuario</code> está pendiente de confirmación explícita.
+          Una vez confirmado por el usuario, se ejecutará en producción con mysqldump previo.
+        </p>
+        <p class="text-sm" style="color:#991b1b;margin-top:8px;">Comando a ejecutar (solo tras confirmación):</p>
+        <pre style="background:#fee2e2;padding:8px 12px;border-radius:8px;font-size:12px;margin-top:6px;color:#7f1d1d;">php artisan tinker --execute="
+  DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+  DB::table('evento_usuario')->truncate();
+  DB::table('citas')->truncate();
+  DB::table('eventos')->truncate();
+  DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+"</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- RESUMEN DE VERIFICACIÓN -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-title">Checklist de verificación V7</div>
+  <div class="card">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div class="text-sm">✅ Gestión Usuarios: badges con labels amigables (no JSON)</div>
+      <div class="text-sm">✅ Menú Admin: "Compradores" en lugar de "Usuarios"</div>
+      <div class="text-sm">✅ Aviso de Privacidad: párrafos de oposición y medidas de seguridad</div>
+      <div class="text-sm">✅ Migración acepta_aviso_at en tabla users</div>
+      <div class="text-sm">✅ Middleware EnsureAvisoAceptado (global, exento admin/super-admin)</div>
+      <div class="text-sm">✅ Pantalla /aceptar-aviso con resumen, checkbox y botón logout</div>
+      <div class="text-sm">✅ Google OAuth: redirige a /aceptar-aviso si acepta_aviso_at es null</div>
+      <div class="text-sm">✅ Registro email: checkbox siempre visible, acepta_aviso_at al crear</div>
+      <div class="text-sm">✅ Login: texto informativo con link al Aviso de Privacidad</div>
+      <div class="text-sm">✅ CompletarPerfil: radio buttons CANIRAC/Ninguna + campo condicional</div>
+      <div class="text-sm">✅ Dashboard comprador: modal incluye camara_asociacion + banner aviso</div>
+      <div class="text-sm">✅ Super Admin Edit.vue: puede ver/editar camara_asociacion</div>
+      <div class="text-sm">✅ Migración camara_asociacion + nombre_establecimiento</div>
+      <div class="text-sm">⏳ Borrado de eventos — pendiente confirmación del usuario</div>
+      <div class="text-sm">⏳ Deploy a producción — pendiente confirmación + npm run build</div>
+    </div>
+  </div>
+</div>
+
+<div style="height:40px;"></div>
+</body>
+</html>

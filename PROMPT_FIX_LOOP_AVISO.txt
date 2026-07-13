@@ -1,0 +1,107 @@
+PROMPT PARA CLAUDE CODE — FIX: Loop de redirecciones en login con Google
+=========================================================================
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3)
+
+PROBLEMA
+--------
+Al iniciar sesión con Google, el navegador muestra:
+"Este sitio te ha redireccionado demasiadas veces" (ERR_TOO_MANY_REDIRECTS)
+
+CAUSA RAÍZ
+----------
+Hay un deadlock entre dos middlewares que corren globalmente en el grupo `web`
+(definidos en bootstrap/app.php):
+
+  1. EnsureRolSeleccionado  → si rol_seleccionado=false  → redirige a rol.seleccionar
+  2. EnsureAvisoAceptado    → si acepta_aviso_at=null    → redirige a aviso.aceptar
+
+Para usuarios nuevos de Google, AMBAS condiciones son true simultáneamente:
+  - rol_seleccionado = false
+  - acepta_aviso_at = null
+
+Ciclo infinito:
+  aviso.aceptar → (EnsureRolSeleccionado) → rol.seleccionar
+               → (EnsureAvisoAceptado)    → aviso.aceptar
+               → (EnsureRolSeleccionado)  → rol.seleccionar ... ∞
+
+LA RUTA aviso.aceptar no está en la allowlist de EnsureRolSeleccionado,
+y rol.seleccionar no está en la allowlist de EnsureAvisoAceptado.
+
+SOLUCIÓN (UN SOLO CAMBIO)
+--------------------------
+Archivo: app/Http/Middleware/EnsureRolSeleccionado.php
+
+Agregar la condición `&& !is_null(auth()->user()->acepta_aviso_at)` para que
+este middleware NO intervenga mientras el aviso de privacidad no haya sido aceptado.
+De esta forma el orden es: aviso primero → selección de rol después.
+
+CÓDIGO ACTUAL (líneas 12-28):
+```php
+if (
+    auth()->check()
+    && !auth()->user()->isAdmin()
+    && !auth()->user()->rol_seleccionado
+    && !$request->routeIs(
+        'rol.seleccionar',
+        'rol.seleccionar.store',
+        'logout',
+        'profile.*',
+        'verification.*',
+        'password.*'
+    )
+) {
+    return redirect()->route('rol.seleccionar');
+}
+```
+
+CÓDIGO CORREGIDO:
+```php
+if (
+    auth()->check()
+    && !auth()->user()->isAdmin()
+    && !auth()->user()->rol_seleccionado
+    && !is_null(auth()->user()->acepta_aviso_at)   // ← LÍNEA NUEVA
+    && !$request->routeIs(
+        'rol.seleccionar',
+        'rol.seleccionar.store',
+        'logout',
+        'profile.*',
+        'verification.*',
+        'password.*'
+    )
+) {
+    return redirect()->route('rol.seleccionar');
+}
+```
+
+VERIFICACIÓN
+------------
+Después de aplicar el cambio, probar estos flujos:
+
+1. Login con Google (usuario NUEVO):
+   ✓ Debe mostrar pantalla de Aviso de Privacidad
+   ✓ Al aceptar, debe ir a Selección de Rol
+   ✓ NO debe mostrar "redireccionado demasiadas veces"
+
+2. Login con Google (usuario existente SIN acepta_aviso_at):
+   ✓ Debe mostrar pantalla de Aviso de Privacidad
+   ✓ Al aceptar, debe ir al Dashboard (si ya tiene rol seleccionado)
+
+3. Login con Google (usuario existente CON acepta_aviso_at y rol seleccionado):
+   ✓ Debe ir directo al Dashboard sin interrupciones
+
+4. Login con email normal (usuario sin acepta_aviso_at):
+   ✓ Debe mostrar pantalla de Aviso de Privacidad
+
+5. Login como Admin:
+   ✓ Debe ir directo al panel admin sin pasar por aviso ni rol
+
+DEPLOY
+------
+1. npm run build
+2. git add app/Http/Middleware/EnsureRolSeleccionado.php
+3. git commit -m "fix: romper loop redirect entre EnsureRolSeleccionado y EnsureAvisoAceptado"
+4. git push
+5. SSH Hostinger:
+   git pull
+   php artisan optimize:clear && php artisan config:cache && php artisan route:cache

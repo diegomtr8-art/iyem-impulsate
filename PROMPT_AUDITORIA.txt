@@ -1,0 +1,519 @@
+========================================================
+PROMPT AUDITORÍA COMPLETA — PLATAFORMA CITAS IMPULSATE
+========================================================
+
+Eres un auditor experto en Laravel, Vue 3, Inertia.js y Tailwind CSS.
+Tu trabajo es revisar CADA archivo del proyecto, encontrar TODOS los problemas
+y CORREGIRLOS en el mismo paso. No reportes sin corregir. No dejes nada para después.
+Si encuentras algo, lo corriges ahora.
+
+STACK TÉCNICO:
+- Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+- Jetstream + Fortify + Spatie Permissions
+- Color primario del sistema: "guinda" (definido en tailwind.config.js)
+  guinda-800 = #8b1028 (color principal de la marca)
+- darkMode: 'class' (toggle manual)
+- Layouts: AppLayout.vue (usuarios), AdminLayout.vue (admin)
+
+===========================================================
+ÁREA 1 — SEGURIDAD
+===========================================================
+
+Revisa y corrige todo lo siguiente:
+
+1.1 RUTAS Y MIDDLEWARES
+- Verificar que TODAS las rutas de admin tengan middleware 'admin' o 'role:admin'
+- Verificar que rutas de proveedor tengan middleware 'role:restaurantero'
+- Verificar que rutas de comprador tengan middleware 'auth'
+- Buscar rutas que devuelvan datos sensibles sin autenticación
+- Verificar que no haya rutas de API expuestas sin throttle
+- Las rutas de exportación Excel deben estar protegidas con middleware admin
+- La ruta /tv/{token} debe validar que el token no esté vacío o sea trivialmente adivinable
+
+1.2 VALIDACIONES EN CONTROLADORES
+- Revisar TODOS los métodos store() y update() de todos los controladores
+- Cada request debe tener reglas de validación con $request->validate([]) o Form Requests
+- No debe haber campos sin validar que lleguen directamente a la BD
+- Verificar que los IDs en rutas (ej: /citas/{cita}) usen Route Model Binding
+  y que el usuario autenticado sea el dueño del recurso (policy o check manual)
+- Un comprador no debe poder cancelar/modificar citas de otro comprador
+- Un proveedor no debe poder ver/modificar citas de otro proveedor
+- Verificar que no haya Mass Assignment sin $fillable definido en los modelos
+
+1.3 EXPOSICIÓN DE DATOS
+- Revisar HandleInertiaRequests.php: asegurarse de que solo se compartan
+  los campos necesarios del usuario autenticado (no password, no tokens)
+- En las respuestas JSON/Inertia, no exponer IDs internos innecesarios
+- Verificar que los emails de otros usuarios no sean visibles entre sí
+
+1.4 TOKENS Y CLAVES
+- Verificar que token_confirmacion en citas se genere con Str::random(64) o similar
+- El token de TV debe validarse con hash_equals() o comparación segura
+- No debe haber ningún var_dump(), dd(), dump() o console.log() con datos sensibles
+  en el código de producción
+
+1.5 UPLOADS DE ARCHIVOS
+- Si hay subida de imágenes (logos, fotos de proveedor), verificar:
+  - Validación de tipo MIME (solo image/jpeg, image/png, image/webp)
+  - Validación de tamaño máximo
+  - No se almacenan en public/ directamente (deben ir a storage/app/public via Storage::disk)
+  - Los nombres de archivo se generan aleatoriamente (no con el nombre original del usuario)
+
+1.6 CSRF Y XSS
+- Verificar que todos los formularios POST/PATCH/DELETE usen el sistema de Inertia
+  (que automáticamente incluye el token CSRF) — no debe haber formularios blade sin @csrf
+- Revisar que no haya salidas con {!! !!} en Blade o v-html en Vue con contenido
+  proveniente de usuarios (riesgo XSS); si las hay, sanitizar o reemplazar por {{ }}
+
+===========================================================
+ÁREA 2 — FUNCIONALIDAD
+===========================================================
+
+Revisa y corrige todo lo siguiente:
+
+2.1 FLUJO DE AUTENTICACIÓN
+- Login con email/password: verificar que redirige correctamente según rol
+  (admin → /admin, proveedor → /proveedor/panel, comprador → /mi-panel)
+- Login con Google OAuth: verificar el mismo flujo de redirección
+- Si rol_seleccionado = false, debe redirigir a /seleccionar-rol antes de cualquier panel
+- El middleware EnsureRolSeleccionado debe estar aplicado correctamente
+- Registro: verificar que el formulario de registro crea el usuario con email_verified_at
+  o que el flujo de verificación de email funcione
+
+2.2 SWITCH DE ROL DUAL
+- El botón de switch solo debe aparecer si el usuario tiene ambos roles (cliente + restaurantero)
+- Al hacer switch, active_role debe actualizarse en BD y en la sesión
+- Después del switch debe redirigir al panel correcto
+- Verificar que el estado del switch sea consistente al recargar la página
+
+2.3 GESTIÓN DE EVENTOS (antes "Ediciones")
+- Crear evento: todos los campos obligatorios deben validarse
+- La secuencia de fechas debe ser válida:
+  fecha_hora_inicio_proveedores < fecha_hora_inicio_compradores < fecha_hora_inicio < fecha_hora_fin
+  Si no se cumple, mostrar error de validación claro
+- Solo puede haber UN evento activo al mismo tiempo; al activar uno, desactivar los demás
+- Archivar/desactivar evento: verificar que no deje citas en estado inconsistente
+
+2.4 REGISTRO AL EVENTO
+- Comprador intenta registrarse antes de fecha_hora_inicio_compradores → error claro con fecha
+- Proveedor intenta registrarse después de fecha_hora_inicio_compradores → error claro
+- No permitir registro doble (unique en evento_usuario)
+- Verificar que el botón de registro desaparezca o se deshabilite si el usuario ya está registrado
+
+2.5 AGENDADO DE CITAS
+- Validar en backend (no solo frontend):
+  1. Hay evento activo
+  2. El comprador está registrado en el evento
+  3. El proveedor está registrado en el mismo evento
+  4. El comprador no superó max_citas_por_comprador
+  5. No hay traslape de horario para el mismo proveedor
+  6. El horario solicitado está dentro del rango del evento
+- Si alguna validación falla, devolver mensaje de error específico (no genérico)
+- El estado inicial de la cita debe ser 'pendiente', nunca 'confirmada' automáticamente
+
+2.6 GESTIÓN DE CITAS — PROVEEDOR
+- Aceptar cita: cambiar estado a 'confirmada', enviar email al comprador
+- Rechazar cita: cambiar estado a 'rechazada', enviar email al comprador con motivo
+- Reagendar: proponer nueva hora, notificar al comprador, el comprador debe confirmar
+- Verificar que el proveedor SOLO pueda ver/gestionar sus propias citas
+
+2.7 PANEL ADMIN — TORRE DE CONTROL
+- Verificar que los estados de TV (llamar, iniciar, finalizar, ausente) funcionen
+- Los cambios de estado deben persistir en BD (no solo en memoria)
+- La pantalla TV pública (/tv/{token}) debe refrescar datos periódicamente
+
+2.8 EXPORTACIONES EXCEL
+- Verificar que las 4 exportaciones (evento completo, proveedores, compradores, citas)
+  devuelvan archivos válidos y no fallen si no hay datos
+- Si no hay evento activo, mostrar mensaje en la UI en lugar de descargar archivo vacío
+- Los nombres de archivo deben incluir el nombre del evento y la fecha
+
+2.9 NOTIFICACIONES
+- Verificar que la campana de notificaciones (NotificacionCampana.vue) muestre
+  el conteo correcto de no leídas
+- Marcar como leída al hacer clic debe funcionar
+- Las notificaciones deben desaparecer del badge después de leerse
+
+2.10 CORREOS
+- Verificar que los Mailables existan para:
+  - Solicitud de cita creada (al comprador: "En espera de confirmación del proveedor")
+  - Solicitud de cita al proveedor (con botones aceptar/rechazar)
+  - Cita confirmada (al comprador)
+  - Cita rechazada (al comprador, con motivo)
+  - Recordatorio 24h antes
+  - Reagendamiento propuesto
+- Si algún Mailable no existe, crearlo con contenido apropiado
+- Verificar que el mail from_address use la variable MAIL_FROM_ADDRESS del .env
+
+===========================================================
+ÁREA 3 — FRONTEND: ELIMINAR COMPLETAMENTE EL COLOR AZUL
+===========================================================
+
+REGLA ABSOLUTA: En este proyecto NO existe el color azul.
+El color primario es GUINDA (#8b1028). Cualquier uso de azul es un error.
+
+Hacer búsqueda global en resources/js/ de las siguientes clases y reemplazarlas:
+
+REEMPLAZOS DE COLOR (blue → guinda equivalente):
+
+  bg-blue-50          → bg-guinda-50
+  bg-blue-100         → bg-guinda-100
+  bg-blue-200         → bg-guinda-200
+  bg-blue-400         → bg-guinda-400
+  bg-blue-500         → bg-guinda-500
+  bg-blue-600         → bg-guinda-600
+  bg-blue-700         → bg-guinda-700
+  bg-blue-800         → bg-guinda-800
+  bg-blue-900         → bg-guinda-900
+  bg-blue-950         → bg-guinda-950
+  bg-blue-500/15      → bg-guinda-500/15
+  bg-blue-900/20      → bg-guinda-900/20
+  bg-blue-900/40      → bg-guinda-900/40
+  bg-blue-900/60      → bg-guinda-900/60
+  bg-blue-950/20      → bg-guinda-950/20
+
+  text-blue-300       → text-guinda-300
+  text-blue-400       → text-guinda-400
+  text-blue-500       → text-guinda-500
+  text-blue-600       → text-guinda-600
+  text-blue-700       → text-guinda-700
+  text-blue-800       → text-guinda-800
+
+  border-blue-200     → border-guinda-200
+  border-blue-300     → border-guinda-300
+  border-blue-500     → border-guinda-500
+  border-blue-700     → border-guinda-700
+  border-blue-800     → border-guinda-800
+  border-blue-500/20  → border-guinda-500/20
+  border-blue-800/30  → border-guinda-800/30
+
+  hover:bg-blue-50    → hover:bg-guinda-50
+  hover:bg-blue-100   → hover:bg-guinda-100
+  hover:bg-blue-400   → hover:bg-guinda-400
+  hover:border-blue-500 → hover:border-guinda-500
+  dark:hover:bg-blue-900/40 → dark:hover:bg-guinda-900/40
+
+  from-blue-500       → from-guinda-500
+  from-blue-800       → from-guinda-800
+  from-blue-900       → from-guinda-900
+  to-blue-700         → to-guinda-700
+  to-blue-800         → to-guinda-800
+
+  ring-blue-500       → ring-guinda-500
+
+Archivos específicos donde se encontraron azules (revisar exhaustivamente):
+  - resources/js/Layouts/AppLayout.vue
+  - resources/js/Pages/Admin/Eventos/Index.vue
+  - resources/js/Pages/Admin/TorreControl.vue
+  - resources/js/Pages/Auth/SeleccionarRol.vue
+  - resources/js/Pages/Restaurantero/Citas.vue
+  - resources/js/Pages/Restaurantero/Panel.vue
+  - resources/js/Pages/Restauranteros/Show.vue
+  - resources/js/Pages/User/Dashboard.vue
+
+También revisar TODOS los demás .vue que no están en esa lista por si acaso.
+
+EXCEPCIÓN: el color "indigo" también debe reemplazarse por guinda si aparece
+como color de acento principal (no en gradientes sutiles de fondo decorativo).
+
+===========================================================
+ÁREA 4 — FALTAS DE ORTOGRAFÍA Y TEXTOS
+===========================================================
+
+Revisar TODOS los textos visibles en .vue y en los Mailables PHP:
+
+4.1 ERRORES COMUNES A BUSCAR
+- "Proveedor" / "proveedor" — consistencia en mayúsculas según contexto
+- "Comprador" / "comprador" — ídem
+- Acentos faltantes: "acción", "gestión", "sección", "también", "más", "está",
+  "así", "teléfono", "número", "próximo", "último", "aún", "qué", "cómo"
+- Signos de interrogación y exclamación de apertura: ¿ y ¡
+- "éxito" no "exito", "período" no "periodo" (o viceversa, pero ser consistente)
+- Tildes en mayúsculas cuando aplica: "Área", "Última", "Índice"
+- No mezclar español e inglés en la misma UI salvo términos técnicos estándar
+  (ej: "Dashboard" está bien, "Submit" no está bien si el resto es español)
+- Botones: "Cancelar" no "Cancel", "Guardar" no "Save", "Cerrar" no "Close"
+- Mensajes de error del backend: verificar que estén en español
+
+4.2 MENSAJES DE VALIDACIÓN
+- En los validate() de Laravel, los mensajes personalizados deben estar en español
+- Buscar en todos los controladores y Form Requests mensajes en inglés y traducirlos
+
+4.3 TEXTOS ESPECÍFICOS A VERIFICAR
+- El email de cita nueva al comprador debe decir exactamente:
+  "Tu solicitud de cita ha sido registrada. Quedará confirmada una vez que
+   el proveedor la acepte. Te notificaremos por correo cuando haya respuesta."
+- El email al proveedor: "Tienes una nueva solicitud de cita pendiente de confirmación"
+- Labels de estados de cita: "Pendiente", "Confirmada", "Rechazada", "Reagendada"
+  (con mayúscula inicial, en español)
+- Placeholder de formularios: en español
+- Tooltips y títulos de sección: en español, con acentos correctos
+
+===========================================================
+ÁREA 5 — DARK MODE
+===========================================================
+
+Revisar que CADA elemento tenga clases dark: correctas.
+El dark mode usa strategy: 'class' en Tailwind (se agrega clase 'dark' al html).
+
+5.1 REGLAS GENERALES
+Cada elemento de fondo/texto debe tener su par dark::
+
+  bg-white              → añadir dark:bg-gray-900 o dark:bg-gray-950
+  bg-gray-50            → añadir dark:bg-gray-900
+  bg-gray-100           → añadir dark:bg-gray-800
+  text-gray-900         → añadir dark:text-white
+  text-gray-700         → añadir dark:text-gray-300
+  text-gray-600         → añadir dark:text-gray-400
+  text-gray-500         → añadir dark:text-gray-500
+  border-gray-200       → añadir dark:border-gray-700
+  border-gray-300       → añadir dark:border-gray-600
+  bg-guinda-50          → añadir dark:bg-guinda-950/20
+  bg-guinda-100         → añadir dark:bg-guinda-900/30
+  text-guinda-800       → añadir dark:text-guinda-400
+  text-guinda-700       → añadir dark:text-guinda-300
+
+5.2 COMPONENTES CRÍTICOS A AUDITAR
+- Modales (DialogModal.vue, ConfirmationModal.vue): fondo, borde, texto deben tener dark:
+- Dropdowns: fondo del menú desplegable
+- Tablas: encabezados, filas alternas, bordes
+- Cards/panels: sombras, bordes, fondos
+- Inputs y selects: fondo, borde, texto, placeholder
+- Badges de estado: todos los estados (pendiente, confirmada, rechazada, reagendada)
+- Navbar (AppLayout.vue, AdminLayout.vue): todos los elementos
+- Sidebar admin: fondo, enlaces activos, hover
+- Botones primarios, secundarios y de peligro
+- Formularios de login y registro
+- Landing page (Welcome.vue)
+- ThemeToggle.vue: verificar que el toggle funcione y persista en localStorage
+- Pantalla SeleccionarRol.vue: las 3 tarjetas deben verse bien en dark
+
+5.3 PROBLEMAS CONOCIDOS A REVISAR
+- Texto blanco sobre fondo blanco en dark mode (invisible)
+- Fondo oscuro sobre oscuro (elementos que desaparecen)
+- Bordes que desaparecen en dark mode
+- Imágenes con fondo blanco en dark mode (añadir dark:bg-gray-800 al contenedor)
+- Inputs que en dark mode muestran texto oscuro sobre fondo oscuro
+
+5.4 VERIFICACIÓN DEL TOGGLE
+- ThemeToggle.vue debe guardar preferencia en localStorage con key 'theme'
+- Al cargar la página, leer localStorage y aplicar clase 'dark' al <html>
+  ANTES de que Vue monte (en el HTML inicial o en app.js) para evitar flash
+- El ícono del toggle debe cambiar correctamente (sol/luna)
+
+===========================================================
+ÁREA 6 — LIGHT MODE
+===========================================================
+
+El light mode es el modo por defecto. Verificar que TODO se vea bien sin la clase 'dark'.
+
+6.1 CONTRASTE
+- Texto gris claro sobre fondo blanco: verificar ratio de contraste mínimo WCAG AA (4.5:1)
+- No usar text-gray-400 sobre bg-white para texto de cuerpo importante
+- Texto de placeholder en inputs: text-gray-400 está bien para placeholder,
+  pero no para texto principal
+
+6.2 SOMBRAS Y PROFUNDIDAD
+- Cards deben tener shadow-sm o shadow visible en light mode
+- Navbar debe tener border-b visible
+- Elementos flotantes (dropdowns, modales) deben tener sombra
+
+6.3 COLORES DE ESTADO EN LIGHT MODE
+- Estado "pendiente":  bg-yellow-50  text-yellow-700  border-yellow-200
+- Estado "confirmada": bg-green-50   text-green-700   border-green-200
+- Estado "rechazada":  bg-red-50     text-red-700     border-red-200
+- Estado "reagendada": bg-guinda-50  text-guinda-700  border-guinda-200
+- Verificar que NINGÚN estado use azul
+
+===========================================================
+ÁREA 7 — RESPONSIVIDAD PARA TELÉFONO
+===========================================================
+
+Breakpoints Tailwind: sm=640px, md=768px, lg=1024px, xl=1280px
+El objetivo es que en un teléfono de 375px–430px TODO sea usable y legible.
+
+7.1 LAYOUT GENERAL
+- No debe haber scroll horizontal en ninguna vista en móvil
+- El padding lateral mínimo en móvil: px-4 (16px cada lado)
+- max-w-* siempre con w-full para que no desborde
+- Flex rows que en desktop son horizontales, en móvil deben ser flex-col
+
+7.2 NAVBAR (AppLayout.vue y AdminLayout.vue)
+- En móvil solo debe mostrarse: logo + ícono hamburguesa + ThemeToggle
+- El menú hamburguesa debe abrir un panel deslizante o dropdown con todos los links
+- El switch de rol dual debe ser accesible desde el menú móvil
+- El menú de usuario (avatar/nombre) debe estar en el menú móvil
+- Verificar que el menú móvil se CIERRE al hacer clic en un link
+
+7.3 TABLAS LARGAS → CARDS EN MÓVIL
+Las siguientes vistas tienen tablas que deben convertirse a cards en móvil
+(ocultar tabla en sm:hidden, mostrar cards en md:hidden):
+  - Admin/Citas/Index.vue
+  - Admin/Restauranteros/Index.vue
+  - Admin/Usuarios/Index.vue (si existe)
+  - Restaurantero/Citas.vue
+  - User/Dashboard.vue (lista de citas)
+
+Formato de card móvil:
+  <div class="md:hidden space-y-3">
+    <div v-for="item in items" class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+      <!-- campos relevantes en layout vertical -->
+    </div>
+  </div>
+
+7.4 FORMULARIOS
+- Inputs: w-full en móvil
+- Botones de acción: w-full sm:w-auto en móvil
+- Grid de 2 columnas en formularios: grid-cols-1 sm:grid-cols-2
+- DateTimePickers: width completo en móvil
+- Selects: width completo en móvil
+
+7.5 MODALES
+- En móvil los modales deben ocupar casi toda la pantalla:
+  max-w-lg w-full mx-3 sm:mx-auto
+- Si el contenido del modal es largo, debe tener scroll interno:
+  max-h-[85vh] overflow-y-auto
+
+7.6 PANELES DE DASHBOARD
+- Panel comprador (/mi-panel):
+  - Cards de stats: grid-cols-2 en móvil (no 4 columnas)
+  - Lista de citas: cards apiladas en móvil
+  - Banner de evento disponible: legible en móvil (no texto cortado)
+  - Banner de invitación a ser proveedor: legible en móvil
+
+- Panel proveedor (/proveedor/panel):
+  - Mismas reglas que panel comprador
+  - El switch de rol si está en el panel debe ser visible en móvil
+
+7.7 ADMIN EN MÓVIL
+- Sidebar admin: en móvil debe ser un drawer lateral o menú hamburguesa
+  (no sidebar fijo de 250px que ocupa todo el ancho en móvil)
+- Dashboard admin: stats en grid-cols-2 en móvil
+- Torre de Control: verificar que sea usable en tablet/móvil para el staff
+- Pantalla TV: esta es para pantallas grandes, no necesita ser móvil
+
+7.8 LANDING PAGE (Welcome.vue)
+- Hero section: texto centrado, imagen responsiva
+- Cards de características: grid-cols-1 sm:grid-cols-2 md:grid-cols-3
+- CTA buttons: w-full sm:w-auto
+- Navbar landing: hamburguesa en móvil
+
+7.9 PANTALLA DE SELECCIÓN DE ROL (SeleccionarRol.vue)
+- Las 3 tarjetas deben apilarse verticalmente en móvil (flex-col)
+- En desktop pueden ser en fila (flex-row o grid-cols-3)
+- El botón de confirmación: w-full en móvil
+
+7.10 TOUCH Y USABILIDAD
+- Todos los botones e inputs deben tener min-h-[44px] para ser tocables fácilmente
+- Los links de navegación en móvil: min-h-[48px] con padding generoso
+- No colocar dos botones de acción demasiado juntos sin separación
+
+===========================================================
+ÁREA 8 — CALIDAD DE CÓDIGO Y CONSISTENCIA
+===========================================================
+
+8.1 COMPONENTES VUE
+- Verificar que los componentes reutilizables (PrimaryButton, TextInput, etc.)
+  tengan clases dark: correctas
+- Verificar que no haya estilos inline (style="") que debieran ser clases Tailwind
+- Verificar que no haya clases Tailwind duplicadas o contradictorias
+  (ej: "text-sm text-base" en el mismo elemento)
+
+8.2 CONSISTENCIA VISUAL
+- Todos los botones primarios deben usar las mismas clases base
+- Todos los inputs deben usar las mismas clases base
+- Todos los mensajes de error deben tener el mismo estilo (text-red-600 text-sm)
+- Todos los mensajes de éxito deben tener el mismo estilo (text-green-600 text-sm)
+- Los títulos de página h1/h2 deben ser consistentes en tamaño y peso
+
+8.3 ESTADOS DE CARGA
+- Los botones que disparan requests deben mostrar estado de carga (spinner o "...")
+  y deshabilitarse mientras procesan (para evitar doble submit)
+- Verificar que los formularios usen :disabled="form.processing" de Inertia
+- Las páginas que cargan datos async deben tener estado de loading visible
+
+8.4 ESTADOS VACÍOS
+- Toda lista o tabla que pueda estar vacía debe mostrar un estado vacío amigable
+  (ícono + mensaje descriptivo + CTA si aplica)
+- No mostrar tablas o listas en blanco sin mensaje
+
+8.5 MANEJO DE ERRORES EN FRONTEND
+- Los errores de validación del backend deben mostrarse junto al campo correspondiente
+- Los errores generales (500, network) deben mostrar un mensaje de usuario amigable
+- No dejar el usuario bloqueado sin feedback si algo falla
+
+===========================================================
+PROCEDIMIENTO DE EJECUCIÓN
+===========================================================
+
+Sigue este orden exacto:
+
+FASE 1 — AUDITORÍA DE SEGURIDAD
+  Lee cada controlador en app/Http/Controllers/
+  Lee cada middleware en app/Http/Middleware/
+  Lee routes/web.php y routes/api.php
+  Corrige todos los problemas encontrados
+
+FASE 2 — AUDITORÍA DE FUNCIONALIDAD
+  Lee y prueba (con php artisan tinker si es necesario) cada flujo
+  Corrige validaciones faltantes, estados incorrectos, lógica rota
+
+FASE 3 — ELIMINAR AZULES
+  Búsqueda global: grep -r "blue-" resources/js/ --include="*.vue"
+  Reemplaza TODAS las ocurrencias según la tabla de reemplazos del Área 3
+  Verificar también: grep -r "indigo-" resources/js/ --include="*.vue"
+
+FASE 4 — ORTOGRAFÍA Y TEXTOS
+  Lee cada vista .vue en resources/js/Pages/
+  Lee cada Mailable en app/Mail/
+  Corrige todos los textos
+
+FASE 5 — DARK MODE
+  Lee y corrige AppLayout.vue y AdminLayout.vue primero
+  Luego cada Page .vue en orden: Auth/, User/, Restaurantero/, Admin/
+  Verifica que ThemeToggle persista y no haya flash al cargar
+
+FASE 6 — LIGHT MODE
+  Con el dark mode corregido, revisar que el light mode siga bien
+  Verificar contraste y sombras
+
+FASE 7 — RESPONSIVIDAD MÓVIL
+  Empieza por AppLayout.vue (navbar hamburguesa)
+  Luego AdminLayout.vue (sidebar drawer)
+  Luego cada página en orden de importancia:
+  User/Dashboard.vue → Restaurantero/Panel.vue → Auth/SeleccionarRol.vue
+  → Admin/Dashboard.vue → Admin/Citas/ → Admin/Restauranteros/ → Welcome.vue
+
+FASE 8 — CALIDAD Y CONSISTENCIA
+  Revisar componentes compartidos en resources/js/Components/
+  Unificar estilos de botones, inputs, mensajes
+
+AL TERMINAR CADA FASE:
+  Ejecutar: php artisan optimize:clear
+  Al terminar todas las fases: npm run build
+
+===========================================================
+CRITERIO DE ÉXITO — NO TERMINES HASTA QUE TODO ESTO SEA TRUE
+===========================================================
+
+[ ] grep -r "blue-" resources/js/ --include="*.vue" devuelve 0 resultados
+[ ] grep -r "indigo-" resources/js/ --include="*.vue" devuelve 0 resultados (o solo decorativos sutiles)
+[ ] Todas las rutas admin tienen middleware de autenticación admin
+[ ] Todos los store/update tienen $request->validate()
+[ ] No hay dd() ni var_dump() en el código
+[ ] Cada vista tiene clases dark: en todos sus fondos, textos y bordes
+[ ] ThemeToggle guarda en localStorage y no hay flash al cargar
+[ ] En 375px de ancho, ninguna vista tiene scroll horizontal
+[ ] Navbar tiene hamburguesa funcional en móvil
+[ ] Las tablas largas tienen versión card en móvil
+[ ] Todos los textos están en español con acentos correctos
+[ ] Los estados de cita NO dicen "confirmada" al crearse (deben ser "pendiente")
+[ ] El email de cita nueva dice "en espera de confirmación del proveedor"
+[ ] Las exportaciones Excel filtran por evento activo
+[ ] No hay texto blanco sobre fondo blanco en ningún modo
+[ ] Los botones con requests tienen estado de carga y se deshabilitan al procesar
+[ ] Las listas vacías tienen estado vacío con mensaje
+
+========================================================
+FIN DEL PROMPT DE AUDITORÍA
+========================================================

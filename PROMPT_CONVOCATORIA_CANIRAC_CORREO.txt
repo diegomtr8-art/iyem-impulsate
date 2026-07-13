@@ -1,0 +1,422 @@
+PROMPT PARA CLAUDE CODE — Convocatoria + imagen carrusel, CANIRAC/Empresa obligatorios, cambio de correo
+============================================================================================================
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3 + Tailwind, darkMode 'class')
+Color primario: guinda (#8b1028). NUNCA usar azul/indigo (de paso, ver nota al final sobre un badge
+"Próximamente" que ya está en azul y no debería).
+
+
+===========================================================================
+PUNTO 1 — Pop-up de convocatoria + liga de convocatoria + 2 imágenes del evento
+===========================================================================
+
+1A. Nuevo campo: liga de la convocatoria
+-------------------------------------------
+Migración nueva (php artisan make:migration add_convocatoria_y_carrusel_to_eventos_table):
+
+```php
+public function up(): void
+{
+    Schema::table('eventos', function (Blueprint $table) {
+        $table->string('convocatoria_url', 500)->nullable()->after('descripcion');
+        $table->string('imagen_carrusel')->nullable()->after('imagen');
+    });
+}
+
+public function down(): void
+{
+    Schema::table('eventos', function (Blueprint $table) {
+        $table->dropColumn(['convocatoria_url', 'imagen_carrusel']);
+    });
+}
+```
+
+app/Models/Evento.php:
+- Agregar `'convocatoria_url'` y `'imagen_carrusel'` al array `$fillable`.
+- Agregar `'imagen_carrusel_url'` al array `$appends` (junto a `imagen_url`).
+- Agregar el accessor:
+```php
+public function getImagenCarruselUrlAttribute(): ?string
+{
+    return $this->imagen_carrusel ? Storage::disk('public')->url($this->imagen_carrusel) : null;
+}
+```
+
+1B. Formulario de creación/edición de evento — admin
+--------------------------------------------------------
+Archivo: app/Http/Controllers/Admin/EventoController.php
+
+En `validationRules()` (línea ~44) agregar:
+```php
+'convocatoria_url' => 'required|url|max:500',
+'imagen_carrusel'  => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+```
+
+En `eventoFields()` (línea ~69) agregar:
+```php
+'convocatoria_url' => $request->convocatoria_url,
+```
+
+En `store()` (línea ~86) y `update()` (línea ~104), junto al bloque que ya maneja
+`$request->hasFile('imagen')`, agregar el mismo patrón para la nueva imagen:
+```php
+if ($request->hasFile('imagen_carrusel')) {
+    if (isset($evento) && $evento->imagen_carrusel) {
+        Storage::disk('public')->delete($evento->imagen_carrusel);
+    }
+    $fields['imagen_carrusel'] = $request->file('imagen_carrusel')->store('eventos', 'public');
+}
+```
+(En `store()` no existe `$evento` todavía, así que ahí solo se necesita la línea de `store('eventos', 'public')`,
+sin el `if (isset($evento)...)` de borrado.)
+
+Archivo: resources/js/Pages/Admin/Eventos/Index.vue
+
+En los objetos `form` (línea ~15) y `formEditar` (línea ~38) agregar:
+```js
+convocatoria_url: '',
+imagen_carrusel: null,
+```
+
+En `abrirEditar()` (línea ~60) agregar:
+```js
+formEditar.convocatoria_url = evento.convocatoria_url || '';
+formEditar.imagen_carrusel  = null;
+```
+
+Agregar un ref para el preview de la nueva imagen (similar a `previewNuevo`/`previewEditar`):
+```js
+const previewCarruselNuevo  = ref(null);
+const previewCarruselEditar = ref(null);
+
+const onImagenCarruselNuevo = (e) => {
+    const f = e.target.files[0];
+    form.imagen_carrusel = f ?? null;
+    previewCarruselNuevo.value = f ? URL.createObjectURL(f) : null;
+};
+const onImagenCarruselEditar = (e) => {
+    const f = e.target.files[0];
+    formEditar.imagen_carrusel = f ?? null;
+    previewCarruselEditar.value = f ? URL.createObjectURL(f) : null;
+};
+```
+Y en `abrirEditar()` también: `previewCarruselEditar.value = evento.imagen_carrusel_url ?? null;`
+
+En el HTML del formulario de creación, justo después del bloque de "Imagen del evento" (línea ~195-202),
+agregar dos bloques nuevos (mismo estilo de los inputs existentes):
+
+```html
+<div class="sm:col-span-2">
+    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+        Liga de la convocatoria *
+    </label>
+    <input v-model="form.convocatoria_url" type="url" placeholder="https://..."
+        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+    <p class="text-[11px] text-gray-400 mt-1">Esta liga se mostrará en el aviso emergente que verán los usuarios antes de registrarse como proveedor o comprador a este evento.</p>
+</div>
+
+<div class="sm:col-span-2">
+    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+        Imagen para el carrusel de la página principal
+        <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×1500px o similar, vertical/cuadrada, mínimo 1200px de ancho para que no se vea pixelada)</span>
+    </label>
+    <input type="file" accept="image/*" @change="onImagenCarruselNuevo"
+        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+    <div v-if="previewCarruselNuevo" class="mt-2">
+        <img :src="previewCarruselNuevo" alt="Preview carrusel" class="h-28 w-full object-cover rounded-lg border border-gray-200 dark:border-gray-700" />
+    </div>
+    <p class="text-[11px] text-gray-400 mt-1">Si se sube, esta imagen aparecerá en el carrusel de "Próximos Encuentros" de la página de inicio.</p>
+</div>
+```
+
+Repetir el mismo par de campos dentro del modal de edición (busca el bloque equivalente a "Imagen del
+evento" dentro del `<Teleport to="body">` del modal de edición, más adelante en el archivo), usando
+`formEditar` / `onImagenCarruselEditar` / `previewCarruselEditar` en vez de las versiones de creación.
+
+Actualizar también la etiqueta existente de la imagen principal (línea 196) para indicar medida sugerida,
+ya que hoy solo dice el formato y peso pero no las dimensiones:
+```html
+<label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+    Imagen del evento
+    <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×675px, horizontal 16:9)</span>
+</label>
+```
+
+1C. El carrusel de la landing page debe usar los eventos reales, no datos fijos
+------------------------------------------------------------------------------------
+HALLAZGO: hoy el carrusel "Próximos Encuentros" en resources/js/Pages/Welcome.vue (líneas 192-217)
+usa un arreglo `eventos` HARDCODEADO con fotos de Unsplash y NO viene de la base de datos. El
+LandingController (app/Http/Controllers/LandingController.php) solo pasa `canLogin`/`canRegister`.
+Para que la imagen de carrusel que se sube al crear un evento realmente aparezca ahí, hay que conectar
+ambas cosas:
+
+Archivo: app/Http/Controllers/LandingController.php
+```php
+public function index()
+{
+    $eventosCarrusel = \App\Models\Evento::whereNotNull('imagen_carrusel')
+        ->where(function ($q) {
+            $q->where('activa', true)
+              ->orWhere('fecha_hora_inicio', '>=', now());
+        })
+        ->orderBy('fecha_hora_inicio')
+        ->get()
+        ->map(fn ($ev) => [
+            'id'     => $ev->id,
+            'nombre' => $ev->nombre,
+            'sector' => $ev->sector_economico,
+            'fecha'  => $ev->fecha_hora_inicio?->translatedFormat('F Y'),
+            'img'    => $ev->imagen_carrusel_url,
+        ]);
+
+    return Inertia::render('Welcome', [
+        'canLogin'        => Route::has('login'),
+        'canRegister'     => Route::has('register'),
+        'eventosCarrusel' => $eventosCarrusel,
+    ]);
+}
+```
+
+Archivo: resources/js/Pages/Welcome.vue
+- Agregar `eventosCarrusel` a `defineProps` (junto a `canLogin`/`canRegister`).
+- Sustituir el arreglo hardcodeado `eventos` (líneas 192-214) por:
+```js
+const eventosFallback = [ /* dejar aquí los 3 objetos hardcodeados actuales, tal cual, como respaldo */ ];
+const eventos = computed(() => props.eventosCarrusel?.length ? props.eventosCarrusel : eventosFallback);
+const eventosCarousel = computed(() => [...eventos.value, ...eventos.value, ...eventos.value]);
+```
+- Como `eventos`/`eventosCarousel` pasan de const a computed, ajustar el `v-for` que las usa
+  (línea 513) para seguir funcionando igual (Vue resuelve `.value` automáticamente en el template,
+  no se necesita cambiar el `v-for="(ev, idx) in eventosCarousel"`).
+
+Esto deja el carrusel mostrando automáticamente los eventos reales que tengan imagen de carrusel
+cargada, y si ningún evento la tiene, sigue mostrando el contenido de respaldo actual (no se rompe
+el diseño mientras no haya imágenes subidas).
+
+1D. Pop-up de "debes haber leído la convocatoria" antes de registrarse
+---------------------------------------------------------------------------
+Debe aparecer cuando el usuario presiona cualquiera de los botones de registro a un evento
+(como proveedor o como comprador). Hoy esos botones llaman directo a `registrarProveedor(evento)` /
+`registrarComprador(evento)` sin ningún paso intermedio.
+
+Archivo: resources/js/Components/TabEventos.vue
+
+Hay 4 botones que disparan el registro (líneas 168, 205, 238 y 261). Todos deben abrir el mismo
+modal de confirmación en vez de registrar directo. Cambios:
+
+```js
+// Reemplazar las funciones existentes registrarProveedor/registrarComprador por:
+const modalConvocatoria = ref(false);
+const eventoParaRegistro = ref(null);
+const tipoParaRegistro = ref(null); // 'proveedor' | 'comprador'
+const heLeidoConvocatoria = ref(false);
+
+const abrirModalRegistro = (evento, tipo) => {
+    eventoParaRegistro.value = evento;
+    tipoParaRegistro.value = tipo;
+    heLeidoConvocatoria.value = false;
+    modalConvocatoria.value = true;
+};
+
+const confirmarRegistro = () => {
+    if (!heLeidoConvocatoria.value) return;
+    const ruta = tipoParaRegistro.value === 'proveedor' ? 'evento.registrar-proveedor' : 'evento.registrar-comprador';
+    router.post(route(ruta, eventoParaRegistro.value.id), {}, {
+        preserveScroll: true,
+        onSuccess: () => { modalConvocatoria.value = false; },
+    });
+};
+```
+
+Cambiar cada `@click="registrarProveedor(eventoActivo)"` por `@click="abrirModalRegistro(eventoActivo, 'proveedor')"`,
+y cada `@click="registrarComprador(eventoActivo)"` por `@click="abrirModalRegistro(eventoActivo, 'comprador')"`
+(4 lugares en total: líneas 168, 205, 238 y 261).
+
+Agregar el modal al final del `<template>` (antes del cierre del `<div class="space-y-6">`):
+```html
+<Teleport to="body">
+    <div v-if="modalConvocatoria" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+        <div class="bg-white dark:bg-gray-900 rounded-2xl max-w-md w-full p-6 shadow-xl border border-gray-200 dark:border-gray-800">
+            <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-2">Antes de continuar</h3>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Para registrarte como {{ tipoParaRegistro === 'proveedor' ? 'proveedor' : 'comprador' }}
+                en <strong>{{ eventoParaRegistro?.nombre }}</strong> debes haber leído la convocatoria
+                oficial del evento.
+            </p>
+            <a v-if="eventoParaRegistro?.convocatoria_url" :href="eventoParaRegistro.convocatoria_url" target="_blank"
+                class="block text-center w-full mb-4 px-4 py-2 border border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-400 text-sm font-semibold rounded-xl hover:bg-guinda-50 dark:hover:bg-guinda-950/20 transition-colors">
+                Leer la convocatoria
+            </a>
+            <label class="flex items-start gap-2 mb-5 cursor-pointer">
+                <input type="checkbox" v-model="heLeidoConvocatoria" class="mt-0.5 accent-guinda-700" />
+                <span class="text-sm text-gray-700 dark:text-gray-300">He leído la convocatoria del evento.</span>
+            </label>
+            <div class="flex gap-3">
+                <button @click="modalConvocatoria = false" class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                    Cancelar
+                </button>
+                <button @click="confirmarRegistro" :disabled="!heLeidoConvocatoria"
+                    class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors">
+                    Confirmar registro
+                </button>
+            </div>
+        </div>
+    </div>
+</Teleport>
+```
+Agregar `Teleport` al import de Vue si no está ya importado (Teleport es un componente global de Vue,
+no necesita import explícito, pero confirmar que no haya conflicto de nombre).
+
+Asegurarse de que el prop `eventos` que recibe TabEventos.vue (y por lo tanto cada `evento`/`eventoActivo`)
+incluya el campo `convocatoria_url`. Revisar los dos controladores que arman ese arreglo y agregar el
+campo si falta:
+- app/Http/Controllers/CitaPublicaController.php (línea ~309-337, dentro del `->map()` de `$todosLosEventos`)
+- app/Http/Controllers/RestauranteroPanelController.php (línea ~75-103, mismo patrón)
+
+En ambos, agregar dentro del array que se retorna por cada evento:
+```php
+'convocatoria_url' => $ev->convocatoria_url,
+```
+
+
+===========================================================================
+PUNTO 2 — CANIRAC y Nombre de la empresa obligatorios (proveedor y comprador)
+===========================================================================
+Archivo: app/Http/Controllers/CompletarPerfilController.php
+
+Hay 3 lugares con estos dos campos, los 3 deben actualizarse igual:
+
+1. `store()` (líneas 24-35) — perfil inicial (se usa tanto para proveedor como comprador
+   al completar perfil por primera vez).
+2. `actualizarComprador()` (líneas 56-70) — edición posterior del perfil del comprador.
+
+(Si existe un método equivalente de edición de perfil para proveedor en otro controlador
+—revisar ProveedorPerfilController.php— aplicar el mismo cambio ahí también si tiene estos
+mismos campos.)
+
+CAMBIO: en las 2 reglas de validación, cambiar:
+```php
+'nombre_empresa'        => ['nullable', 'string', 'max:200'],
+'camara_asociacion'     => ['nullable', 'string', 'in:CANIRAC,Ninguna'],
+```
+por:
+```php
+'nombre_empresa'        => ['required', 'string', 'max:200'],
+'camara_asociacion'     => ['required', 'string', 'in:CANIRAC,Ninguna'],
+```
+
+No es necesario tocar la lógica de `nombre_establecimiento` (la regla `Rule::requiredIf(...)`
+ya obliga ese campo solo cuando se elige CANIRAC, eso se queda igual).
+
+Frontend — marcar los campos como obligatorios visualmente:
+Archivo: resources/js/Pages/Auth/CompletarPerfil.vue (y el formulario de edición de perfil de
+comprador/proveedor que use estos mismos campos, si es un componente distinto)
+- Agregar asterisco `*` a las etiquetas de "Nombre de la empresa" y "Cámara o asociación".
+- Agregar `required` a los inputs/selects correspondientes para que el navegador también
+  valide antes de enviar.
+
+Revisar si "Ninguna" debe seguir siendo una opción válida del select de `camara_asociacion`:
+como el campo ahora es obligatorio, el usuario de todas formas debe elegir una opción, así que
+"Ninguna" sigue siendo válida como respuesta (obligas a que respondan la pregunta, no a que
+todos pertenezcan a CANIRAC). Si Diego prefiere quitar la opción "Ninguna" y solo deje
+"CANIRAC" / "Otra cámara o ninguna" como alternativa de texto libre, avisar antes de hacerlo
+porque cambia el significado del campo — no se asume ese cambio en este prompt.
+
+VERIFICACIÓN
+------------
+1. Intentar completar perfil sin escribir nombre de empresa → debe bloquear el envío con error.
+2. Intentar completar perfil sin elegir cámara/asociación → debe bloquear el envío con error.
+3. Completar perfil con camara_asociacion = "Ninguna" → debe guardar sin pedir nombre_establecimiento.
+4. Completar perfil con camara_asociacion = "CANIRAC" → debe exigir también nombre_establecimiento
+   (esto ya funcionaba, solo confirmar que sigue igual).
+5. Probar en flujo de proveedor Y de comprador.
+
+
+===========================================================================
+PUNTO 3 — Cambiar el correo de envío a impulsate@iyemyucatan.com (cuenta de Gmail/Google Workspace)
+===========================================================================
+HALLAZGO IMPORTANTE: no hay ningún correo "from" puesto a mano en el código. Los 11 Mailables
+(app/Mail/*.php: CitaAgendada, CitaConfirmada, CitaCancelada, CitaAceptada, CitaRechazada,
+CitaReagendada, ProveedorAprobado, ProveedorRechazado, RecordatorioCita, EncuestaSatisfaccionMail,
+PlantillaCorreoMail) y todos los controladores usan `Mail::to(...)->send(...)` sin sobrescribir el
+remitente, así que TODOS obedecen una sola configuración global: `config('mail.from.address')`,
+que se lee de la variable de entorno `MAIL_FROM_ADDRESS`.
+
+Esto significa que este punto NO requiere cambios de código — es 100% configuración del servidor
+(.env), y el archivo .env NO está en el repositorio de Git (por seguridad), así que Claude Code no
+puede aplicarlo solo: hay que hacerlo a mano por SSH en el servidor.
+
+DIFERENCIA IMPORTANTE: impulsate@iyemyucatan.com es una cuenta de Gmail/Google Workspace, NO un
+buzón de Hostinger. Esto cambia el host/puerto SMTP y, sobre todo, cambia qué "contraseña" se debe
+usar:
+
+- Google ya NO permite usar la contraseña normal de la cuenta para SMTP en la inmensa mayoría de
+  los casos (desactivó el acceso de "apps menos seguras"). Hay que generar una "Contraseña de
+  aplicación" (App Password) de 16 caracteres, específica para SMTP, distinta de la contraseña de
+  inicio de sesión.
+- Para poder generar una contraseña de aplicación, la cuenta de Google necesita tener activada la
+  Verificación en 2 pasos (2FA).
+
+ESTADO: Diego ya generó la Contraseña de aplicación de 16 caracteres para impulsate@iyemyucatan.com
+(con la Verificación en 2 pasos activa). Esa contraseña de aplicación NO debe escribirse en ningún
+archivo del repositorio ni pasarse a Claude Code como texto — solo se pega directamente en el .env
+del servidor, a mano, por quien tenga acceso SSH. Por seguridad, dado que esa contraseña de
+aplicación quedó escrita en una conversación de chat, conviene revocarla en
+https://myaccount.google.com/apppasswords y generar una nueva una vez confirmado que todo funciona,
+para que la que circuló en el chat quede inválida.
+
+PASOS (por SSH, los hace Diego o quien tenga acceso al servidor — no se sube por git)
+------------------------------------------------------------------------------------------
+1. Entrar al servidor por SSH y editar el archivo .env (en la raíz del proyecto en producción):
+   nano .env
+2. Verificar/actualizar estas líneas (servidor SMTP de Google, no el de Hostinger):
+   MAIL_MAILER=smtp
+   MAIL_HOST=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USERNAME=impulsate@iyemyucatan.com
+   MAIL_PASSWORD=<pegar aquí la contraseña de aplicación de 16 caracteres, sin espacios>
+   MAIL_ENCRYPTION=tls
+   MAIL_FROM_ADDRESS="impulsate@iyemyucatan.com"
+   MAIL_FROM_NAME="Encuentro de Negocios Impulsate"
+3. Guardar y salir, luego limpiar caché de configuración:
+   php artisan config:clear
+   php artisan config:cache
+4. Enviar un correo de prueba. Lo más simple es por Tinker:
+   php artisan tinker
+   Mail::raw('Prueba de configuración de correo Impulsate', function ($m) {
+       $m->to('iyem.informatica@iyemyucatan.com')->subject('Prueba SMTP Impulsate');
+   });
+   Si se envía sin error y llega a esa bandeja, la configuración quedó correcta. Si Google rechaza
+   la conexión, revisar que la contraseña de aplicación se copió completa (sin espacios) y que la
+   verificación en 2 pasos esté realmente activa en la cuenta.
+
+Nota: en el repositorio, .env.example y DEPLOY.md ya muestran impulsate@iyemyucatan.com pero con
+los datos SMTP de Hostinger (smtp.hostinger.com:465) — como el correo real es Gmail/Google
+Workspace, conviene actualizar también esos dos archivos de referencia para que no confundan a
+futuro (cambiar host/puerto/encriptación a los de Gmail indicados arriba).
+
+
+===========================================================================
+NOTA ADICIONAL (no pedida, opcional) — color azul fuera de norma
+===========================================================================
+En resources/js/Components/TabEventos.vue línea 300, el badge "Próximamente" usa
+`bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400`, lo cual rompe la regla de
+nunca usar azul/indigo en la plataforma. Sugerido (no obligatorio, aplicar solo si Diego lo
+confirma): cambiar a `bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400`.
+
+
+===========================================================================
+DEPLOY (Puntos 1 y 2 — el Punto 3 es solo configuración de servidor, ver arriba)
+===========================================================================
+1. php artisan make:migration add_convocatoria_y_carrusel_to_eventos_table (con el contenido de 1A)
+2. npm run build
+3. git add -A
+4. git commit -m "feat: convocatoria + imagen carrusel en eventos, CANIRAC/empresa obligatorios"
+5. git push
+6. SSH Hostinger:
+   git pull
+   composer install --no-dev --optimize-autoloader
+   npm run build   (si no se sube ya compilado)
+   php artisan migrate --force
+   php artisan optimize:clear
+7. Verificar en producción los 2 puntos según las listas de verificación de cada sección, y
+   subir la imagen de carrusel a al menos un evento para confirmar que aparece en la landing.

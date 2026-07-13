@@ -1,0 +1,716 @@
+====================================================================
+PROMPT: CRÉDITO "A NEGOCIAR"
+====================================================================
+Stack: Laravel 11 · Inertia.js · Vue 3 · Tailwind CSS (darkMode:'class')
+Color primario: guinda #8b1028 — NUNCA azul/indigo
+====================================================================
+
+CONTEXTO
+--------
+En el formulario de perfil del proveedor existe una sección
+"Condiciones Comerciales" con un checkbox "Acepta crédito". Al
+marcarlo, aparecen los campos Monto máximo (MXN), Plazo y Unidad.
+Actualmente esos 3 campos son requeridos cuando acepta_credito=true.
+
+CAMBIO SOLICITADO
+-----------------
+Agregar un checkbox "A negociar" dentro del bloque de crédito.
+- Si "A negociar" está marcado: Monto, Plazo y Unidad son opcionales.
+- Si "A negociar" NO está marcado: Monto, Plazo y Unidad son requeridos.
+- En el perfil público (Show.vue) mostrar "A negociar" en lugar del
+  monto/plazo cuando corresponda.
+
+====================================================================
+PASO 1 — MIGRATION
+====================================================================
+Crear migration:
+    php artisan make:migration add_credito_a_negociar_to_restauranteros_table
+
+Contenido del método up():
+    Schema::table('restauranteros', function (Blueprint $table) {
+        $table->boolean('credito_a_negociar')->nullable()->default(false)->after('credito_tiempo_unidad');
+    });
+
+Método down():
+    Schema::table('restauranteros', function (Blueprint $table) {
+        $table->dropColumn('credito_a_negociar');
+    });
+
+====================================================================
+PASO 2 — MODELO: app/Models/Restaurantero.php
+====================================================================
+
+2A — En $fillable, agregar después de 'credito_tiempo_unidad':
+    'credito_a_negociar',
+
+2B — En casts(), agregar:
+    'credito_a_negociar' => 'boolean',
+
+2C — En calcularPerfilCompleto(), reemplazar la línea $creditoOk:
+
+ANTES:
+    $creditoOk = !$this->acepta_credito
+        || (
+            filled($this->credito_monto_maximo)
+            && filled($this->credito_tiempo_cantidad)
+            && filled($this->credito_tiempo_unidad)
+        );
+
+DESPUÉS:
+    $creditoOk = !$this->acepta_credito
+        || $this->credito_a_negociar
+        || (
+            filled($this->credito_monto_maximo)
+            && filled($this->credito_tiempo_cantidad)
+            && filled($this->credito_tiempo_unidad)
+        );
+
+====================================================================
+PASO 3 — CONTROLLER: app/Http/Controllers/ProveedorPerfilController.php
+====================================================================
+
+3A — En el array de validación (método store/update), agregar:
+    'credito_a_negociar' => ['nullable', 'boolean'],
+
+3B — En el bloque de procesamiento de booleans, agregar después de la
+línea de acepta_credito:
+    $data['credito_a_negociar'] = filter_var($request->credito_a_negociar, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+
+3C — La lógica actual borra los campos de crédito si acepta_credito=false.
+Eso está bien. Cuando acepta_credito=true y credito_a_negociar=true,
+los campos de monto/plazo se guardan como null (ya que el usuario no
+los llenó). Reemplazar el bloque:
+
+ANTES:
+    $data['credito_monto_maximo']    = $data['acepta_credito'] ? $request->credito_monto_maximo : null;
+    $data['credito_tiempo_cantidad'] = $data['acepta_credito'] ? $request->credito_tiempo_cantidad : null;
+    $data['credito_tiempo_unidad']   = $data['acepta_credito'] ? $request->credito_tiempo_unidad : null;
+
+DESPUÉS:
+    if (!$data['acepta_credito']) {
+        $data['credito_monto_maximo']    = null;
+        $data['credito_tiempo_cantidad'] = null;
+        $data['credito_tiempo_unidad']   = null;
+        $data['credito_a_negociar']      = false;
+    } else {
+        $data['credito_monto_maximo']    = $request->credito_monto_maximo ?: null;
+        $data['credito_tiempo_cantidad'] = $request->credito_tiempo_cantidad ?: null;
+        $data['credito_tiempo_unidad']   = $request->credito_tiempo_unidad ?: null;
+        // credito_a_negociar ya está procesado arriba
+    }
+
+====================================================================
+PASO 4 — Panel.vue: resources/js/Pages/Restaurantero/Panel.vue
+====================================================================
+
+4A — En el objeto formPerfil (donde se inicializa el estado reactivo),
+agregar después de credito_tiempo_unidad:
+    credito_a_negociar:      props.restaurantero.credito_a_negociar ?? false,
+
+4B — En la función submitPerfil() donde se construye el FormData,
+agregar después de la línea que hace fd.append de acepta_credito:
+    fd.append('credito_a_negociar', formPerfil.credito_a_negociar ? '1' : '0');
+
+4C — En el template, en el bloque de crédito, localizar el div que
+contiene los campos Monto / Plazo / Unidad (actualmente visible con
+v-if="formPerfil.acepta_credito"). Reemplazar TODO ese bloque por:
+
+    <div v-if="formPerfil.acepta_credito" class="ml-7 space-y-3">
+        <!-- Checkbox A negociar -->
+        <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" v-model="formPerfil.credito_a_negociar"
+                class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
+            <span class="text-sm text-gray-700 dark:text-gray-300">A negociar</span>
+        </label>
+
+        <!-- Campos condicionales: requeridos si NO es a negociar -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Monto máximo (MXN)
+                    <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
+                </label>
+                <input v-model="formPerfil.credito_monto_maximo"
+                    type="number" min="0" step="0.01" placeholder="50000"
+                    :required="formPerfil.acepta_credito && !formPerfil.credito_a_negociar"
+                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Plazo
+                    <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
+                </label>
+                <input v-model="formPerfil.credito_tiempo_cantidad"
+                    type="number" min="1" placeholder="30"
+                    :required="formPerfil.acepta_credito && !formPerfil.credito_a_negociar"
+                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    Unidad
+                    <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
+                </label>
+                <select v-model="formPerfil.credito_tiempo_unidad"
+                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500">
+                    <option value="">-- Selecciona --</option>
+                    <option value="dias">Días</option>
+                    <option value="semanas">Semanas</option>
+                    <option value="meses">Meses</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+====================================================================
+PASO 5 — Show.vue: resources/js/Pages/Restauranteros/Show.vue
+====================================================================
+
+Localizar el badge de "Acepta crédito" en la sección de Condiciones
+Comerciales. Actualmente muestra el monto y plazo. Reemplazar esa
+sección para mostrar "A negociar" cuando corresponde.
+
+ANTES:
+    <span v-if="restaurantero.acepta_credito"
+        class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+        ✓ Acepta crédito
+        <span v-if="restaurantero.credito_monto_maximo" class="opacity-70 ml-0.5">· máx. ${{ Number(restaurantero.credito_monto_maximo).toLocaleString('es-MX') }}</span>
+        <span v-if="restaurantero.credito_tiempo_cantidad && restaurantero.credito_tiempo_unidad" class="opacity-70">· {{ restaurantero.credito_tiempo_cantidad }} {{ restaurantero.credito_tiempo_unidad }}</span>
+    </span>
+
+DESPUÉS:
+    <span v-if="restaurantero.acepta_credito"
+        class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+        ✓ Acepta crédito
+        <template v-if="restaurantero.credito_a_negociar">
+            <span class="opacity-70 ml-0.5">· A negociar</span>
+        </template>
+        <template v-else>
+            <span v-if="restaurantero.credito_monto_maximo" class="opacity-70 ml-0.5">· máx. ${{ Number(restaurantero.credito_monto_maximo).toLocaleString('es-MX') }}</span>
+            <span v-if="restaurantero.credito_tiempo_cantidad && restaurantero.credito_tiempo_unidad" class="opacity-70">· {{ restaurantero.credito_tiempo_cantidad }} {{ restaurantero.credito_tiempo_unidad }}</span>
+        </template>
+    </span>
+
+====================================================================
+PASO 6 — VERIFICAR OTROS ARCHIVOS QUE MUESTRAN DATOS DE CRÉDITO
+====================================================================
+
+Buscar en el proyecto si hay otros lugares que muestran credito_monto_maximo
+o credito_tiempo_cantidad y aplicar el mismo patrón: mostrar "A negociar"
+cuando restaurantero.credito_a_negociar sea true en lugar del monto/plazo.
+
+Archivos probables:
+- resources/js/Pages/Admin/Restauranteros/Show.vue
+- resources/js/Pages/Admin/Eventos/Solicitudes.vue (modal de perfil)
+
+En cada uno, buscar la interpolación del monto y aplicar el mismo
+template v-if/v-else que en el Paso 5.
+
+====================================================================
+PASO 7 — MEJORAS AL MÓDULO "PLANTILLAS DE CORREO"
+====================================================================
+
+CONTEXTO
+--------
+El módulo ya existe en Super Admin con: lista de plantillas, editor HTML
+con vista previa en iframe, inserción de placeholders y envío de prueba.
+Solo edita plantillas existentes (es_sistema=true). Se necesita poder
+CREAR plantillas propias y que el HTML base se genere automáticamente.
+
+TAMBIÉN: Los templates en el seeder (tplEventoSolicitudAprobada y
+tplEventoSolicitudRechazada) tienen URLs hardcodeadas apuntando a
+https://impulsate.iyemyucatan.com/user/dashboard que rompen para
+usuarios que no están autenticados. Cambiar en
+database/seeders/PlantillasCorreoSeeder.php ambas URLs por
+https://impulsate.iyemyucatan.com (solo la homepage), en los métodos
+tplEventoSolicitudAprobada() y tplEventoSolicitudRechazada().
+Después correr: php artisan db:seed --class=PlantillasCorreoSeeder
+(pero solo actualizará si updateOrCreate existe en el seeder — ya lo tiene).
+
+7A — CONTROLLER: agregar store() y destroy()
+--------------------------------------------
+Archivo: app/Http/Controllers/Admin/SuperAdmin/PlantillasCorreoController.php
+
+Agregar al inicio del archivo los imports necesarios:
+use Illuminate\Validation\Rule;
+
+Agregar el método store() antes de edit():
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'nombre'           => ['required', 'string', 'max:255'],
+            'clave'            => ['required', 'string', 'max:100', 'unique:plantillas_correo,clave', 'regex:/^[a-z0-9_]+$/'],
+            'asunto'           => ['required', 'string', 'max:255'],
+            'contenido'        => ['required', 'string'],
+            'tipo_destinatario'=> ['required', Rule::in(['comprador', 'proveedor', 'ambos'])],
+        ]);
+
+        $data['es_sistema'] = false;
+        $data['activo'] = true;
+
+        PlantillaCorreo::create($data);
+
+        return redirect()->route('admin.plantillas.index')->with('success', 'Plantilla creada correctamente.');
+    }
+
+Agregar el método destroy() después de restablecer():
+
+    public function destroy(PlantillaCorreo $plantilla)
+    {
+        if ($plantilla->es_sistema) {
+            return back()->withErrors(['error' => 'No se pueden eliminar plantillas del sistema.']);
+        }
+        $plantilla->delete();
+        return redirect()->route('admin.plantillas.index')->with('success', 'Plantilla eliminada.');
+    }
+
+7B — ROUTES: agregar store y destroy
+--------------------------------------
+Archivo: routes/web.php
+
+En el grupo prefix('plantillas-correo'), agregar las rutas faltantes.
+El grupo actual tiene: GET /, GET /{id}/edit, PUT /{id}, POST /{id}/enviar,
+PATCH /{id}/toggle, POST /{id}/restablecer.
+
+Agregar:
+    Route::post('/',          [PlantillasCorreoController::class, 'store'])->name('store');
+    Route::delete('/{plantilla}', [PlantillasCorreoController::class, 'destroy'])->name('destroy');
+
+7C — Index.vue: agregar botón "Nueva plantilla" + borrar custom
+----------------------------------------------------------------
+Archivo: resources/js/Pages/Admin/SuperAdmin/Plantillas/Index.vue
+
+En el bloque de encabezado (donde está el h1 "Plantillas de Correo"),
+agregar un botón "Nueva plantilla" a la derecha del título:
+
+    <div class="flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">Plantillas de Correo</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                Personaliza el asunto y contenido de los correos automáticos del sistema.
+            </p>
+        </div>
+        <Link :href="route('admin.plantillas.create')"
+            class="px-4 py-2 text-sm font-semibold rounded-xl bg-[#8b1028] hover:bg-[#6f0c1f] text-white transition-colors">
+            + Nueva plantilla
+        </Link>
+    </div>
+
+En la tabla, en la columna de acciones (td de la derecha), agregar
+el botón Eliminar SOLO cuando !p.es_sistema, junto al botón Editar:
+
+    <td class="px-5 py-4 text-right flex items-center justify-end gap-2">
+        <Link :href="route('admin.plantillas.edit', p.id)"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 transition-colors">
+            Editar
+        </Link>
+        <button v-if="!p.es_sistema"
+            @click="eliminar(p)"
+            class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 transition-colors">
+            Eliminar
+        </button>
+    </td>
+
+En el <script setup>, agregar la función eliminar:
+
+    const eliminar = (p) => {
+        if (!confirm(`¿Eliminar la plantilla "${p.nombre}"? Esta acción no se puede deshacer.`)) return;
+        router.delete(route('admin.plantillas.destroy', p.id), { preserveScroll: true });
+    };
+
+7D — NUEVA RUTA Y PÁGINA: Crear plantilla
+------------------------------------------
+Agregar ruta en el grupo plantillas-correo:
+    Route::get('/crear', [PlantillasCorreoController::class, 'create'])->name('create');
+
+Agregar método create() en el controller:
+
+    public function create()
+    {
+        // HTML base pre-rellenado para nuevas plantillas
+        $htmlBase = <<<HTML
+<div style="background:#f9fafb;padding:40px 20px;font-family:'Segoe UI',Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <div style="background:linear-gradient(135deg,#8b1028,#45060f);padding:32px 40px;text-align:center;">
+    <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+    <p style="color:#fbc4cd;margin:8px 0 0;font-size:14px;">Instituto Yucateco de Emprendedores</p>
+  </div>
+  <div style="padding:32px 40px;">
+    <p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+    <!-- ESCRIBE TU CONTENIDO AQUÍ -->
+    <p style="margin:0;font-size:15px;color:#374151;">Mensaje del correo.</p>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+    <p style="margin:0;font-size:12px;color:#9ca3af;">Encuentro de Negocios Impulsate · Instituto Yucateco de Emprendedores</p>
+  </div>
+</div>
+</div>
+HTML;
+        return Inertia::render('Admin/SuperAdmin/Plantillas/Create', [
+            'htmlBase' => $htmlBase,
+            'placeholders' => [
+                '{{nombre_usuario}}' => 'Nombre del usuario destinatario',
+                '{{nombre_proveedor}}' => 'Nombre del proveedor / empresa',
+                '{{nombre_evento}}' => 'Nombre del evento',
+                '{{fecha_cita}}' => 'Fecha de la cita',
+                '{{hora_cita}}' => 'Hora de la cita',
+            ],
+        ]);
+    }
+
+Crear el archivo resources/js/Pages/Admin/SuperAdmin/Plantillas/Create.vue.
+Debe ser prácticamente igual al Edit.vue pero con:
+- Título "Nueva plantilla de correo"
+- Campos adicionales: nombre, clave (slug automático desde nombre), tipo_destinatario
+- El contenido pre-rellenado con htmlBase del controller
+- El form.post va a route('admin.plantillas.store')
+- Sin botón "Enviar prueba" (no existe todavía)
+
+Estructura del <script setup>:
+
+    const props = defineProps({ htmlBase: String, placeholders: Object });
+
+    const form = useForm({
+        nombre:            '',
+        clave:             '',
+        asunto:            '',
+        contenido:         props.htmlBase,
+        tipo_destinatario: 'ambos',
+    });
+
+    // Auto-generar clave desde nombre
+    watch(() => form.nombre, (val) => {
+        form.clave = val.toLowerCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .replace(/[^a-z0-9\s]/g, '')
+            .trim().replace(/\s+/g, '_');
+    });
+
+    const guardar = () => form.post(route('admin.plantillas.store'));
+    const tab = ref('editor');
+    const previewSrc = computed(() => `data:text/html;charset=utf-8,${encodeURIComponent(form.contenido)}`);
+    const insertarPlaceholder = (ph) => { form.contenido += ph; };
+
+El template debe incluir los campos nombre, clave (readonly con ayuda),
+tipo_destinatario (select: Ambos/Proveedor/Comprador), asunto, y luego
+el mismo editor con tabs Editor/Vista previa que tiene Edit.vue.
+
+
+====================================================================
+PASO 8 — NUEVO MÓDULO "CORREO MASIVO" (SUPER ADMIN)
+====================================================================
+
+CONTEXTO
+--------
+Los super admins podrán seleccionar destinatarios usando filtros,
+elegir una plantilla (o escribir contenido libre) y enviar correos
+masivos. Los emails se ponen en cola (queue) para no bloquear el servidor.
+
+PASO 8A — CONTROLLER
+---------------------
+Crear: app/Http/Controllers/Admin/SuperAdmin/CorreoMasivoController.php
+
+    <?php
+    namespace App\Http\Controllers\Admin\SuperAdmin;
+
+    use App\Http\Controllers\Controller;
+    use App\Mail\PlantillaCorreoMail;
+    use App\Models\Evento;
+    use App\Models\PlantillaCorreo;
+    use App\Models\Restaurantero;
+    use App\Models\User;
+    use Illuminate\Http\Request;
+    use Illuminate\Support\Facades\DB;
+    use Illuminate\Support\Facades\Mail;
+    use Inertia\Inertia;
+
+    class CorreoMasivoController extends Controller
+    {
+        public function index()
+        {
+            return Inertia::render('Admin/SuperAdmin/CorreoMasivo/Index', [
+                'plantillas' => PlantillaCorreo::where('activo', true)
+                    ->orderBy('nombre')
+                    ->get(['id', 'nombre', 'asunto', 'tipo_destinatario']),
+                'eventos' => Evento::orderByDesc('fecha_hora_inicio')
+                    ->get(['id', 'nombre']),
+                'categorias' => Restaurantero::$categorias,
+            ]);
+        }
+
+        // Devuelve previsualización de destinatarios (llamada AJAX via Inertia o fetch)
+        public function preview(Request $request)
+        {
+            $users = $this->filtrarDestinatarios($request);
+            return response()->json([
+                'total'        => $users->count(),
+                'destinatarios'=> $users->take(20)->map(fn($u) => [
+                    'id'    => $u->id,
+                    'name'  => $u->name,
+                    'email' => $u->email,
+                    'rol'   => $u->roles->pluck('name')->join(', '),
+                ])->values(),
+            ]);
+        }
+
+        public function enviar(Request $request)
+        {
+            $request->validate([
+                'asunto'        => ['required', 'string', 'max:255'],
+                'contenido'     => ['required', 'string'],
+            ]);
+
+            $users = $this->filtrarDestinatarios($request);
+
+            if ($users->isEmpty()) {
+                return back()->withErrors(['error' => 'No hay destinatarios con los filtros seleccionados.']);
+            }
+
+            // Crear una PlantillaCorreo temporal en memoria (no guarda en DB)
+            $plantillaTemporal = new PlantillaCorreo([
+                'clave'    => 'correo_masivo_' . now()->timestamp,
+                'nombre'   => 'Correo Masivo',
+                'asunto'   => $request->asunto,
+                'contenido'=> $request->contenido,
+                'activo'   => true,
+                'es_sistema'=> false,
+            ]);
+
+            $enviados = 0;
+            foreach ($users as $user) {
+                try {
+                    Mail::to($user->email)->queue(
+                        new PlantillaCorreoMail($plantillaTemporal, [
+                            'nombre_usuario' => $user->name,
+                        ])
+                    );
+                    $enviados++;
+                } catch (\Exception $e) {
+                    \Log::warning("Correo masivo fallido para {$user->email}: " . $e->getMessage());
+                }
+            }
+
+            return back()->with('success', "Correos en cola para {$enviados} destinatarios.");
+        }
+
+        private function filtrarDestinatarios(Request $request)
+        {
+            $tipo         = $request->input('tipo', 'todos');       // todos | proveedores | compradores
+            $categoria    = $request->input('categoria');            // string o null
+            $eventoId     = $request->input('evento_id');           // int o null
+            $estadoEvento = $request->input('estado_evento');       // aprobado|pendiente|rechazado o null
+            $estadoProveedor = $request->input('estado_proveedor'); // aprobado|pendiente|rechazado o null
+
+            $query = User::with(['roles', 'restaurantero'])
+                ->where('email_verified_at', '!=', null);
+
+            // Filtro por rol
+            if ($tipo === 'proveedores') {
+                $query->whereHas('roles', fn($q) => $q->where('name', 'restaurantero'));
+            } elseif ($tipo === 'compradores') {
+                $query->whereHas('roles', fn($q) => $q->where('name', 'cliente'));
+                $query->whereDoesntHave('roles', fn($q) => $q->where('name', 'admin'));
+            } else {
+                // todos: excluir admins
+                $query->whereDoesntHave('roles', fn($q) => $q->whereIn('name', ['admin', 'super-admin']));
+            }
+
+            // Filtro por categoría (solo aplica a proveedores)
+            if ($categoria) {
+                $query->whereHas('restaurantero', fn($q) => $q->where('categoria', $categoria));
+            }
+
+            // Filtro por estado de proveedor (aprobado/pendiente/rechazado)
+            if ($estadoProveedor && $tipo === 'proveedores') {
+                if ($estadoProveedor === 'aprobado') {
+                    $query->whereHas('restaurantero', fn($q) => $q->where('aprobado', true));
+                } elseif ($estadoProveedor === 'pendiente') {
+                    $query->whereHas('restaurantero', fn($q) => $q->where('aprobado', false)->where('rechazado', false));
+                } elseif ($estadoProveedor === 'rechazado') {
+                    $query->whereHas('restaurantero', fn($q) => $q->where('rechazado', true));
+                }
+            }
+
+            // Filtro por evento
+            if ($eventoId) {
+                $eventoQuery = DB::table('evento_usuario')
+                    ->where('evento_id', $eventoId);
+                if ($estadoEvento) {
+                    $eventoQuery->where('estado', $estadoEvento);
+                }
+                $userIdsEnEvento = $eventoQuery->pluck('user_id');
+                $query->whereIn('id', $userIdsEnEvento);
+            }
+
+            return $query->get();
+        }
+    }
+
+PASO 8B — ROUTES
+-----------------
+Archivo: routes/web.php
+
+Dentro del grupo middleware('super-admin'), agregar nuevo prefix:
+
+    use App\Http\Controllers\Admin\SuperAdmin\CorreoMasivoController;
+
+    Route::prefix('correo-masivo')->name('correo-masivo.')->group(function () {
+        Route::get('/',       [CorreoMasivoController::class, 'index'])->name('index');
+        Route::post('/preview', [CorreoMasivoController::class, 'preview'])->name('preview');
+        Route::post('/enviar',  [CorreoMasivoController::class, 'enviar'])->name('enviar');
+    });
+
+PASO 8C — NAV: agregar enlace en AdminLayout.vue
+-------------------------------------------------
+Archivo: resources/js/Layouts/AdminLayout.vue
+
+En el array superAdminNavItems, agregar al final:
+
+    { label: 'Correo Masivo', routeName: 'admin.correo-masivo.index',
+      icon: 'M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z' },
+
+PASO 8D — VISTA Vue: Admin/SuperAdmin/CorreoMasivo/Index.vue
+-------------------------------------------------------------
+Crear: resources/js/Pages/Admin/SuperAdmin/CorreoMasivo/Index.vue
+
+El layout tiene 3 secciones principales:
+
+SECCIÓN A — FILTROS (card izquierda o parte superior):
+  - Select "Destinatarios": Todos / Solo proveedores / Solo compradores
+  - Select "Estado proveedor" (visible solo si tipo=proveedores):
+    Todos | Aprobados | Pendientes | Rechazados
+  - Select "Categoría" (visible solo si tipo=proveedores):
+    Todas las categorías, luego lista de categorias prop
+  - Select "Evento" (opcional): -- Ninguno --, luego lista de eventos
+  - Select "Estado en evento" (visible solo si hay evento seleccionado):
+    Todos | Aprobados | Pendientes | Rechazados
+  - Botón "Ver destinatarios" → llama a preview()
+
+SECCIÓN B — PREVISUALIZACIÓN de destinatarios:
+  - Card que muestra "X destinatarios seleccionados"
+  - Lista de los primeros 20 con nombre + email + rol
+  - Nota "...y N más" si hay más de 20
+
+SECCIÓN C — CONTENIDO DEL CORREO:
+  - Tab "Usar plantilla" → Select de plantillas disponibles
+    Al seleccionar, rellena asunto y contenido automáticamente
+  - Tab "Personalizado" → campos asunto + textarea contenido
+  - Vista previa del email (iframe como en Edit.vue)
+  - Botón "Enviar correos" (rojo guinda, pide confirmación con el total)
+
+Script setup completo:
+
+    import { ref, computed, watch } from 'vue';
+    import { router, useForm } from '@inertiajs/vue3';
+    import AdminLayout from '@/Layouts/AdminLayout.vue';
+
+    const props = defineProps({
+        plantillas: Array,
+        eventos: Array,
+        categorias: Array,
+    });
+
+    // Filtros
+    const filtros = ref({
+        tipo:              'todos',
+        estado_proveedor:  '',
+        categoria:         '',
+        evento_id:         '',
+        estado_evento:     '',
+    });
+
+    // Preview
+    const previewing = ref(false);
+    const preview = ref(null); // { total, destinatarios }
+
+    const verDestinatarios = async () => {
+        previewing.value = true;
+        preview.value = null;
+        try {
+            const res = await fetch(route('admin.correo-masivo.preview'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify(filtros.value),
+            });
+            preview.value = await res.json();
+        } finally {
+            previewing.value = false;
+        }
+    };
+
+    // Contenido del correo
+    const tabContenido = ref('plantilla'); // 'plantilla' | 'personalizado'
+    const plantillaSeleccionadaId = ref('');
+    const form = useForm({
+        ...filtros.value,  // los filtros se mandan junto al envío
+        asunto:    '',
+        contenido: '',
+    });
+
+    // Al seleccionar plantilla, autorellenar asunto y contenido
+    watch(plantillaSeleccionadaId, (id) => {
+        if (!id) return;
+        const p = props.plantillas.find(p => p.id == id);
+        if (p) { form.asunto = p.asunto; }
+        // fetch del contenido de la plantilla seleccionada
+        // (no se pasa en el index para no sobrecargar — se puede pasar o hacer fetch)
+        // ALTERNATIVA SIMPLE: pasar el contenido en el listado de plantillas desde el controller
+    });
+
+    const previewCorreoSrc = computed(() =>
+        form.contenido
+            ? `data:text/html;charset=utf-8,${encodeURIComponent(form.contenido)}`
+            : ''
+    );
+
+    const enviar = () => {
+        if (!preview.value || preview.value.total === 0) {
+            alert('Primero haz clic en "Ver destinatarios".');
+            return;
+        }
+        if (!confirm(`¿Enviar este correo a ${preview.value.total} destinatarios?`)) return;
+        // Sincronizar filtros al form antes de enviar
+        Object.assign(form, filtros.value);
+        form.post(route('admin.correo-masivo.enviar'), { preserveScroll: true });
+    };
+
+NOTA IMPORTANTE: Para que la previsualización del contenido funcione al
+seleccionar una plantilla, modificar el controller index() para pasar
+el contenido de las plantillas también:
+
+    'plantillas' => PlantillaCorreo::where('activo', true)
+        ->orderBy('nombre')
+        ->get(['id', 'nombre', 'asunto', 'contenido', 'tipo_destinatario']),
+
+Y en el watch de plantillaSeleccionadaId, también asignar el contenido:
+    if (p) {
+        form.asunto = p.asunto;
+        form.contenido = p.contenido;
+    }
+
+El template del componente debe tener diseño responsive de 2 columnas en
+desktop (filtros + preview izquierda, contenido correo derecha) y una
+columna en móvil. Usar clases Tailwind con colores guinda (#8b1028).
+El botón de envío solo debe habilitarse cuando form.asunto, form.contenido
+y preview.value?.total > 0.
+
+====================================================================
+PASO 9 — DEPLOY A PRODUCCIÓN
+====================================================================
+
+    php artisan migrate --force
+    npm run build
+    php artisan config:clear
+    php artisan route:clear
+    php artisan view:clear
+    php artisan optimize
+    php artisan db:seed --class=PlantillasCorreoSeeder --force
+    php artisan queue:restart
+
+====================================================================
+FIN DEL PROMPT
+====================================================================

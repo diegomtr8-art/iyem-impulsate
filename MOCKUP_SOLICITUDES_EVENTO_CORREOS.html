@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mockup — Solicitudes Evento + Correos</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode:'class',
+  theme:{extend:{colors:{guinda:{50:'#fdf2f4',100:'#fce7eb',200:'#f9c5cf',300:'#f495a8',400:'#ec5a77',500:'#e0294f',600:'#c71a3b',700:'#8b1028',800:'#751028',900:'#641027',950:'#3b0512'}}}}
+}
+</script>
+<style>
+body{background:#030712;color:#f9fafb;font-family:'Inter',system-ui,sans-serif;}
+.tab-btn{cursor:pointer;padding:10px 18px;border-radius:8px 8px 0 0;font-weight:600;font-size:13px;transition:all .2s;white-space:nowrap;}
+.tab-btn.active{background:#8b1028;color:#fff;}
+.tab-btn:not(.active){background:#111827;color:#9ca3af;}
+.tab-btn:not(.active):hover{background:#1f2937;color:#fff;}
+.tab-panel{display:none;}
+.tab-panel.active{display:block;}
+/* Email preview */
+.email-wrap{background:#f9fafb;padding:24px;border-radius:12px;}
+.email-card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12);max-width:560px;margin:0 auto;}
+.email-head{background:linear-gradient(135deg,#8b1028,#45060f);padding:28px 36px;text-align:center;}
+.email-body{padding:28px 36px;}
+.email-foot{background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;}
+.pill-green{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:700;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;}
+.pill-amber{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:700;background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+.pill-red{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:700;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.pill-gray{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:9999px;font-size:11px;font-weight:600;background:#f3f4f6;color:#4b5563;border:1px solid #e5e7eb;}
+.flow-step{display:flex;align-items:flex-start;gap:12px;padding:12px 0;}
+.flow-line{width:2px;background:#374151;flex-shrink:0;margin-left:15px;height:32px;}
+.step-circle{width:32px;height:32px;border-radius:9999px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0;}
+</style>
+</head>
+<body>
+
+<div class="max-w-4xl mx-auto px-4 py-10">
+
+  <!-- Header -->
+  <div class="mb-8">
+    <div class="inline-flex items-center gap-2 bg-guinda-700/20 border border-guinda-700/30 px-3 py-1 rounded-full mb-3">
+      <span class="w-2 h-2 rounded-full bg-guinda-500 animate-pulse"></span>
+      <span class="text-guinda-400 text-xs font-semibold">Mockup — IMPÚLSATE</span>
+    </div>
+    <h1 class="text-3xl font-black text-white">Solicitudes de Evento</h1>
+    <p class="text-gray-400 mt-1 text-sm">Perfil público · Correos · Flujo aprobación · Flujo rechazo + repostulación</p>
+  </div>
+
+  <!-- Tabs -->
+  <div class="flex flex-wrap gap-1 mb-0 overflow-x-auto">
+    <button class="tab-btn active" onclick="showTab('perfil')">1 · Perfil en Modal</button>
+    <button class="tab-btn" onclick="showTab('flujo-aprobacion')">2 · Flujo Aprobación</button>
+    <button class="tab-btn" onclick="showTab('correo-aprobado')">3 · Correo Aprobado</button>
+    <button class="tab-btn" onclick="showTab('flujo-rechazo')">4 · Flujo Rechazo</button>
+    <button class="tab-btn" onclick="showTab('correo-rechazado')">5 · Correo Rechazado</button>
+    <button class="tab-btn" onclick="showTab('repostulacion')">6 · Re-postulación (Panel)</button>
+  </div>
+
+  <div class="bg-gray-900 border border-gray-800 rounded-b-2xl rounded-tr-2xl p-6">
+
+    <!-- ══ TAB 1: PERFIL EN MODAL ══════════════════════════════════════════ -->
+    <div id="tab-perfil" class="tab-panel active">
+      <p class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-4">
+        Modal "Ver perfil" en Admin → Eventos → Solicitudes — vista pública completa del proveedor
+      </p>
+
+      <!-- Modal simulado -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl mx-auto shadow-2xl overflow-hidden">
+        <!-- Header del modal -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-800 sticky top-0 bg-white dark:bg-gray-900">
+          <h2 class="text-base font-bold text-white">Perfil: Salsas Yucatecas Don Pedro</h2>
+          <button class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400">✕</button>
+        </div>
+        <div class="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+
+          <!-- Badges -->
+          <div class="flex flex-wrap gap-2">
+            <span class="pill-green">✓ Perfil completo</span>
+            <span class="pill-amber">⚠ Pendiente aprobación global</span>
+          </div>
+
+          <!-- Logo hero -->
+          <div class="aspect-video w-full rounded-xl overflow-hidden bg-guinda-50/20 border border-guinda-700/20 flex items-center justify-center">
+            <div class="text-center text-gray-600">
+              <div class="text-5xl mb-2">🌶️</div>
+              <p class="text-xs text-gray-500">[Logo del proveedor — 16:9]</p>
+            </div>
+          </div>
+
+          <!-- Badges de municipio y categoría -->
+          <div class="flex flex-wrap gap-1.5">
+            <span class="text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-500/20 px-3 py-1 rounded-full">
+              📍 Mérida, Yucatán
+            </span>
+            <span class="text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full">
+              Alimentos y Bebidas
+            </span>
+          </div>
+
+          <h3 class="text-xl font-black text-white -mt-2">Salsas Yucatecas Don Pedro</h3>
+
+          <p class="text-sm text-gray-400 leading-relaxed -mt-3">
+            Productores artesanales de salsas y condimentos yucatecos desde 2010. Sin conservadores artificiales, usando ingredientes de la región.
+          </p>
+
+          <!-- Grid datos -->
+          <div class="grid grid-cols-3 gap-3 text-sm">
+            <div><p class="text-xs text-gray-600">Teléfono</p><p class="font-medium text-gray-200">999 123 4567</p></div>
+            <div><p class="text-xs text-gray-600">RFC</p><p class="font-medium text-gray-200">DPE800101ABC</p></div>
+            <div><p class="text-xs text-gray-600">Historial plataforma</p><p class="font-medium text-gray-200">8 citas</p></div>
+          </div>
+
+          <!-- Productos -->
+          <div>
+            <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Productos / Servicios</p>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="border border-gray-800 rounded-xl overflow-hidden bg-gray-900">
+                <div class="w-full h-16 bg-guinda-950/30 flex items-center justify-center text-xl">🌶️</div>
+                <div class="p-2">
+                  <p class="font-bold text-xs text-white">Salsa habanera</p>
+                  <p class="text-xs text-gray-500 mt-0.5 line-clamp-1">Sin conservadores</p>
+                  <p class="text-xs text-guinda-400 font-semibold mt-0.5">📦 2,500 Piezas/mes</p>
+                </div>
+              </div>
+              <div class="border border-gray-800 rounded-xl overflow-hidden bg-gray-900">
+                <div class="w-full h-16 bg-guinda-950/30 flex items-center justify-center text-xl">🍯</div>
+                <div class="p-2">
+                  <p class="font-bold text-xs text-white">Miel orgánica</p>
+                  <p class="text-xs text-gray-500 mt-0.5 line-clamp-1">Miel de la región</p>
+                </div>
+              </div>
+              <div class="border border-gray-800 rounded-xl overflow-hidden bg-gray-900">
+                <div class="w-full h-16 bg-guinda-950/30 flex items-center justify-center text-xl">🫙</div>
+                <div class="p-2">
+                  <p class="font-bold text-xs text-white">Recado negro</p>
+                  <p class="text-xs text-guinda-400 font-semibold mt-0.5">📦 80 Kg/mes</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Condiciones comerciales -->
+          <div>
+            <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Condiciones comerciales</p>
+            <div class="flex flex-wrap gap-2">
+              <span class="pill-green">✓ Acepta crédito · máx. $50,000 · 30 dias</span>
+              <span class="pill-green">✓ Emite factura · RESICO</span>
+            </div>
+          </div>
+
+          <!-- Logística -->
+          <div>
+            <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Logística y Distribución</p>
+            <div class="flex flex-wrap gap-2">
+              <span class="pill-green">🚚 Entrega a domicilio · Local · Flexible</span>
+            </div>
+          </div>
+
+          <p class="text-xs text-gray-600">Registrado en la plataforma: 01/03/2024</p>
+
+          <!-- Botones de acción -->
+          <div class="flex items-center gap-3 pt-2 border-t border-gray-800">
+            <button class="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl transition-colors">
+              ✓ Aprobar al evento
+            </button>
+            <button class="flex-1 px-4 py-2.5 bg-red-700 hover:bg-red-600 text-white text-sm font-bold rounded-xl transition-colors">
+              ✕ Rechazar del evento
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-xs text-gray-600 text-center mt-4">
+        El admin puede aprobar o rechazar directamente desde este modal sin cerrarlo.
+      </p>
+    </div>
+
+    <!-- ══ TAB 2: FLUJO APROBACIÓN ══════════════════════════════════════════ -->
+    <div id="tab-flujo-aprobacion" class="tab-panel">
+      <p class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-6">
+        Flujo completo cuando el admin aprueba una solicitud
+      </p>
+
+      <div class="max-w-lg mx-auto space-y-0">
+
+        <div class="flow-step">
+          <div class="step-circle bg-amber-500/20 border border-amber-500/40 text-amber-400">1</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Proveedor/Comprador se registra al evento</p>
+            <p class="text-xs text-gray-400 mt-1">Desde la página del evento o su panel. Estado inicial: <span class="text-amber-400 font-bold">pendiente</span>.</p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-guinda-700/30 border border-guinda-700/50 text-guinda-400">2</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Admin abre "Ver perfil" y revisa</p>
+            <p class="text-xs text-gray-400 mt-1">Ve el perfil público completo: logo, productos con capacidades, condiciones comerciales, logística.</p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-emerald-600/30 border border-emerald-600/50 text-emerald-400">3</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Admin hace clic en "Aprobar"</p>
+            <p class="text-xs text-gray-400 mt-1">Confirma con doble clic (mini-confirm). Estado actualizado a <span class="text-emerald-400 font-bold">aprobado</span>.</p>
+            <div class="mt-2 bg-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-gray-300">
+              DB: estado → 'aprobado', respondido_at → now()<br/>
+              Si proveedor: restaurantero.edicion_id → evento.id
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-blue-600/30 border border-blue-600/50 text-blue-400">4</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Sistema envía correo de aprobación <span class="text-guinda-400 font-bold">← NUEVO</span></p>
+            <p class="text-xs text-gray-400 mt-1">
+              <span class="text-emerald-400">EventoSolicitudAprobadaMail</span> → usuario.<br/>
+              Asunto: "🎉 ¡Fuiste aprobado al evento [nombre]! — Impulsate"
+            </p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-blue-600/30 border border-blue-600/50 text-blue-400">5</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Sistema crea notificación in-app</p>
+            <p class="text-xs text-gray-400 mt-1">Notificación existente: "¡Fuiste aprobado en el evento!" visible en el panel del usuario.</p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-emerald-600/20 border border-emerald-600/40 text-emerald-300">✓</div>
+          <div class="flex-1 pl-4 ml-[-17px]">
+            <p class="font-bold text-emerald-400 text-sm">Usuario aprobado — puede participar en el evento</p>
+            <p class="text-xs text-gray-400 mt-1">Proveedor: aparece en el directorio. Comprador: puede agendar citas.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ TAB 3: CORREO APROBADO ══════════════════════════════════════════ -->
+    <div id="tab-correo-aprobado" class="tab-panel">
+      <p class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-4">
+        Plantilla de correo — Aprobación al evento
+      </p>
+
+      <div class="flex gap-4 mb-4">
+        <button onclick="mostrarCorreoAprobado('proveedor')" id="btn-prov-ap"
+          class="px-4 py-2 text-xs font-bold rounded-xl bg-guinda-700 text-white transition-colors">
+          Vista: Proveedor
+        </button>
+        <button onclick="mostrarCorreoAprobado('comprador')" id="btn-comp-ap"
+          class="px-4 py-2 text-xs font-bold rounded-xl bg-gray-800 text-gray-300 transition-colors">
+          Vista: Comprador
+        </button>
+      </div>
+
+      <!-- Correo aprobado proveedor -->
+      <div id="email-ap-prov" class="email-wrap">
+        <div class="email-card">
+          <div class="email-head">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+            <p style="color:#fbc4cd;margin:8px 0 0;font-size:13px;">Instituto Yucateco de Emprendedores</p>
+          </div>
+          <div class="email-body text-center">
+            <div style="font-size:52px;margin-bottom:12px;">🎉</div>
+            <h2 style="color:#111827;font-size:20px;font-weight:800;margin:0 0 8px;">¡Fuiste aprobado!</h2>
+            <p style="color:#374151;font-size:14px;margin:0 0 6px;">Hola, <strong>Pedro Canul Dzib</strong>.</p>
+            <p style="color:#374151;font-size:14px;margin:0 0 24px;">
+              Tu solicitud como <strong>proveedor</strong> para el evento
+              <strong style="color:#8b1028;">Encuentro de Negocios IMPÚLSATE Edición Restaurantes</strong>
+              fue <strong style="color:#15803d;">aprobada</strong>. ✓
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:24px;text-align:left;">
+              <tr><td style="padding:14px 18px;">
+                <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#166534;">¿Qué sigue?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.5;">
+                  Tu perfil ya aparece en el directorio de proveedores del evento. Los compradores pueden agendar citas contigo. Asegúrate de tener tus horarios actualizados en tu panel.
+                </p>
+              </td></tr>
+            </table>
+            <a href="#" style="display:inline-block;background:#8b1028;color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;">
+              Ver mi panel de proveedor
+            </a>
+          </div>
+          <div class="email-foot">
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Correo aprobado comprador (oculto) -->
+      <div id="email-ap-comp" class="email-wrap hidden">
+        <div class="email-card">
+          <div class="email-head">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+            <p style="color:#fbc4cd;margin:8px 0 0;font-size:13px;">Instituto Yucateco de Emprendedores</p>
+          </div>
+          <div class="email-body text-center">
+            <div style="font-size:52px;margin-bottom:12px;">🎉</div>
+            <h2 style="color:#111827;font-size:20px;font-weight:800;margin:0 0 8px;">¡Fuiste aprobado!</h2>
+            <p style="color:#374151;font-size:14px;margin:0 0 6px;">Hola, <strong>María González</strong>.</p>
+            <p style="color:#374151;font-size:14px;margin:0 0 24px;">
+              Tu solicitud como <strong>comprador</strong> para el evento
+              <strong style="color:#8b1028;">Encuentro de Negocios IMPÚLSATE Edición Restaurantes</strong>
+              fue <strong style="color:#15803d;">aprobada</strong>. ✓
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:24px;text-align:left;">
+              <tr><td style="padding:14px 18px;">
+                <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#166534;">¿Qué sigue?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.5;">
+                  Ya puedes ver el directorio de proveedores y agendar tus citas de networking con los proveedores que te interesen.
+                </p>
+              </td></tr>
+            </table>
+            <a href="#" style="display:inline-block;background:#8b1028;color:#fff;padding:13px 28px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;">
+              Ver proveedores y agendar citas
+            </a>
+          </div>
+          <div class="email-foot">
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 4: FLUJO RECHAZO ══════════════════════════════════════════ -->
+    <div id="tab-flujo-rechazo" class="tab-panel">
+      <p class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-6">
+        Flujo completo cuando el admin rechaza + el usuario vuelve a postularse
+      </p>
+
+      <div class="max-w-lg mx-auto space-y-0">
+
+        <div class="flow-step">
+          <div class="step-circle bg-red-600/30 border border-red-600/50 text-red-400">1</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Admin revisa y hace clic en "Rechazar"</p>
+            <p class="text-xs text-gray-400 mt-1">Aparece modal de rechazo — admin escribe el motivo en el textarea y confirma.</p>
+            <div class="mt-2 bg-gray-800 border border-red-800/30 rounded-lg px-3 py-2">
+              <p class="text-xs text-gray-400">Motivo: <span class="text-red-400 italic">"Los productos no corresponden al sector económico del evento."</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-red-600/30 border border-red-600/50 text-red-400">2</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Estado actualizado en BD</p>
+            <div class="mt-1 bg-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-gray-300">
+              estado → 'rechazado'<br/>motivo_rechazo → "Los productos no..."<br/>respondido_at → now()
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-blue-600/30 border border-blue-600/50 text-blue-400">3</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Sistema envía correo de rechazo <span class="text-guinda-400 font-bold">← NUEVO</span></p>
+            <p class="text-xs text-gray-400 mt-1">
+              <span class="text-red-400">EventoSolicitudRechazadaMail</span> con motivo → usuario.<br/>
+              Asunto: "Resultado de tu solicitud — [evento] · Impulsate"
+            </p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-blue-600/30 border border-blue-600/50 text-blue-400">4</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Notificación in-app al usuario</p>
+            <p class="text-xs text-gray-400 mt-1">El usuario ve la notificación en su panel con el motivo.</p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-amber-500/30 border border-amber-500/50 text-amber-400">5</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Usuario ve el rechazo en su panel <span class="text-guinda-400 font-bold">← NUEVO</span></p>
+            <p class="text-xs text-gray-400 mt-1">Banner rojo con motivo y dos botones: "Actualizar mi perfil" y "Volver a postularme".</p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-guinda-700/30 border border-guinda-700/50 text-guinda-400">6</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Usuario actualiza perfil (opcional)</p>
+            <p class="text-xs text-gray-400 mt-1">Puede editar logo, productos, condiciones comerciales, logística desde el modal de edición en su panel.</p>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-amber-500/30 border border-amber-500/50 text-amber-400">7</div>
+          <div class="flex-1 pb-6 border-l-2 border-gray-700 pl-4 ml-[-17px]">
+            <p class="font-bold text-white text-sm">Usuario hace clic en "Volver a postularme"</p>
+            <div class="mt-1 bg-gray-800 rounded-lg px-3 py-2 text-xs font-mono text-gray-300">
+              POST /eventos/{id}/registrar-proveedor<br/>
+              → estado rechazado → pendiente
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-step">
+          <div class="step-circle bg-amber-500/20 border border-amber-500/40 text-amber-300">✓</div>
+          <div class="flex-1 pl-4 ml-[-17px]">
+            <p class="font-bold text-amber-400 text-sm">Solicitud vuelve a estado "Pendiente"</p>
+            <p class="text-xs text-gray-400 mt-1">Aparece de nuevo en la tab de Pendientes del admin. El ciclo reinicia.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ TAB 5: CORREO RECHAZADO ══════════════════════════════════════════ -->
+    <div id="tab-correo-rechazado" class="tab-panel">
+      <p class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-4">
+        Plantilla de correo — Rechazo del evento
+      </p>
+
+      <div class="flex gap-4 mb-4">
+        <button onclick="mostrarCorreoRechazado('proveedor')" id="btn-prov-rec"
+          class="px-4 py-2 text-xs font-bold rounded-xl bg-guinda-700 text-white">Vista: Proveedor</button>
+        <button onclick="mostrarCorreoRechazado('comprador')" id="btn-comp-rec"
+          class="px-4 py-2 text-xs font-bold rounded-xl bg-gray-800 text-gray-300">Vista: Comprador</button>
+      </div>
+
+      <!-- Correo rechazado proveedor -->
+      <div id="email-rec-prov" class="email-wrap">
+        <div class="email-card">
+          <div class="email-head">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+            <p style="color:#fbc4cd;margin:8px 0 0;font-size:13px;">Instituto Yucateco de Emprendedores</p>
+          </div>
+          <div class="email-body">
+            <div style="text-align:center;font-size:48px;margin-bottom:12px;">⚠️</div>
+            <h2 style="color:#111827;font-size:19px;font-weight:800;margin:0 0 8px;text-align:center;">Solicitud no aprobada</h2>
+            <p style="color:#374151;font-size:14px;margin:0 0 16px;">
+              Hola, <strong>Pedro Canul Dzib</strong>.<br><br>
+              Tu solicitud como <strong>proveedor</strong> para el evento
+              <strong style="color:#8b1028;">Encuentro de Negocios IMPÚLSATE Edición Restaurantes</strong>
+              no fue aprobada en esta ocasión.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin-bottom:20px;">
+              <tr><td style="padding:14px 18px;">
+                <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Motivo del administrador</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.5;">Los productos ofertados no corresponden al sector económico del evento (restaurantero).</p>
+              </td></tr>
+            </table>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:20px;">
+              <tr><td style="padding:14px 18px;">
+                <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#166534;">¿Qué puedo hacer?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.5;">Puedes actualizar tu perfil de proveedor con la información faltante o corregir lo señalado, y <strong>volver a postularte al evento</strong> desde tu panel.</p>
+              </td></tr>
+            </table>
+            <div style="text-align:center;">
+              <a href="#" style="display:inline-block;background:#8b1028;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;">
+                Actualizar mi perfil y volver a postularme
+              </a>
+            </div>
+          </div>
+          <div class="email-foot">
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Correo rechazado comprador (oculto) -->
+      <div id="email-rec-comp" class="email-wrap hidden">
+        <div class="email-card">
+          <div class="email-head">
+            <h1 style="color:#fff;margin:0;font-size:22px;font-weight:800;">Encuentro de Negocios Impulsate</h1>
+          </div>
+          <div class="email-body">
+            <div style="text-align:center;font-size:48px;margin-bottom:12px;">⚠️</div>
+            <h2 style="color:#111827;font-size:19px;font-weight:800;margin:0 0 8px;text-align:center;">Solicitud no aprobada</h2>
+            <p style="color:#374151;font-size:14px;margin:0 0 16px;">
+              Hola, <strong>María González</strong>.<br><br>
+              Tu solicitud como <strong>comprador</strong> para el evento
+              <strong style="color:#8b1028;">Encuentro de Negocios IMPÚLSATE Edición Restaurantes</strong>
+              no fue aprobada en esta ocasión.
+            </p>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;margin-bottom:20px;">
+              <tr><td style="padding:14px 18px;">
+                <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">Motivo del administrador</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.5;">La empresa registrada no corresponde al giro restaurantero requerido para esta edición.</p>
+              </td></tr>
+            </table>
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;margin-bottom:20px;">
+              <tr><td style="padding:14px 18px;">
+                <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#166534;">¿Qué puedo hacer?</p>
+                <p style="margin:0;font-size:13px;color:#374151;line-height:1.5;">Puedes actualizar tu información de perfil y <strong>volver a postularte al evento</strong> desde tu panel de usuario.</p>
+              </td></tr>
+            </table>
+            <div style="text-align:center;">
+              <a href="#" style="display:inline-block;background:#8b1028;color:#fff;padding:13px 24px;border-radius:10px;text-decoration:none;font-weight:700;font-size:13px;">
+                Ir a mi panel y volver a postularme
+              </a>
+            </div>
+          </div>
+          <div class="email-foot">
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Encuentro de Negocios Impulsate · impulsate@iyemyucatan.com</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ TAB 6: RE-POSTULACIÓN EN PANEL ════════════════════════════════════ -->
+    <div id="tab-repostulacion" class="tab-panel">
+      <p class="text-xs font-semibold text-guinda-400 uppercase tracking-widest mb-4">
+        Panel del proveedor — banner de rechazo con opción de re-postulación
+      </p>
+
+      <!-- Simulación Panel.vue (fragmento de tarjeta de evento con banner de rechazo) -->
+      <div class="bg-white dark:bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden max-w-xl mx-auto">
+        <!-- Encabezado del evento -->
+        <div class="p-4 border-b border-gray-800">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <span class="text-xs font-semibold text-guinda-400 uppercase tracking-wider">Evento activo</span>
+              <h3 class="font-bold text-white text-base mt-0.5">Encuentro de Negocios IMPÚLSATE</h3>
+              <p class="text-xs text-gray-400">Edición Restaurantes · 15–17 septiembre 2026</p>
+            </div>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-red-100/10 text-red-400 border border-red-800/30 shrink-0">
+              ❌ Rechazado
+            </span>
+          </div>
+        </div>
+
+        <!-- Banner de rechazo (nuevo) -->
+        <div class="border-t border-red-800/30 bg-red-950/10 p-4 space-y-3">
+          <div>
+            <p class="text-sm font-bold text-red-400 mb-1">❌ Tu solicitud al evento fue rechazada</p>
+            <p class="text-xs text-red-400/80 leading-relaxed">
+              <span class="font-semibold">Motivo:</span>
+              Los productos ofertados no corresponden al sector económico del evento (restaurantero).
+            </p>
+          </div>
+          <div class="border-t border-red-800/30 pt-3">
+            <p class="text-xs text-gray-400 mb-2">Actualiza tu perfil con lo indicado y vuelve a postularte:</p>
+            <div class="flex flex-wrap gap-2">
+              <button class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold rounded-xl transition-colors">
+                Actualizar mi perfil
+              </button>
+              <button class="px-4 py-2 bg-guinda-700 hover:bg-guinda-600 text-white text-xs font-bold rounded-xl transition-colors">
+                Volver a postularme →
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Después de re-postularse -->
+      <div class="mt-6 text-center">
+        <p class="text-xs text-gray-500 mb-3">Después de hacer clic en "Volver a postularme":</p>
+        <div class="bg-white dark:bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden max-w-xl mx-auto">
+          <div class="p-4 border-b border-gray-800">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <span class="text-xs font-semibold text-guinda-400 uppercase tracking-wider">Evento activo</span>
+                <h3 class="font-bold text-white text-base mt-0.5">Encuentro de Negocios IMPÚLSATE</h3>
+                <p class="text-xs text-gray-400">Edición Restaurantes · 15–17 septiembre 2026</p>
+              </div>
+              <span class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100/10 text-amber-400 border border-amber-800/30 shrink-0 animate-pulse">
+                ⏳ En revisión
+              </span>
+            </div>
+          </div>
+          <div class="p-4">
+            <p class="text-xs text-gray-400">Tu solicitud fue enviada nuevamente. El administrador la revisará pronto.</p>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-xs text-gray-600 text-center mt-4">
+        Al re-postularse, el estado en BD cambia de 'rechazado' → 'pendiente' y aparece en la tab de Pendientes del admin.
+      </p>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="mt-8 text-center text-xs text-gray-600">
+    Mockup generado para revisión antes del deploy — IMPÚLSATE Gobierno de Yucatán
+  </div>
+
+</div>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+function mostrarCorreoAprobado(tipo) {
+  const prov = document.getElementById('email-ap-prov');
+  const comp = document.getElementById('email-ap-comp');
+  const btnP = document.getElementById('btn-prov-ap');
+  const btnC = document.getElementById('btn-comp-ap');
+  if (tipo === 'proveedor') {
+    prov.classList.remove('hidden'); comp.classList.add('hidden');
+    btnP.style.background='#8b1028'; btnP.style.color='#fff';
+    btnC.style.background='#1f2937'; btnC.style.color='#d1d5db';
+  } else {
+    comp.classList.remove('hidden'); prov.classList.add('hidden');
+    btnC.style.background='#8b1028'; btnC.style.color='#fff';
+    btnP.style.background='#1f2937'; btnP.style.color='#d1d5db';
+  }
+}
+
+function mostrarCorreoRechazado(tipo) {
+  const prov = document.getElementById('email-rec-prov');
+  const comp = document.getElementById('email-rec-comp');
+  const btnP = document.getElementById('btn-prov-rec');
+  const btnC = document.getElementById('btn-comp-rec');
+  if (tipo === 'proveedor') {
+    prov.classList.remove('hidden'); comp.classList.add('hidden');
+    btnP.style.background='#8b1028'; btnP.style.color='#fff';
+    btnC.style.background='#1f2937'; btnC.style.color='#d1d5db';
+  } else {
+    comp.classList.remove('hidden'); prov.classList.add('hidden');
+    btnC.style.background='#8b1028'; btnC.style.color='#fff';
+    btnP.style.background='#1f2937'; btnP.style.color='#d1d5db';
+  }
+}
+</script>
+
+</body>
+</html>

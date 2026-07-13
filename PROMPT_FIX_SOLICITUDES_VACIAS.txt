@@ -1,0 +1,199 @@
+PROMPT PARA CLAUDE CODE — FIX: Solicitudes de evento vacías a pesar de mostrar proveedores
+============================================================================================
+Proyecto: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3)
+
+PROBLEMA REPORTADO
+-------------------
+En /admin/eventos (Index.vue) el evento muestra "7 proveedores" (badge restauranteros_count),
+pero al entrar a /admin/eventos/1/solicitudes las 3 columnas (Pendientes, Aprobados, Rechazados)
+aparecen vacías. Los 7 proveedores no aparecen en ningún lado de esa pantalla.
+
+CAUSA RAÍZ (confirmada en el código)
+--------------------------------------
+Existen DOS sistemas paralelos y desincronizados para "proveedor inscrito en un evento":
+
+  SISTEMA A — campo directo `restauranteros.edicion_id`
+    Se asigna automáticamente, SIN crear ningún registro en evento_usuario, en:
+    1. app/Http/Controllers/Auth/SeleccionarRolController.php (línea ~64, método crearPerfilProveedor)
+    2. app/Http/Controllers/CompletarPerfilController.php (línea ~132, método agregarRol)
+    3. app/Http/Controllers/Admin/RestauranteroAdminController.php (línea ~73, método store)
+    4. app/Http/Controllers/Auth/RegistroProveedorController.php (líneas ~40 y ~75)
+
+    Este es el campo que usa EventoController::index() para el contador:
+      Evento::withCount(['citas', 'restauranteros'])
+    donde Evento::restauranteros() = hasMany(Restaurantero::class, 'edicion_id')
+
+  SISTEMA B — tabla pivote `evento_usuario` (evento_id, user_id, tipo, estado)
+    Solo se llena cuando el usuario presiona explícitamente "Registrarme a este evento"
+    en app/Http/Controllers/EventoRegistroController.php::registrarProveedor()
+
+    Este es el ÚNICO origen de datos de
+    app/Http/Controllers/Admin/EventoSolicitudesController.php::index()
+
+  Resultado: los 7 proveedores tienen edicion_id=1 (cuentan en el badge del Sistema A) pero
+  NUNCA pasaron por el flujo de "registrarme al evento" (no existen en evento_usuario, Sistema B).
+  Por eso Solicitudes los muestra vacíos en las 3 columnas.
+
+SOLUCIÓN: 2 partes — backfill de datos existentes + sincronizar ambos sistemas hacia adelante
+================================================================================================
+
+PARTE 1 — Backfill (recuperar los 7 proveedores faltantes)
+-------------------------------------------------------------
+Crear un comando Artisan: app/Console/Commands/SincronizarEventoUsuario.php
+
+```php
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Restaurantero;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
+
+class SincronizarEventoUsuario extends Command
+{
+    protected $signature = 'evento:sincronizar-proveedores';
+    protected $description = 'Crea registros faltantes en evento_usuario para restauranteros con edicion_id asignado';
+
+    public function handle()
+    {
+        $restauranteros = Restaurantero::whereNotNull('edicion_id')
+            ->whereNotNull('user_id')
+            ->get();
+
+        $creados = 0;
+        $omitidos = 0;
+
+        foreach ($restauranteros as $r) {
+            $existe = DB::table('evento_usuario')
+                ->where('evento_id', $r->edicion_id)
+                ->where('user_id', $r->user_id)
+                ->where('tipo', 'proveedor')
+                ->exists();
+
+            if ($existe) {
+                $omitidos++;
+                continue;
+            }
+
+            // Si el proveedor ya está aprobado/activo en su perfil, se considera
+            // implícitamente aprobado en el evento. Si no, queda pendiente para
+            // que el admin lo revise manualmente.
+            $estado = $r->aprobado ? 'aprobado' : 'pendiente';
+
+            DB::table('evento_usuario')->insert([
+                'evento_id'     => $r->edicion_id,
+                'user_id'       => $r->user_id,
+                'tipo'          => 'proveedor',
+                'estado'        => $estado,
+                'respondido_at' => $estado === 'aprobado' ? now() : null,
+                'created_at'    => $r->created_at ?? now(),
+                'updated_at'    => now(),
+            ]);
+
+            $creados++;
+        }
+
+        $this->info("Listo: {$creados} registros creados en evento_usuario, {$omitidos} ya existían.");
+    }
+}
+```
+
+Ejecutar una sola vez en producción (vía SSH):
+  php artisan evento:sincronizar-proveedores
+
+Esto hará que los 7 proveedores existentes aparezcan inmediatamente en la pantalla de
+Solicitudes (la mayoría en "Aprobados" si ya tienen restaurantero.aprobado=true, o en
+"Pendientes" si no han sido aprobados aún por el admin).
+
+PARTE 2 — Sincronizar ambos sistemas hacia adelante (evitar que vuelva a pasar)
+----------------------------------------------------------------------------------
+En cada uno de los 4 lugares donde se asigna `edicion_id` directamente, agregar también
+la creación/actualización del registro correspondiente en `evento_usuario`.
+
+Crear un método auxiliar reutilizable. Opción recomendada: agregarlo como método estático
+en el modelo Evento (app/Models/Evento.php):
+
+```php
+public static function registrarProveedorEnEventoActivo(int $userId, bool $aprobadoAutomatico = false): void
+{
+    $evento = self::activo();
+    if (!$evento) return;
+
+    $existe = DB::table('evento_usuario')
+        ->where('evento_id', $evento->id)
+        ->where('user_id', $userId)
+        ->where('tipo', 'proveedor')
+        ->exists();
+
+    if ($existe) return;
+
+    DB::table('evento_usuario')->insert([
+        'evento_id'     => $evento->id,
+        'user_id'       => $userId,
+        'tipo'          => 'proveedor',
+        'estado'        => $aprobadoAutomatico ? 'aprobado' : 'pendiente',
+        'respondido_at' => $aprobadoAutomatico ? now() : null,
+        'created_at'    => now(),
+        'updated_at'    => now(),
+    ]);
+}
+```
+Agregar `use Illuminate\Support\Facades\DB;` en Evento.php si no existe.
+
+Luego, llamar a este método inmediatamente después de cada `Restaurantero::create([...'edicion_id'...])`
+en los 4 controladores:
+
+1. app/Http/Controllers/Auth/SeleccionarRolController.php (método crearPerfilProveedor):
+   Después de crear $restaurantero, agregar:
+   ```php
+   \App\Models\Evento::registrarProveedorEnEventoActivo($user->id, aprobadoAutomatico: false);
+   ```
+
+2. app/Http/Controllers/CompletarPerfilController.php (método agregarRol):
+   Mismo patrón después de crear $restaurantero.
+
+3. app/Http/Controllers/Admin/RestauranteroAdminController.php (método store):
+   Como este lo crea el ADMIN directamente, se considera aprobado automáticamente:
+   ```php
+   \App\Models\Evento::registrarProveedorEnEventoActivo($user->id, aprobadoAutomatico: true);
+   ```
+
+4. app/Http/Controllers/Auth/RegistroProveedorController.php (ambos lugares con edicion_id):
+   Mismo patrón que el punto 1 (aprobadoAutomatico: false), después de crear el Restaurantero.
+
+VERIFICACIÓN
+------------
+1. Ejecutar el comando de backfill en producción:
+   php artisan evento:sincronizar-proveedores
+   → Debe reportar "7 registros creados" (o el número correcto).
+
+2. Visitar https://impulsate.iyemyucatan.com/admin/eventos/1/solicitudes
+   → Los 7 proveedores deben aparecer ahora en Aprobados o Pendientes según su estado de
+     aprobación en su perfil de Restaurantero.
+
+3. Probar el flujo completo de un proveedor NUEVO:
+   - Registrarse → seleccionar rol "proveedor" → debe aparecer inmediatamente en
+     Solicitudes > Pendientes del evento activo.
+   - Admin lo aprueba desde Solicitudes → debe pasar a Aprobados y aparecer en el
+     listado público de proveedores.
+
+4. Confirmar que el contador "X proveedores" en /admin/eventos sigue funcionando igual
+   (no debe cambiar su lógica, solo dejar de estar desincronizado con Solicitudes).
+
+5. Revisar que no se dupliquen notificaciones ni registros si un usuario pasa por
+   varios de estos 4 flujos (la validación `if ($existe) return;` ya lo previene).
+
+DEPLOY
+------
+1. Crear el archivo del comando Artisan y aplicar los 4 cambios en los controladores.
+2. npm run build (si aplica, aunque estos son cambios solo de backend)
+3. git add -A
+4. git commit -m "fix: sincronizar restauranteros.edicion_id con evento_usuario + backfill"
+5. git push
+6. SSH Hostinger:
+   git pull
+   composer install --no-dev --optimize-autoloader
+   php artisan optimize:clear
+   php artisan evento:sincronizar-proveedores   ← IMPORTANTE: correr una sola vez
+7. Verificar en producción que los 7 proveedores ya aparecen en Solicitudes.

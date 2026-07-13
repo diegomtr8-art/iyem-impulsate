@@ -1,0 +1,24 @@
+DEPLOY — Fix "Mi Panel" redirect (ya aplicado en codigo)
+=========================================================
+
+El fix ya esta en los archivos. Solo ejecuta estos comandos en
+el servidor / tu maquina donde esta el proyecto:
+
+  cd C:\xampp\htdocs\citas
+
+  npm run build
+  php artisan optimize
+
+Si estas en el servidor Linux de produccion:
+
+  cd /var/www/html/citas    (o la ruta donde tienes el proyecto)
+  npm run build
+  php artisan optimize
+  php artisan queue:restart
+
+QUE CORRIGE:
+  - Show.vue y Index.vue ya tienen el computed "panelRoute"
+  - Si eres proveedor (active_role = "proveedor") -> /proveedor/panel
+  - Si eres solo restaurantero (sin rol cliente) -> /proveedor/panel
+  - Si tienes ambos roles y estas como comprador -> /mi-panel
+  - Si eres admin -> /admin

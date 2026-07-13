@@ -1,0 +1,635 @@
+=========================================================
+PROMPT — CONTROL DE EVENTOS: APROBACIONES, VISIBILIDAD
+         Y EXPORTACIÓN POR EVENTO
+=========================================================
+
+STACK: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Color primario: guinda (#8b1028). darkMode: 'class'.
+URL producción: https://lightcyan-mallard-509513.hostingersite.com/
+Hosting: Hostinger Business con SSH.
+
+=========================================================
+CONTEXTO TÉCNICO — LEE ANTES DE EMPEZAR
+=========================================================
+
+Lo que YA existe (no recrear):
+  - Tabla `eventos` con campos: nombre, sector_economico, activa,
+    fecha_hora_inicio, fecha_hora_fin, fecha_hora_inicio_proveedores,
+    fecha_hora_inicio_compradores, max_citas_por_comprador, tiempo_entre_citas_minutos
+  - Tabla `evento_usuario` pivot con: evento_id, user_id, tipo ('comprador'|'proveedor'), timestamps
+    ⚠️ FALTA: campo `estado` y `motivo_rechazo` — esta es la pieza central del cambio
+  - Modelo Evento con relaciones compradores() y proveedores() via belongsToMany
+  - EventoRegistroController con registrarComprador() y registrarProveedor()
+    que actualmente auto-aprueba al registrar (attach directo sin estado pendiente)
+  - Tabla `restauranteros` con campos: aprobado, rechazado, motivo_rechazo
+    (aprobación general del proveedor — diferente a la aprobación por evento)
+  - EventoController admin (CRUD básico, sin gestión de solicitudes)
+  - ExportController con EventoCompletoExport (solo funciona para evento activo)
+  - RestauranteroPublicoController que filtra proveedores por edicion_id
+    cuando hay evento activo (pero NO verifica estado en evento_usuario)
+
+Lo que HAY QUE CONSTRUIR:
+  1. Campo estado en evento_usuario + lógica de aprobación admin
+  2. Panel admin de solicitudes por evento
+  3. Filtro correcto de visibilidad de proveedores
+  4. Restricción de agendado para compradores no aprobados
+  5. Exportación Excel para cualquier evento (no solo activo), con hoja por proveedor
+
+=========================================================
+CAMBIO 1 — MIGRACIÓN: ESTADO EN PIVOT evento_usuario
+=========================================================
+
+Crear nueva migración:
+
+php artisan make:migration add_estado_to_evento_usuario_table
+
+Contenido:
+  Schema::table('evento_usuario', function (Blueprint $table) {
+      $table->string('estado', 20)->default('pendiente')->after('tipo');
+      // 'pendiente' | 'aprobado' | 'rechazado'
+      $table->text('motivo_rechazo')->nullable()->after('estado');
+      $table->timestamp('respondido_at')->nullable()->after('motivo_rechazo');
+  });
+
+IMPORTANTE: Los registros existentes en evento_usuario deben quedar con
+estado = 'aprobado' para no romper lo que ya funciona:
+
+  DB::table('evento_usuario')->update(['estado' => 'aprobado']);
+
+Ejecutar: php artisan migrate
+
+=========================================================
+CAMBIO 2 — ACTUALIZAR EventoRegistroController
+=========================================================
+
+Archivo: app/Http/Controllers/EventoRegistroController.php
+
+CAMBIAR la lógica de ambos métodos para que el registro quede en estado
+'pendiente' en lugar de aprobado inmediatamente.
+
+registrarComprador():
+  - Quitar la restricción de fecha_hora_inicio_compradores (el admin decide)
+  - Verificar que no exista ya un registro (cualquier estado) para evitar duplicado
+  - Si ya existe y está 'rechazado': permitir re-solicitar (update estado a 'pendiente')
+  - Si ya existe y está 'pendiente' o 'aprobado': informar al usuario
+  - Nuevo registro: attach con ['tipo' => 'comprador', 'estado' => 'pendiente']
+  - Mensaje flash: "Tu solicitud de registro fue enviada. El administrador la revisará pronto."
+  - Crear notificación in-app para el admin:
+    Notificacion::create([
+        'user_id' => User::role('admin')->first()->id,
+        'tipo' => 'solicitud_registro',
+        'titulo' => 'Nueva solicitud de comprador',
+        'mensaje' => auth()->user()->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.',
+        'leida' => false,
+    ]);
+
+registrarProveedor():
+  - Misma lógica que comprador pero tipo = 'proveedor'
+  - Verificar que el user tenga restaurantero aprobado (aprobado = true)
+    antes de permitir solicitar: si no está aprobado general, error claro
+  - Notificación al admin con tipo 'solicitud_registro'
+  - Mensaje: "Tu solicitud fue enviada. El administrador la aprobará pronto."
+
+=========================================================
+CAMBIO 3 — RUTAS Y CONTROLADOR DE APROBACIONES ADMIN
+=========================================================
+
+3.1 — NUEVAS RUTAS en routes/web.php dentro del grupo admin:
+
+  // Solicitudes de registro al evento
+  Route::get('/eventos/{evento}/solicitudes',
+      [EventoSolicitudesController::class, 'index'])
+      ->name('admin.eventos.solicitudes');
+
+  Route::post('/eventos/{evento}/solicitudes/{user}/aprobar',
+      [EventoSolicitudesController::class, 'aprobar'])
+      ->name('admin.eventos.solicitudes.aprobar');
+
+  Route::post('/eventos/{evento}/solicitudes/{user}/rechazar',
+      [EventoSolicitudesController::class, 'rechazar'])
+      ->name('admin.eventos.solicitudes.rechazar');
+
+  Route::post('/eventos/{evento}/solicitudes/aprobar-todos',
+      [EventoSolicitudesController::class, 'aprobarTodos'])
+      ->name('admin.eventos.solicitudes.aprobar-todos');
+
+3.2 — CREAR app/Http/Controllers/Admin/EventoSolicitudesController.php:
+
+  index(Evento $evento):
+    - Cargar todos los registros de evento_usuario para este evento
+    - Separar en: pendientes, aprobados, rechazados
+    - Para cada registro: incluir datos del user y del restaurantero si es proveedor
+    - Pasar al Inertia: evento, pendientes, aprobados, rechazados
+
+  aprobar(Evento $evento, User $user, Request $request):
+    - Validar que existe el registro en evento_usuario para este evento y user
+    - Actualizar: estado = 'aprobado', respondido_at = now()
+    - Si es proveedor: también vincular restaurantero al evento
+      (restaurantero->update(['edicion_id' => $evento->id]))
+    - Crear notificación al usuario:
+      Si comprador: "¡Fuiste aprobado en el evento [nombre]! Ya puedes agendar citas."
+      Si proveedor: "¡Fuiste aprobado como proveedor en el evento [nombre]! Ya apareces en el listado."
+    - Enviar email de aprobación (crear Mailable si no existe)
+    - Retornar back()->with('success', 'Solicitud aprobada.')
+
+  rechazar(Evento $evento, User $user, Request $request):
+    - Validar: motivo_rechazo requerido (string, max 500)
+    - Actualizar: estado = 'rechazado', motivo_rechazo = $request->motivo, respondido_at = now()
+    - Si es proveedor rechazado: no tocar edicion_id del restaurantero
+    - Notificación al usuario:
+      "Tu solicitud para el evento [nombre] fue rechazada. Motivo: [motivo]"
+    - Retornar back()->with('success', 'Solicitud rechazada.')
+
+  aprobarTodos(Evento $evento, Request $request):
+    - $request->validate(['tipo' => 'required|in:comprador,proveedor'])
+    - Aprobar todos los pendientes del tipo indicado en este evento
+    - Enviar notificaciones masivas
+    - Retornar back()->with('success', 'X solicitudes aprobadas.')
+
+=========================================================
+CAMBIO 4 — VISTA ADMIN: SOLICITUDES POR EVENTO
+=========================================================
+
+Archivo: resources/js/Pages/Admin/Eventos/Solicitudes.vue
+
+DISEÑO (dark mode + light mode + responsivo):
+
+La vista tiene:
+  - Header: nombre del evento + badge de estado (Activo/Archivado)
+  - Botón "← Volver a Eventos"
+  - Tabs: "Pendientes ([n])" | "Aprobados ([n])" | "Rechazados ([n])"
+
+TAB PENDIENTES:
+  - Separado en dos secciones: Proveedores pendientes | Compradores pendientes
+  - Botón "Aprobar todos los proveedores" y "Aprobar todos los compradores"
+  - Por cada solicitud, mostrar tarjeta con:
+
+    Para PROVEEDOR:
+      Logo/avatar + Nombre empresa + Nombre usuario + Email + Teléfono
+      RFC | Municipio | Categoría | Fecha de solicitud
+      Botón "Aprobar" (verde) | Botón "Rechazar" (rojo → abre modal con campo motivo)
+
+    Para COMPRADOR:
+      Avatar inicial + Nombre completo + Email + Teléfono
+      Sector/Necesidades si los tiene | Fecha de solicitud
+      Botón "Aprobar" | Botón "Rechazar" (con motivo)
+
+  - En móvil: tarjetas apiladas, botones de acción full-width
+
+TAB APROBADOS:
+  - Lista de aprobados (proveedores y compradores separados)
+  - Cada item con: nombre, tipo, fecha de aprobación
+  - Sin acciones (solo informativo)
+
+TAB RECHAZADOS:
+  - Lista de rechazados con: nombre, tipo, motivo del rechazo, fecha
+  - Botón "Volver a pendiente" por si el admin quiere reconsiderar
+
+MODAL DE RECHAZO:
+  - Título: "Rechazar solicitud de [nombre]"
+  - Campo textarea: "Motivo del rechazo" (requerido, placeholder con ejemplo)
+  - Botón "Confirmar rechazo" (guinda) | "Cancelar"
+  - Responsivo, ocupa ancho completo en móvil
+
+ACTUALIZAR EventoController.index():
+  - Agregar a cada evento: conteo de solicitudes pendientes
+    $evento->solicitudes_pendientes = DB::table('evento_usuario')
+        ->where('evento_id', $evento->id)
+        ->where('estado', 'pendiente')->count();
+  - En la vista Admin/Eventos/Index.vue: mostrar badge rojo con el número
+    de solicitudes pendientes en cada evento, con link a la vista de solicitudes
+
+ACTUALIZAR Admin/Eventos/Index.vue:
+  - En la card de cada evento (activo o archivado), agregar botón/link:
+    "Ver solicitudes ([n] pendientes)" → admin.eventos.solicitudes
+  - Si hay pendientes: badge rojo animado (pulse) en el botón
+  - En móvil: botón full-width debajo de las acciones del evento
+
+=========================================================
+CAMBIO 5 — VISIBILIDAD DE PROVEEDORES EN LISTA PÚBLICA
+=========================================================
+
+Archivo: app/Http/Controllers/RestauranteroPublicoController.php
+
+LÓGICA ACTUAL (corregir):
+  - Filtra por: restaurantero.activo = true + edicion_id = evento_activo.id
+
+LÓGICA NUEVA:
+  Un proveedor aparece en la lista pública SI Y SOLO SI se cumplen TODAS:
+    1. Hay un evento activo (Evento::activo() != null)
+    2. El restaurantero.activo = true
+    3. El restaurantero.aprobado = true (aprobación general)
+    4. El user del restaurantero tiene un registro en evento_usuario con:
+       evento_id = evento_activo.id
+       tipo = 'proveedor'
+       estado = 'aprobado'
+
+  Si NO hay evento activo: la lista de proveedores está vacía (o muestra
+  mensaje "No hay evento activo en este momento")
+
+  Si hay evento activo pero el proveedor no está aprobado en él: no aparece
+
+Implementar con un JOIN o subquery eficiente:
+
+  $eventoActivo = Evento::activo();
+
+  if (!$eventoActivo) {
+      return Inertia::render('Restauranteros/Index', [
+          'restauranteros' => [],
+          'sin_evento' => true,
+          'filters' => [],
+          'categorias' => [],
+      ]);
+  }
+
+  $query = Restaurantero::query()
+      ->where('activo', true)
+      ->where('aprobado', true)
+      ->whereHas('user', function ($q) use ($eventoActivo) {
+          $q->whereExists(function ($sub) use ($eventoActivo) {
+              $sub->from('evento_usuario')
+                  ->whereColumn('evento_usuario.user_id', 'users.id')
+                  ->where('evento_usuario.evento_id', $eventoActivo->id)
+                  ->where('evento_usuario.tipo', 'proveedor')
+                  ->where('evento_usuario.estado', 'aprobado');
+          });
+      })
+      ->withCount('citas')
+      ->orderByDesc('created_at');
+
+  // ... filtros de búsqueda y categoría igual que antes
+
+Actualizar la vista Restauranteros/Index.vue:
+  - Si sin_evento = true: mostrar sección informativa:
+    "No hay un evento activo en este momento. Vuelve pronto para conocer
+    a los proveedores participantes." con SVG de calendario
+  - En lugar del grid vacío sin explicación
+
+=========================================================
+CAMBIO 6 — RESTRICCIÓN DE AGENDADO PARA COMPRADORES
+=========================================================
+
+Archivo: app/Http/Controllers/CitaPublicaController.php
+
+En el método store(), ANTES de cualquier otra validación, agregar:
+
+  // Verificar que el comprador esté aprobado en el evento activo
+  $registroEvento = DB::table('evento_usuario')
+      ->where('evento_id', $evento->id)
+      ->where('user_id', $request->user()->id)
+      ->where('tipo', 'comprador')
+      ->where('estado', 'aprobado')
+      ->first();
+
+  if (!$registroEvento) {
+      $solicitudPendiente = DB::table('evento_usuario')
+          ->where('evento_id', $evento->id)
+          ->where('user_id', $request->user()->id)
+          ->where('tipo', 'comprador')
+          ->where('estado', 'pendiente')
+          ->exists();
+
+      if ($solicitudPendiente) {
+          return back()->withErrors([
+              'error' => 'Tu solicitud de registro al evento está pendiente de aprobación.
+                         Recibirás una notificación cuando sea aprobada.'
+          ]);
+      }
+
+      return back()->withErrors([
+          'error' => 'Debes estar registrado y aprobado en el evento para agendar citas.'
+      ]);
+  }
+
+También actualizar el panel comprador (User/Dashboard.vue y la vista de
+proveedores Restauranteros/Show.vue) para:
+  - Si el comprador tiene solicitud pendiente: mostrar mensaje "Tu solicitud
+    está siendo revisada. Te avisaremos cuando sea aprobada." en lugar del
+    formulario de agendado
+  - Si el comprador está rechazado: mostrar el motivo de rechazo y opción
+    de contactar al administrador
+
+En HandleInertiaRequests.php, agregar a shared data:
+  'registro_evento' => function() {
+      $evento = Evento::activo();
+      if (!$evento || !auth()->check()) return null;
+      $reg = DB::table('evento_usuario')
+          ->where('evento_id', $evento->id)
+          ->where('user_id', auth()->id())
+          ->first();
+      return $reg ? [
+          'estado' => $reg->estado,
+          'tipo' => $reg->tipo,
+          'motivo_rechazo' => $reg->motivo_rechazo,
+      ] : null;
+  },
+
+=========================================================
+CAMBIO 7 — EXPORTACIÓN EXCEL POR CUALQUIER EVENTO
+=========================================================
+
+PROBLEMA ACTUAL:
+  ExportController solo exporta el evento activo. El usuario necesita
+  descargar el Excel de CUALQUIER evento (especialmente archivados).
+
+7.1 — ACTUALIZAR RUTAS (routes/web.php, grupo admin):
+  // Cambiar de:
+  Route::get('/exportar/evento-completo', [ExportController::class, 'eventoCompleto'])
+  // A:
+  Route::get('/exportar/evento/{evento}', [ExportController::class, 'eventoCompleto'])
+      ->name('admin.exportar.evento');
+
+  // Mantener las exportaciones generales filtradas por evento si hay activo:
+  Route::get('/exportar/proveedores', [ExportController::class, 'proveedores'])
+  Route::get('/exportar/compradores', [ExportController::class, 'compradores'])
+  Route::get('/exportar/citas', [ExportController::class, 'citas'])
+
+7.2 — ACTUALIZAR ExportController::eventoCompleto():
+  public function eventoCompleto(Evento $evento) {
+      $nombre = Str::slug($evento->nombre);
+      $fecha = now()->format('Y-m-d');
+      return Excel::download(
+          new EventoCompletoExport($evento),
+          "evento_{$nombre}_{$fecha}.xlsx"
+      );
+  }
+
+7.3 — ACTUALIZAR EventoCompletoExport (app/Exports/EventoCompletoExport.php):
+
+Agregar hojas por proveedor al método sheets():
+
+  public function sheets(): array {
+      $sheets = [
+          new EventoSheet($this->evento),
+          new ProveedoresEventoSheet($this->evento),
+          new CompradoresEventoSheet($this->evento),
+          new CitasEventoSheet($this->evento),
+          new ResumenEventoSheet($this->evento),
+      ];
+
+      // Una hoja por proveedor (max 20 para no hacer el archivo demasiado grande)
+      $proveedores = Restaurantero::whereHas('user', function ($q) {
+              $q->whereExists(function ($sub) {
+                  $sub->from('evento_usuario')
+                      ->whereColumn('evento_usuario.user_id', 'users.id')
+                      ->where('evento_usuario.evento_id', $this->evento->id)
+                      ->where('evento_usuario.tipo', 'proveedor')
+                      ->where('evento_usuario.estado', 'aprobado');
+              });
+          })
+          ->with(['citas' => function ($q) {
+              $q->where('edicion_id', $this->evento->id)->with('cliente');
+          }])
+          ->take(20)
+          ->get();
+
+      foreach ($proveedores as $proveedor) {
+          $sheets[] = new CitasProveedorSheet($proveedor, $this->evento);
+      }
+
+      return $sheets;
+  }
+
+7.4 — CREAR CLASE CitasProveedorSheet (en el mismo archivo EventoCompletoExport.php):
+
+  class CitasProveedorSheet implements FromArray, WithTitle, WithStyles
+  {
+      public function __construct(
+          private Restaurantero $restaurantero,
+          private Evento $evento
+      ) {}
+
+      public function title(): string
+      {
+          // Nombre corto para la pestaña (máx 31 chars, sin caracteres inválidos)
+          $nombre = $this->restaurantero->nombre_restaurante ?? 'Proveedor';
+          return Str::limit(preg_replace('/[\/\\\?\*\[\]:]/', '', $nombre), 28);
+      }
+
+      public function array(): array
+      {
+          $rows = [
+              ['CITAS DE: ' . ($this->restaurantero->nombre_restaurante ?? '—')],
+              ['Evento: ' . $this->evento->nombre],
+              [''],
+              ['#', 'Comprador', 'Email', 'Teléfono', 'Fecha', 'Hora Inicio', 'Hora Fin', 'Estado', 'Notas'],
+          ];
+
+          $citas = $this->restaurantero->citas()
+              ->where('edicion_id', $this->evento->id)
+              ->with('cliente')
+              ->orderBy('inicio')
+              ->get();
+
+          foreach ($citas as $i => $cita) {
+              $rows[] = [
+                  $i + 1,
+                  $cita->cliente?->name ?? '—',
+                  $cita->cliente?->email ?? '—',
+                  $cita->cliente?->telefono ?? '—',
+                  $cita->inicio?->format('d/m/Y') ?? '—',
+                  $cita->inicio?->format('H:i') ?? '—',
+                  $cita->fin?->format('H:i') ?? '—',
+                  ucfirst($cita->estado),
+                  $cita->notas ?? '—',
+              ];
+          }
+
+          if (count($rows) === 4) {
+              $rows[] = ['Sin citas registradas en este evento'];
+          }
+
+          // Resumen al final
+          $rows[] = [''];
+          $rows[] = ['Total citas:', $citas->count()];
+          $rows[] = ['Confirmadas:', $citas->where('estado', 'confirmada')->count()];
+          $rows[] = ['Pendientes:', $citas->where('estado', 'pendiente')->count()];
+          $rows[] = ['Rechazadas:', $citas->where('estado', 'rechazada')->count()];
+
+          return $rows;
+      }
+
+      public function styles(Worksheet $sheet): array
+      {
+          return [
+              1 => ['font' => ['bold' => true, 'size' => 13,
+                    'color' => ['rgb' => 'FFFFFF']],
+                    'fill' => ['fillType' => 'solid',
+                    'startColor' => ['rgb' => '8B1028']]],
+              4 => ['font' => ['bold' => true,
+                    'color' => ['rgb' => 'FFFFFF']],
+                    'fill' => ['fillType' => 'solid',
+                    'startColor' => ['rgb' => '4A0510']]],
+          ];
+      }
+  }
+
+7.5 — ACTUALIZAR ProveedoresEventoSheet para usar la nueva lógica de aprobación:
+  Solo incluir proveedores con estado = 'aprobado' en evento_usuario.
+  Agregar columna "Estado en Evento" (Aprobado).
+
+7.6 — ACTUALIZAR CompradoresEventoSheet igualmente:
+  Solo compradores con estado = 'aprobado'.
+  Agregar columna "Estado en Evento".
+
+7.7 — BOTÓN DE DESCARGA EN ADMIN/EVENTOS/INDEX.VUE:
+  En la card de cada evento (activo Y archivado), agregar botón:
+    "Descargar Excel" → GET admin.exportar.evento con evento.id
+  Con SVG de descarga/Excel (no emoji).
+  En móvil: botón full-width.
+
+=========================================================
+CAMBIO 8 — FEEDBACK VISUAL EN LOS PANELES DE USUARIO
+=========================================================
+
+8.1 — Panel Comprador (User/Dashboard.vue):
+  Usar el shared prop 'registro_evento' para mostrar el estado correcto:
+
+  CASO: sin solicitud
+    → Mostrar card de invitación al evento (ya existe, mantener)
+
+  CASO: estado = 'pendiente'
+    → Reemplazar card de invitación por banner amarillo/amber:
+      SVG de reloj + "Tu solicitud está siendo revisada"
+      "El administrador revisará tu solicitud y recibirás una notificación
+       con la respuesta. Mientras tanto, puedes explorar los proveedores
+       registrados en el evento."
+
+  CASO: estado = 'aprobado'
+    → Mostrar badge verde "✓ Aprobado en [nombre evento]"
+      (ya existe, verificar que use el estado del pivot, no solo la presencia)
+
+  CASO: estado = 'rechazado'
+    → Mostrar banner rojo:
+      SVG de X + "Tu solicitud fue rechazada"
+      "Motivo: [motivo_rechazo]"
+      "Si crees que es un error, contacta al administrador."
+
+8.2 — Panel Proveedor (Restaurantero/Panel.vue):
+  Mismo sistema con los 4 casos pero con texto adaptado para proveedor:
+
+  CASO pendiente:
+    "Tu solicitud para participar como proveedor en [evento] está siendo
+     revisada. Cuando sea aprobada, aparecerás en la lista de proveedores."
+
+  CASO rechazado:
+    "Tu solicitud como proveedor fue rechazada. Motivo: [motivo]"
+
+=========================================================
+CAMBIO 9 — DARK MODE, LIGHT MODE Y RESPONSIVIDAD
+=========================================================
+
+Aplicar en TODOS los componentes nuevos y modificados:
+
+DARK MODE — Verificar que cada elemento tenga su par dark::
+  bg-white         → dark:bg-gray-900
+  bg-gray-50       → dark:bg-gray-900
+  bg-gray-100      → dark:bg-gray-800
+  text-gray-900    → dark:text-white
+  text-gray-700    → dark:text-gray-300
+  text-gray-600    → dark:text-gray-400
+  border-gray-200  → dark:border-gray-700
+  bg-amber-50      → dark:bg-amber-950/20
+  text-amber-700   → dark:text-amber-400
+  bg-green-50      → dark:bg-green-950/20
+  text-green-700   → dark:text-green-400
+  bg-red-50        → dark:bg-red-950/20
+  text-red-700     → dark:text-red-400
+
+COLORES PROHIBIDOS: No usar azul (blue-*) en ningún elemento nuevo.
+  Estados de registro en evento:
+    pendiente  → amber/yellow
+    aprobado   → green/emerald
+    rechazado  → red
+
+RESPONSIVIDAD MÓVIL (375px mínimo):
+
+  Tabla de solicitudes admin → en móvil usar cards apiladas:
+    <div class="md:hidden space-y-3">
+      <div v-for="solicitud" class="bg-white dark:bg-gray-800
+           rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+        ...
+      </div>
+    </div>
+    <div class="hidden md:block">
+      <table>...</table>
+    </div>
+
+  Botones de aprobar/rechazar → min-h-[44px], gap amplio en móvil
+  Modales → max-w-lg w-full mx-3 sm:mx-auto, max-h-[85vh] overflow-y-auto
+  Tabs → overflow-x-auto en móvil para que no se corten
+  Header de sección → flex-col en móvil, flex-row en sm:
+
+=========================================================
+ORDEN DE IMPLEMENTACIÓN
+=========================================================
+
+  1. php artisan make:migration add_estado_to_evento_usuario_table
+     → contenido del Cambio 1
+     → php artisan migrate
+
+  2. Actualizar EventoRegistroController (Cambio 2)
+
+  3. Crear EventoSolicitudesController (Cambio 3)
+     + Agregar rutas en web.php
+
+  4. Crear vista Admin/Eventos/Solicitudes.vue (Cambio 4)
+     + Actualizar EventoController.index() y Admin/Eventos/Index.vue
+
+  5. Actualizar RestauranteroPublicoController (Cambio 5)
+     + Actualizar Restauranteros/Index.vue para estado sin_evento
+
+  6. Actualizar CitaPublicaController::store() (Cambio 6)
+     + Actualizar HandleInertiaRequests.php
+     + Actualizar User/Dashboard.vue y Restauranteros/Show.vue
+
+  7. Actualizar rutas de exportación + ExportController (Cambio 7)
+     + Actualizar EventoCompletoExport con hoja por proveedor
+     + Agregar botón descarga en Admin/Eventos/Index.vue
+
+  8. Actualizar paneles comprador y proveedor (Cambio 8)
+
+  9. Verificación dark/light mode y responsividad (Cambio 9)
+
+  10. Build y deploy (Cambio 10)
+
+=========================================================
+CAMBIO 10 — DEPLOY A PRODUCCIÓN
+=========================================================
+
+Solo ejecutar cuando los cambios estén verificados localmente.
+
+  npm run build
+
+  # En servidor vía SSH:
+  cd /home/usuario/impulsate
+  git pull origin main
+  composer install --no-dev --optimize-autoloader
+  php artisan migrate --force
+  php artisan optimize:clear
+  php artisan config:cache
+  php artisan route:cache
+  php artisan view:cache
+  chmod -R 755 storage bootstrap/cache
+
+  # Copiar assets:
+  # public/build/ → public_html/build/
+
+  # Verificar:
+  php artisan route:list | grep eventos
+  tail -20 storage/logs/laravel.log
+
+VERIFICACIONES POST-DEPLOY:
+  □ Proveedor se registra al evento → queda en estado 'pendiente', no aparece en lista
+  □ Admin ve la solicitud pendiente con badge en el menú de eventos
+  □ Admin aprueba → proveedor aparece en lista pública
+  □ Admin rechaza con motivo → proveedor ve el motivo en su panel
+  □ Comprador intenta agendar sin aprobación → mensaje claro de error
+  □ Comprador aprobado puede agendar citas normalmente
+  □ Descarga Excel de evento archivado funciona con hoja por proveedor
+  □ Todo se ve bien en dark mode y light mode
+  □ Todo funciona en móvil (375px) sin scroll horizontal
+
+=========================================================
+FIN DEL PROMPT
+=========================================================

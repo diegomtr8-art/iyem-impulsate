@@ -1,0 +1,300 @@
+================================================================================
+PROMPT PARA CLAUDE CODE
+FIX: Aprobación/rechazo de solicitudes de evento afecta ambos roles del usuario
+Archivo: PROMPT_FIX_SOLICITUDES_TIPO.txt
+================================================================================
+
+CONTEXTO DEL BUG
+─────────────────
+La tabla `evento_usuario` puede tener DOS filas para el mismo usuario en el mismo
+evento: una con tipo='proveedor' y otra con tipo='comprador' (usuarios de dual rol).
+
+El bug: los métodos aprobar(), rechazar(), revertirPendiente() y eliminar() en
+EventoSolicitudesController hacen el UPDATE/DELETE con:
+    WHERE evento_id = ? AND user_id = ?
+...sin filtrar por `tipo`. Esto afecta AMBAS filas al mismo tiempo.
+
+El comportamiento esperado:
+  - Aprobar como proveedor → solo aprueba la fila tipo='proveedor'
+  - Aprobar como comprador → solo aprueba la fila tipo='comprador'
+  - Si se quiere aprobar como ambos → el admin hace dos acciones separadas
+
+CAUSA RAÍZ
+───────────
+En `aprobar()` se hace:
+    $registro = ...->where('user_id', $user->id)->first();   ← obtiene uno
+    ...->where('user_id', $user->id)->update([...]);         ← actualiza AMBOS
+
+La solución es pasar `tipo` desde el frontend en el body del POST,
+y agregar `->where('tipo', $tipo)` a todos los queries de escritura.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — EventoSolicitudesController.php
+Archivo: app/Http/Controllers/Admin/EventoSolicitudesController.php
+════════════════════════════════════════════════════════════════════════════════
+
+Modifica los cuatro métodos para que lean `tipo` del request y filtren por él.
+
+── método aprobar() ──────────────────────────────────────────────────────────
+
+Reemplaza el método completo por:
+
+    public function aprobar(Evento $evento, User $user, Request $request)
+    {
+        $request->validate([
+            'tipo' => 'required|in:proveedor,comprador',
+        ]);
+
+        $tipo = $request->tipo;
+
+        $registro = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $tipo)
+            ->first();
+
+        if (!$registro) {
+            return back()->withErrors(['error' => 'Solicitud no encontrada.']);
+        }
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $tipo)
+            ->update(['estado' => 'aprobado', 'respondido_at' => now()]);
+
+        // Si es proveedor y tiene restaurantero, vincularlo al evento
+        if ($tipo === 'proveedor') {
+            $restaurantero = $user->restaurantero;
+            if ($restaurantero) {
+                $restaurantero->update(['edicion_id' => $evento->id]);
+            }
+            $mensaje = '¡Fuiste aprobado como proveedor en el evento "' . $evento->nombre . '"! Ya apareces en el listado de proveedores.';
+        } else {
+            $mensaje = '¡Fuiste aprobado en el evento "' . $evento->nombre . '"! Ya puedes agendar citas con los proveedores.';
+        }
+
+        Notificacion::crear($user->id, 'solicitud_aprobada', 'Solicitud aprobada', $mensaje);
+
+        try {
+            Mail::to($user->email)->send(
+                new EventoSolicitudAprobadaMail($user, $evento, $tipo)
+            );
+        } catch (\Exception $e) {
+            \Log::warning('Error enviando correo de aprobación de evento: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Solicitud aprobada.');
+    }
+
+── método rechazar() ─────────────────────────────────────────────────────────
+
+Reemplaza el método completo por:
+
+    public function rechazar(Evento $evento, User $user, Request $request)
+    {
+        $request->validate([
+            'tipo'           => 'required|in:proveedor,comprador',
+            'motivo_rechazo' => 'required|string|max:500',
+        ]);
+
+        $tipo = $request->tipo;
+
+        $registro = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $tipo)
+            ->first();
+
+        if (!$registro) {
+            return back()->withErrors(['error' => 'Solicitud no encontrada.']);
+        }
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $tipo)
+            ->update([
+                'estado'         => 'rechazado',
+                'motivo_rechazo' => $request->motivo_rechazo,
+                'respondido_at'  => now(),
+            ]);
+
+        $tipoTexto = $tipo === 'proveedor' ? 'como proveedor ' : '';
+        Notificacion::crear(
+            $user->id,
+            'solicitud_rechazada',
+            'Solicitud rechazada',
+            'Tu solicitud ' . $tipoTexto . 'para el evento "' . $evento->nombre . '" fue rechazada. Motivo: ' . $request->motivo_rechazo
+        );
+
+        try {
+            Mail::to($user->email)->send(
+                new EventoSolicitudRechazadaMail(
+                    $user,
+                    $evento,
+                    $tipo,
+                    $request->motivo_rechazo
+                )
+            );
+        } catch (\Exception $e) {
+            \Log::warning('Error enviando correo de rechazo de evento: ' . $e->getMessage());
+        }
+
+        return back()->with('success', 'Solicitud rechazada.');
+    }
+
+── método revertirPendiente() ────────────────────────────────────────────────
+
+Reemplaza el método completo por:
+
+    public function revertirPendiente(Evento $evento, User $user, Request $request)
+    {
+        $request->validate([
+            'tipo' => 'required|in:proveedor,comprador',
+        ]);
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $request->tipo)
+            ->where('estado',    'rechazado')
+            ->update(['estado' => 'pendiente', 'motivo_rechazo' => null, 'respondido_at' => null]);
+
+        return back()->with('success', 'Solicitud regresada a pendiente.');
+    }
+
+── método eliminar() ─────────────────────────────────────────────────────────
+
+Reemplaza el método completo por:
+
+    public function eliminar(Evento $evento, User $user, Request $request)
+    {
+        $request->validate([
+            'tipo'               => 'required|in:proveedor,comprador',
+            'motivo_eliminacion' => 'required|string|max:500',
+        ]);
+
+        $tipo = $request->tipo;
+
+        $registro = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $tipo)
+            ->where('estado',    'aprobado')
+            ->first();
+
+        if (!$registro) {
+            return back()->withErrors(['error' => 'Registro no encontrado o no está aprobado.']);
+        }
+
+        if ($tipo === 'proveedor') {
+            $restaurantero = $user->restaurantero;
+            if ($restaurantero) {
+                \App\Models\Cita::where('restaurantero_id', $restaurantero->id)
+                    ->whereNotIn('estado', ['cancelada', 'rechazada', 'completada'])
+                    ->update(['estado' => 'cancelada']);
+            }
+        } else {
+            \App\Models\Cita::where('cliente_id', $user->id)
+                ->whereNotIn('estado', ['cancelada', 'rechazada', 'completada'])
+                ->update(['estado' => 'cancelada']);
+        }
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id',   $user->id)
+            ->where('tipo',      $tipo)
+            ->delete();
+
+        $tipoTexto = $tipo === 'proveedor' ? 'como proveedor ' : '';
+        Notificacion::crear(
+            $user->id,
+            'solicitud_rechazada',
+            'Eliminado del evento',
+            'Has sido eliminado ' . $tipoTexto . 'del evento "' . $evento->nombre . '". Motivo: ' . $request->motivo_eliminacion . '. Puedes volver a postularte.'
+        );
+
+        return back()->with('success', 'Usuario eliminado del evento.');
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — Solicitudes.vue
+Archivo: resources/js/Pages/Admin/Eventos/Solicitudes.vue
+════════════════════════════════════════════════════════════════════════════════
+
+El frontend debe pasar `tipo` en el body de cada acción.
+Cada `solicitud` ya tiene el campo `tipo` ('proveedor' o 'comprador').
+
+── confirmarAprobar() ────────────────────────────────────────────────────────
+
+Busca:
+    const confirmarAprobar = (solicitud) => {
+        procesandoId.value = solicitud.id;
+        confirmandoId.value = null;
+        router.post(
+            route('admin.eventos.solicitudes.aprobar', { evento: props.evento.id, user: solicitud.user_id }),
+            {},
+
+Cambia el segundo argumento (el body) de `{}` a `{ tipo: solicitud.tipo }`:
+
+    const confirmarAprobar = (solicitud) => {
+        procesandoId.value = solicitud.id;
+        confirmandoId.value = null;
+        router.post(
+            route('admin.eventos.solicitudes.aprobar', { evento: props.evento.id, user: solicitud.user_id }),
+            { tipo: solicitud.tipo },
+
+── confirmarRechazar() ───────────────────────────────────────────────────────
+
+Busca la función que hace el POST a solicitudes.rechazar. Actualmente envía:
+    { motivo_rechazo: motivoRechazo.value }
+
+Cambia a:
+    { tipo: solicitudARechazar.value?.tipo, motivo_rechazo: motivoRechazo.value }
+
+── revertir() ────────────────────────────────────────────────────────────────
+
+Busca:
+    const revertir = (solicitud) => {
+        router.post(
+            route('admin.eventos.solicitudes.revertir', { evento: props.evento.id, user: solicitud.user_id }),
+            {},
+
+Cambia el body de `{}` a `{ tipo: solicitud.tipo }`:
+
+    const revertir = (solicitud) => {
+        router.post(
+            route('admin.eventos.solicitudes.revertir', { evento: props.evento.id, user: solicitud.user_id }),
+            { tipo: solicitud.tipo },
+
+── confirmarEliminar() ───────────────────────────────────────────────────────
+
+Busca la función que hace el POST a solicitudes.eliminar. Actualmente envía:
+    { motivo_eliminacion: motivoEliminacion.value }
+
+Cambia a:
+    { tipo: solicitudAEliminar.value?.tipo, motivo_eliminacion: motivoEliminacion.value }
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+Después de los cambios:
+
+1. Entra a un evento que tenga un usuario con dual rol (proveedor Y comprador).
+2. Aprueba solo el registro de proveedor.
+3. Verifica que el registro de comprador sigue en "pendiente".
+4. Aprueba el registro de comprador.
+5. Verifica que ambos quedan aprobados de forma independiente.
+6. Haz lo mismo con rechazar y revertir.
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY A PRODUCCIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+    npm run build
+    php artisan optimize
+
+No se requieren migraciones (no hay cambios en la DB).
+================================================================================

@@ -266,6 +266,24 @@ const mostrarBannerPerfil = computed(() =>
     !props.restaurantero?.aprobado && bannerPerfilVisible.value && perfilCamposFaltantes.value.length > 0
 );
 
+// ── MODAL "COMPLETA TU PERFIL" (una vez por sesión) ────────────
+const mostrarModalPerfil = ref(false);
+
+onMounted(() => {
+    if (!props.restaurantero?.perfil_completo) {
+        const yaVisto = sessionStorage.getItem('modal_perfil_proveedor_visto');
+        if (!yaVisto) {
+            mostrarModalPerfil.value = true;
+            sessionStorage.setItem('modal_perfil_proveedor_visto', '1');
+        }
+    }
+});
+
+const completarDesdeModal = () => {
+    mostrarModalPerfil.value = false;
+    showPerfilModal.value = true;
+};
+
 // ── NOTIFICACIONES ────────────────────────────────────────────
 const notificacionesDismissed = ref(new Set());
 const notificacionesVisibles = computed(() =>
@@ -405,7 +423,7 @@ const tiempoHastaCitaProxima = computed(() => {
                     </span>
                     <span v-else-if="restaurantero.solicitado_aprobacion_at"
                         class="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 text-xs font-bold rounded-full border border-amber-200 dark:border-amber-800 animate-pulse">
-                        ⏳ En revisión
+                        ⏳ Perfil incompleto
                     </span>
                     <span v-else
                         class="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs font-bold rounded-full border border-gray-200 dark:border-gray-700">
@@ -472,7 +490,7 @@ const tiempoHastaCitaProxima = computed(() => {
                             <p class="text-xs font-semibold text-red-600 dark:text-red-400 uppercase tracking-wider mb-1">Motivo:</p>
                             <p class="text-sm text-red-700 dark:text-red-300">{{ restaurantero.motivo_rechazo }}</p>
                         </div>
-                        <p class="text-xs text-red-600 dark:text-red-500 mt-2">Corrige la información indicada y vuelve a enviar tu perfil para revisión.</p>
+                        <p class="text-xs text-red-600 dark:text-red-500 mt-2">Corrige la información indicada y guarda de nuevo tu perfil.</p>
                     </div>
                     <button @click="showPerfilModal = true"
                         class="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl">
@@ -480,6 +498,69 @@ const tiempoHastaCitaProxima = computed(() => {
                     </button>
                 </div>
             </div>
+
+            <!-- ── MODAL: Completa tu perfil (una vez por sesión) ─── -->
+            <Transition name="fade">
+                <div v-if="mostrarModalPerfil"
+                    class="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/60 backdrop-blur-sm">
+                    <div class="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                        <!-- Header guinda -->
+                        <div class="bg-guinda-800 px-6 py-5 text-white">
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h2 class="text-lg font-black">¡Completa tu perfil!</h2>
+                                    <p class="text-guinda-200 text-sm mt-1">
+                                        Tu perfil está incompleto. Complétalo para aparecer en el directorio
+                                        y ser aprobado automáticamente en el evento.
+                                    </p>
+                                </div>
+                                <button @click="mostrarModalPerfil = false"
+                                    class="text-guinda-300 hover:text-white transition-colors flex-shrink-0 text-2xl leading-none mt-0.5">
+                                    ×
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Barra de progreso -->
+                        <div class="px-6 pt-5">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-semibold text-gray-600 dark:text-gray-400">Progreso de tu perfil</span>
+                                <span class="text-xs font-bold text-guinda-700 dark:text-guinda-400">{{ perfilPorcentaje }}%</span>
+                            </div>
+                            <div class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <div class="h-full bg-guinda-700 rounded-full transition-all duration-500"
+                                    :style="{ width: perfilPorcentaje + '%' }"></div>
+                            </div>
+                        </div>
+
+                        <!-- Lista de campos faltantes -->
+                        <div class="px-6 py-4 max-h-48 overflow-y-auto">
+                            <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                                Te falta completar:
+                            </p>
+                            <ul class="space-y-1.5">
+                                <li v-for="campo in perfilCamposFaltantes" :key="campo"
+                                    class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                                    <span class="w-4 h-4 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center text-xs flex-shrink-0 font-bold">!</span>
+                                    {{ campo }}
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- Acciones -->
+                        <div class="px-6 pb-6 flex gap-3">
+                            <button @click="mostrarModalPerfil = false"
+                                class="flex-1 py-3 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 font-semibold rounded-xl text-sm hover:border-gray-400 transition-colors">
+                                Más tarde
+                            </button>
+                            <button @click="completarDesdeModal"
+                                class="flex-[2] py-3 bg-guinda-800 hover:bg-guinda-700 text-white font-bold rounded-xl text-sm transition-colors shadow-sm">
+                                Completar ahora →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
 
             <!-- ── BANNER PERFIL INCOMPLETO CON PROGRESO ──────────── -->
             <div v-if="mostrarBannerPerfil"
@@ -725,7 +806,7 @@ const tiempoHastaCitaProxima = computed(() => {
                     <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
                         <div>
                             <h2 class="text-lg font-bold text-gray-900 dark:text-white">Editar perfil de negocio</h2>
-                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Al guardar, tu perfil se enviará a revisión del administrador</p>
+                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Al completar todos los campos requeridos, tu perfil se aprueba automáticamente</p>
                         </div>
                         <button @click="showPerfilModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -1119,7 +1200,7 @@ const tiempoHastaCitaProxima = computed(() => {
                             </button>
                             <button type="button" @click="submitPerfil" :disabled="guardandoPerfil"
                                 class="px-5 py-2 text-sm font-bold text-white bg-guinda-800 hover:bg-guinda-700 disabled:opacity-60 rounded-xl">
-                                {{ guardandoPerfil ? 'Guardando...' : 'Guardar y enviar a revisión' }}
+                                {{ guardandoPerfil ? 'Guardando...' : 'Guardar perfil' }}
                             </button>
                         </div>
                     </form>
@@ -1159,4 +1240,7 @@ const tiempoHastaCitaProxima = computed(() => {
 .fc-event-title, .fc-event-time { color: #fff !important; }
 .fc-scrollgrid { border-color: #e5e7eb !important; }
 .dark .fc-scrollgrid { border-color: #1f2937 !important; }
+
+.fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

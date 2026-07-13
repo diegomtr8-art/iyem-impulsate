@@ -1,0 +1,683 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — ADMIN: Editar perfiles + agregar manualmente al evento
+Archivo: PROMPT_ADMIN_EDITAR_USUARIOS_EVENTO.txt
+================================================================================
+
+CONTEXTO:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode: 'class')
+  Color corporativo: guinda #8B1028 — NUNCA azul/indigo
+  Roles Spatie: admin, super-admin, restaurantero, cliente
+  Tabla pivot: evento_usuario (evento_id, user_id, tipo, estado, motivo_rechazo, respondido_at)
+  Modelo Restaurantero: relacionado 1:1 con User (restaurantero.user_id = users.id)
+
+OBJETIVO:
+  El administrador debe poder:
+  1. Editar la información de cualquier proveedor o comprador desde el panel admin
+  2. Agregar manualmente un proveedor o comprador al evento (sin esperar solicitud)
+
+LEE TODOS LOS ARCHIVOS RELEVANTES ANTES DE MODIFICAR.
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 1 — EDITAR PERFIL DE PROVEEDOR DESDE ADMIN
+════════════════════════════════════════════════════════════════════════════════
+
+── 1A. Ruta ──
+
+En routes/web.php, dentro del grupo con middleware ['auth', 'role:admin|super-admin']:
+
+    // Editar proveedor
+    Route::get('/admin/proveedores/{restaurantero}/editar',
+        [AdminProveedorController::class, 'editar'])->name('admin.proveedores.editar');
+
+    Route::put('/admin/proveedores/{restaurantero}',
+        [AdminProveedorController::class, 'actualizar'])->name('admin.proveedores.actualizar');
+
+    // Editar comprador
+    Route::get('/admin/compradores/{user}/editar',
+        [AdminCompradorController::class, 'editar'])->name('admin.compradores.editar');
+
+    Route::put('/admin/compradores/{user}',
+        [AdminCompradorController::class, 'actualizar'])->name('admin.compradores.actualizar');
+
+── 1B. AdminProveedorController ──
+
+Archivo: app/Http/Controllers/AdminProveedorController.php
+
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use App\Models\Restaurantero;
+    use App\Models\Categoria;
+    use Illuminate\Http\Request;
+    use Inertia\Inertia;
+
+    class AdminProveedorController extends Controller
+    {
+        public function editar(Restaurantero $restaurantero)
+        {
+            $restaurantero->load('user:id,name,email', 'categoria:id,nombre');
+
+            return Inertia::render('Admin/Proveedores/Editar', [
+                'restaurantero' => $restaurantero,
+                'categorias'    => Categoria::orderBy('nombre')->get(['id', 'nombre']),
+            ]);
+        }
+
+        public function actualizar(Request $request, Restaurantero $restaurantero)
+        {
+            $validated = $request->validate([
+                'nombre'              => 'required|string|max:255',
+                'descripcion'         => 'nullable|string|max:2000',
+                'telefono'            => 'nullable|string|max:30',
+                'municipio'           => 'nullable|string|max:100',
+                'rfc'                 => 'nullable|string|max:13',
+                'sitio_web'           => 'nullable|url|max:255',
+                'categoria_id'        => 'nullable|exists:categorias,id',
+                'credito_tipo'        => 'nullable|string|max:100',
+                'pago_contraentrega'  => 'nullable|boolean',
+                'acepta_factura'      => 'nullable|boolean',
+                'entrega_domicilio'   => 'nullable|boolean',
+                'cobertura'           => 'nullable|string|max:255',
+                'forma_entrega'       => 'nullable|string|max:255',
+                // nombre y email del User relacionado
+                'user_name'           => 'required|string|max:255',
+                'user_email'          => 'required|email|max:255|unique:users,email,' . $restaurantero->user_id,
+            ]);
+
+            // Actualizar datos del restaurantero
+            $restaurantero->update(collect($validated)
+                ->except(['user_name', 'user_email'])
+                ->toArray());
+
+            // Actualizar datos del User
+            $restaurantero->user->update([
+                'name'  => $validated['user_name'],
+                'email' => $validated['user_email'],
+            ]);
+
+            return redirect()->route('admin.proveedores.editar', $restaurantero)
+                ->with('success', 'Proveedor actualizado correctamente.');
+        }
+    }
+
+── 1C. AdminCompradorController ──
+
+Archivo: app/Http/Controllers/AdminCompradorController.php
+
+    <?php
+
+    namespace App\Http\Controllers;
+
+    use App\Models\User;
+    use Illuminate\Http\Request;
+    use Inertia\Inertia;
+
+    class AdminCompradorController extends Controller
+    {
+        public function editar(User $user)
+        {
+            // Verificar que tenga rol comprador/cliente
+            abort_unless($user->hasRole('cliente'), 404);
+
+            return Inertia::render('Admin/Compradores/Editar', [
+                'comprador' => $user->only([
+                    'id', 'name', 'email', 'telefono',
+                    'nombre_empresa', 'municipio', 'es_restaurantero',
+                    // Agrega aquí todos los campos que tenga el modelo User para compradores
+                ]),
+            ]);
+        }
+
+        public function actualizar(Request $request, User $user)
+        {
+            abort_unless($user->hasRole('cliente'), 404);
+
+            // LEE el modelo User para saber exactamente qué campos fillable existen
+            // Ajusta las reglas de validación según los campos reales del modelo
+            $validated = $request->validate([
+                'name'            => 'required|string|max:255',
+                'email'           => 'required|email|max:255|unique:users,email,' . $user->id,
+                'telefono'        => 'nullable|string|max:30',
+                'nombre_empresa'  => 'nullable|string|max:255',
+                'municipio'       => 'nullable|string|max:100',
+                'es_restaurantero'=> 'nullable|boolean',
+            ]);
+
+            $user->update($validated);
+
+            return redirect()->route('admin.compradores.editar', $user)
+                ->with('success', 'Comprador actualizado correctamente.');
+        }
+    }
+
+── 1D. Vista Admin/Proveedores/Editar.vue ──
+
+Archivo: resources/js/Pages/Admin/Proveedores/Editar.vue
+
+CREA esta vista. Debe ser un formulario sencillo con todos los campos del proveedor
+en guinda, con botón "Guardar cambios" y botón "Volver". 
+
+Sigue este patrón base (ajusta los campos según el modelo real):
+
+    <script setup>
+    import AdminLayout from '@/Layouts/AdminLayout.vue';
+    import { useForm, Link } from '@inertiajs/vue3';
+    import { Head } from '@inertiajs/vue3';
+
+    const props = defineProps({
+        restaurantero: Object,
+        categorias: Array,
+    });
+
+    const form = useForm({
+        user_name:          props.restaurantero.user?.name ?? '',
+        user_email:         props.restaurantero.user?.email ?? '',
+        nombre:             props.restaurantero.nombre ?? '',
+        descripcion:        props.restaurantero.descripcion ?? '',
+        telefono:           props.restaurantero.telefono ?? '',
+        municipio:          props.restaurantero.municipio ?? '',
+        rfc:                props.restaurantero.rfc ?? '',
+        sitio_web:          props.restaurantero.sitio_web ?? '',
+        categoria_id:       props.restaurantero.categoria_id ?? '',
+        credito_tipo:       props.restaurantero.credito_tipo ?? '',
+        pago_contraentrega: props.restaurantero.pago_contraentrega ?? false,
+        acepta_factura:     props.restaurantero.acepta_factura ?? false,
+        entrega_domicilio:  props.restaurantero.entrega_domicilio ?? false,
+        cobertura:          props.restaurantero.cobertura ?? '',
+        forma_entrega:      props.restaurantero.forma_entrega ?? '',
+    });
+
+    const submit = () => {
+        form.put(route('admin.proveedores.actualizar', props.restaurantero.id));
+    };
+    </script>
+
+    <template>
+        <AdminLayout>
+            <Head :title="`Editar proveedor — ${restaurantero.nombre}`" />
+
+            <div class="max-w-3xl mx-auto py-8 px-4">
+                <div class="flex items-center justify-between mb-6">
+                    <h1 class="text-xl font-black text-guinda-800 dark:text-white">
+                        Editar proveedor
+                    </h1>
+                    <Link :href="route('admin.restauranteros.index')"
+                        class="text-sm text-gray-500 hover:text-guinda-700 transition-colors">
+                        ← Volver
+                    </Link>
+                </div>
+
+                <!-- Mensaje de éxito -->
+                <div v-if="$page.props.flash?.success"
+                    class="mb-4 bg-green-50 border border-green-200 text-green-700
+                           rounded-xl px-4 py-3 text-sm font-semibold">
+                    ✅ {{ $page.props.flash.success }}
+                </div>
+
+                <form @submit.prevent="submit"
+                    class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                           border-gray-100 dark:border-gray-700 p-6 space-y-5">
+
+                    <!-- Sección: Cuenta de usuario -->
+                    <div>
+                        <h2 class="text-sm font-bold text-guinda-700 uppercase
+                                   tracking-wide mb-3 pb-1 border-b border-guinda-100">
+                            Cuenta de usuario
+                        </h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="label-admin">Nombre completo</label>
+                                <input v-model="form.user_name" type="text"
+                                    class="input-admin" placeholder="Nombre del usuario" />
+                                <p v-if="form.errors.user_name" class="error-admin">
+                                    {{ form.errors.user_name }}
+                                </p>
+                            </div>
+                            <div>
+                                <label class="label-admin">Correo electrónico</label>
+                                <input v-model="form.user_email" type="email"
+                                    class="input-admin" placeholder="correo@ejemplo.com" />
+                                <p v-if="form.errors.user_email" class="error-admin">
+                                    {{ form.errors.user_email }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Sección: Datos del negocio -->
+                    <div>
+                        <h2 class="text-sm font-bold text-guinda-700 uppercase
+                                   tracking-wide mb-3 pb-1 border-b border-guinda-100">
+                            Datos del negocio
+                        </h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="label-admin">Nombre del negocio</label>
+                                <input v-model="form.nombre" type="text"
+                                    class="input-admin" />
+                                <p v-if="form.errors.nombre" class="error-admin">
+                                    {{ form.errors.nombre }}
+                                </p>
+                            </div>
+                            <div>
+                                <label class="label-admin">Teléfono</label>
+                                <input v-model="form.telefono" type="text"
+                                    class="input-admin" />
+                            </div>
+                            <div>
+                                <label class="label-admin">Municipio</label>
+                                <input v-model="form.municipio" type="text"
+                                    class="input-admin" />
+                            </div>
+                            <div>
+                                <label class="label-admin">RFC</label>
+                                <input v-model="form.rfc" type="text"
+                                    class="input-admin" maxlength="13" />
+                            </div>
+                            <div>
+                                <label class="label-admin">Sitio web</label>
+                                <input v-model="form.sitio_web" type="url"
+                                    class="input-admin" placeholder="https://" />
+                            </div>
+                            <div>
+                                <label class="label-admin">Categoría</label>
+                                <select v-model="form.categoria_id" class="input-admin">
+                                    <option value="">Sin categoría</option>
+                                    <option v-for="cat in categorias" :key="cat.id"
+                                        :value="cat.id">
+                                        {{ cat.nombre }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <label class="label-admin">Descripción del negocio</label>
+                            <textarea v-model="form.descripcion" rows="3"
+                                class="input-admin" placeholder="Descripción..."></textarea>
+                        </div>
+                    </div>
+
+                    <!-- Sección: Logística -->
+                    <div>
+                        <h2 class="text-sm font-bold text-guinda-700 uppercase
+                                   tracking-wide mb-3 pb-1 border-b border-guinda-100">
+                            Logística y condiciones
+                        </h2>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="label-admin">Tipo de crédito</label>
+                                <input v-model="form.credito_tipo" type="text"
+                                    class="input-admin" />
+                            </div>
+                            <div>
+                                <label class="label-admin">Cobertura</label>
+                                <input v-model="form.cobertura" type="text"
+                                    class="input-admin" />
+                            </div>
+                            <div>
+                                <label class="label-admin">Forma de entrega</label>
+                                <input v-model="form.forma_entrega" type="text"
+                                    class="input-admin" />
+                            </div>
+                        </div>
+                        <div class="mt-4 flex flex-wrap gap-6">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input v-model="form.pago_contraentrega" type="checkbox"
+                                    class="w-4 h-4 accent-guinda-700" />
+                                <span class="text-sm text-gray-700 dark:text-gray-300">
+                                    Pago contraentrega
+                                </span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input v-model="form.acepta_factura" type="checkbox"
+                                    class="w-4 h-4 accent-guinda-700" />
+                                <span class="text-sm text-gray-700 dark:text-gray-300">
+                                    Acepta factura
+                                </span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input v-model="form.entrega_domicilio" type="checkbox"
+                                    class="w-4 h-4 accent-guinda-700" />
+                                <span class="text-sm text-gray-700 dark:text-gray-300">
+                                    Entrega a domicilio
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Botones -->
+                    <div class="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                        <Link :href="route('admin.restauranteros.index')"
+                            class="px-4 py-2 text-sm font-semibold text-gray-600
+                                   hover:text-gray-800 transition-colors">
+                            Cancelar
+                        </Link>
+                        <button type="submit" :disabled="form.processing"
+                            class="px-6 py-2 bg-guinda-800 hover:bg-guinda-700 text-white
+                                   font-bold text-sm rounded-xl transition-colors
+                                   disabled:opacity-60">
+                            {{ form.processing ? 'Guardando...' : 'Guardar cambios' }}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </AdminLayout>
+    </template>
+
+AGREGA estos estilos en el <style scoped> o en el CSS global para las clases helper:
+
+    .label-admin {
+        @apply block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1;
+    }
+    .input-admin {
+        @apply w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2
+               text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+               focus:outline-none focus:ring-2 focus:ring-guinda-500 transition;
+    }
+    .error-admin {
+        @apply text-xs text-red-600 mt-1;
+    }
+
+── 1E. Vista Admin/Compradores/Editar.vue ──
+
+Igual que arriba pero con los campos del comprador. Crea:
+resources/js/Pages/Admin/Compradores/Editar.vue
+
+Campos a incluir según el modelo User (lee el modelo antes de implementar):
+  - name (nombre completo)
+  - email
+  - telefono
+  - nombre_empresa (si existe)
+  - municipio (si existe)
+  - es_restaurantero (checkbox)
+
+El formulario hace PUT a route('admin.compradores.actualizar', comprador.id).
+
+── 1F. Botón "Editar" en la lista de proveedores ──
+
+En la vista existente de lista de proveedores del admin
+(busca: resources/js/Pages/Admin/Restauranteros/ o similar),
+agrega un botón "Editar" en las acciones de cada fila:
+
+    <Link :href="route('admin.proveedores.editar', restaurantero.id)"
+        class="px-3 py-1.5 text-xs font-bold bg-guinda-50 text-guinda-700
+               border border-guinda-200 rounded-lg hover:bg-guinda-100 transition-colors">
+        ✏️ Editar
+    </Link>
+
+Haz lo mismo en la lista de compradores del admin.
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 2 — AGREGAR MANUALMENTE AL EVENTO DESDE ADMIN
+════════════════════════════════════════════════════════════════════════════════
+
+El admin puede registrar directamente a cualquier proveedor o comprador
+al evento activo, sin que el usuario haya enviado una solicitud.
+
+── 2A. Rutas ──
+
+En routes/web.php, dentro del grupo admin:
+
+    // Agregar proveedor al evento manualmente
+    Route::post('/admin/eventos/{evento}/agregar-proveedor',
+        [EventoAdminController::class, 'agregarProveedor'])
+        ->name('admin.eventos.agregar-proveedor');
+
+    // Agregar comprador al evento manualmente
+    Route::post('/admin/eventos/{evento}/agregar-comprador',
+        [EventoAdminController::class, 'agregarComprador'])
+        ->name('admin.eventos.agregar-comprador');
+
+── 2B. EventoAdminController — métodos agregarProveedor y agregarComprador ──
+
+Busca el controller que maneja los eventos en admin (EventoController o similar).
+Agrega estos dos métodos:
+
+    public function agregarProveedor(Request $request, \App\Models\Evento $evento)
+    {
+        $request->validate([
+            'restaurantero_id' => 'required|exists:restauranteros,id',
+        ]);
+
+        $restaurantero = \App\Models\Restaurantero::findOrFail($request->restaurantero_id);
+
+        // Verificar que no esté ya registrado como proveedor en este evento
+        $yaRegistrado = $evento->usuarios()
+            ->where('user_id', $restaurantero->user_id)
+            ->where('tipo', 'proveedor')
+            ->exists();
+
+        if ($yaRegistrado) {
+            return back()->with('error', 'Este proveedor ya está registrado en el evento.');
+        }
+
+        $evento->usuarios()->attach($restaurantero->user_id, [
+            'tipo'          => 'proveedor',
+            'estado'        => 'aprobado',
+            'respondido_at' => now(),
+        ]);
+
+        return back()->with('success',
+            'Proveedor "' . $restaurantero->nombre . '" agregado al evento correctamente.');
+    }
+
+    public function agregarComprador(Request $request, \App\Models\Evento $evento)
+    {
+        $request->validate([
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $user = \App\Models\User::role('cliente')->findOrFail($request->user_id);
+
+        // Verificar que no esté ya registrado como comprador en este evento
+        $yaRegistrado = $evento->usuarios()
+            ->where('user_id', $user->id)
+            ->where('tipo', 'comprador')
+            ->exists();
+
+        if ($yaRegistrado) {
+            return back()->with('error', 'Este comprador ya está registrado en el evento.');
+        }
+
+        $evento->usuarios()->attach($user->id, [
+            'tipo'          => 'comprador',
+            'estado'        => 'aprobado',
+            'respondido_at' => now(),
+        ]);
+
+        return back()->with('success',
+            'Comprador "' . ($user->nombre_empresa ?? $user->name) . '" agregado al evento correctamente.');
+    }
+
+── 2C. Panel de gestión del evento en Admin ──
+
+Busca la vista de detalle/gestión del evento en admin
+(puede estar en resources/js/Pages/Admin/Eventos/Show.vue o similar).
+
+Si no existe una vista de gestión del evento, CRÉALA en:
+resources/js/Pages/Admin/Eventos/Gestionar.vue
+
+Agrega dos secciones: una para agregar proveedor y otra para agregar comprador.
+Necesitas pasar desde el controller:
+  - $evento (con evento_id)
+  - $todosProveedores = Restaurantero::with('user:id,name')->orderBy('nombre')->get(['id', 'nombre'])
+  - $todosCompradores = User::role('cliente')->orderBy('name')->get(['id', 'name', 'nombre_empresa'])
+
+Sección para agregar proveedor manualmente:
+
+    <!-- Agregar proveedor manualmente -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                border-gray-100 dark:border-gray-700 p-5 mb-4">
+        <h3 class="text-sm font-black text-guinda-800 dark:text-white mb-3">
+            ➕ Agregar proveedor al evento
+        </h3>
+
+        <form @submit.prevent="submitProveedor" class="flex gap-3 items-end">
+            <div class="flex-1">
+                <label class="label-admin">Seleccionar proveedor</label>
+                <select v-model="formProveedor.restaurantero_id" class="input-admin" required>
+                    <option value="">— Selecciona un proveedor —</option>
+                    <option v-for="p in todosProveedores" :key="p.id" :value="p.id">
+                        {{ p.nombre }}
+                    </option>
+                </select>
+            </div>
+            <button type="submit"
+                :disabled="formProveedor.processing || !formProveedor.restaurantero_id"
+                class="px-5 py-2 bg-guinda-800 hover:bg-guinda-700 text-white font-bold
+                       text-sm rounded-xl transition-colors disabled:opacity-60 whitespace-nowrap">
+                Agregar
+            </button>
+        </form>
+    </div>
+
+Sección para agregar comprador manualmente:
+
+    <!-- Agregar comprador manualmente -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                border-gray-100 dark:border-gray-700 p-5">
+        <h3 class="text-sm font-black text-guinda-800 dark:text-white mb-3">
+            ➕ Agregar comprador al evento
+        </h3>
+
+        <form @submit.prevent="submitComprador" class="flex gap-3 items-end">
+            <div class="flex-1">
+                <label class="label-admin">Seleccionar comprador</label>
+                <select v-model="formComprador.user_id" class="input-admin" required>
+                    <option value="">— Selecciona un comprador —</option>
+                    <option v-for="c in todosCompradores" :key="c.id" :value="c.id">
+                        {{ c.nombre_empresa ?? c.name }}
+                    </option>
+                </select>
+            </div>
+            <button type="submit"
+                :disabled="formComprador.processing || !formComprador.user_id"
+                class="px-5 py-2 bg-guinda-800 hover:bg-guinda-700 text-white font-bold
+                       text-sm rounded-xl transition-colors disabled:opacity-60 whitespace-nowrap">
+                Agregar
+            </button>
+        </form>
+    </div>
+
+En el <script setup> de la vista:
+
+    import { useForm } from '@inertiajs/vue3';
+
+    const props = defineProps({
+        evento:           Object,
+        todosProveedores: Array,
+        todosCompradores: Array,
+    });
+
+    const formProveedor = useForm({ restaurantero_id: '' });
+    const formComprador = useForm({ user_id: '' });
+
+    const submitProveedor = () => {
+        formProveedor.post(route('admin.eventos.agregar-proveedor', props.evento.id), {
+            onSuccess: () => { formProveedor.reset(); },
+        });
+    };
+
+    const submitComprador = () => {
+        formComprador.post(route('admin.eventos.agregar-comprador', props.evento.id), {
+            onSuccess: () => { formComprador.reset(); },
+        });
+    };
+
+── 2D. Ruta hacia la vista de gestión del evento ──
+
+Agrega en routes/web.php dentro del grupo admin:
+
+    Route::get('/admin/eventos/{evento}/gestionar',
+        [EventoAdminController::class, 'gestionar'])
+        ->name('admin.eventos.gestionar');
+
+Método gestionar() en EventoAdminController:
+
+    public function gestionar(\App\Models\Evento $evento)
+    {
+        $evento->load([
+            'usuarios' => fn($q) => $q->withPivot('tipo', 'estado', 'respondido_at')
+        ]);
+
+        // Separar proveedores y compradores ya registrados
+        $proveedoresEnEvento = $evento->usuarios
+            ->where('pivot.tipo', 'proveedor')
+            ->values();
+
+        $compradoresEnEvento = $evento->usuarios
+            ->where('pivot.tipo', 'comprador')
+            ->values();
+
+        return Inertia::render('Admin/Eventos/Gestionar', [
+            'evento'              => $evento,
+            'proveedoresEnEvento' => $proveedoresEnEvento,
+            'compradoresEnEvento' => $compradoresEnEvento,
+            'todosProveedores'    => \App\Models\Restaurantero::orderBy('nombre')
+                                        ->get(['id', 'nombre']),
+            'todosCompradores'    => \App\Models\User::role('cliente')
+                                        ->orderBy('name')
+                                        ->get(['id', 'name', 'nombre_empresa']),
+        ]);
+    }
+
+── 2E. Acceso desde el admin ──
+
+En la lista de eventos del admin, agrega un botón "Gestionar participantes":
+
+    <Link :href="route('admin.eventos.gestionar', evento.id)"
+        class="px-3 py-1.5 text-xs font-bold bg-guinda-50 text-guinda-700
+               border border-guinda-200 rounded-lg hover:bg-guinda-100 transition-colors">
+        👥 Gestionar participantes
+    </Link>
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. EDITAR PROVEEDOR:
+   a) Ve a Admin → Proveedores (lista)
+   b) Haz clic en "Editar" en cualquier proveedor
+   c) Modifica nombre, email, teléfono
+   d) Guarda — debe mostrar "✅ Proveedor actualizado correctamente."
+   e) Verifica que el cambio se refleja en la lista y en el perfil público
+
+2. EDITAR COMPRADOR:
+   a) Ve a Admin → Compradores (lista)
+   b) Haz clic en "Editar" en cualquier comprador
+   c) Modifica nombre, email
+   d) Guarda — debe mostrar "✅ Comprador actualizado correctamente."
+
+3. AGREGAR PROVEEDOR AL EVENTO:
+   a) Ve a Admin → Eventos → Gestionar participantes
+   b) En "Agregar proveedor", selecciona uno de la lista
+   c) Haz clic en Agregar
+   d) Verifica en BD: SELECT * FROM evento_usuario WHERE tipo='proveedor' AND estado='aprobado'
+   e) El proveedor debe aparecer ahora en la lista de aprobados del evento
+
+4. AGREGAR COMPRADOR AL EVENTO:
+   a) En la misma vista, agrega un comprador manualmente
+   b) Verifica en BD que se creó el registro con tipo='comprador', estado='aprobado'
+   c) El comprador debe poder recibir propuestas de agenda
+
+5. DUPLICADOS:
+   a) Intenta agregar el mismo proveedor/comprador dos veces
+   b) Debe mostrar: "Este proveedor/comprador ya está registrado en el evento."
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    npm run build
+    php artisan route:cache
+    php artisan optimize
+
+    # Verificar rutas nuevas:
+    php artisan route:list | grep "admin"
+
+================================================================================
+FIN DEL PROMPT — ADMIN: Editar usuarios + agregar al evento
+================================================================================

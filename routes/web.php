@@ -12,6 +12,8 @@ use App\Http\Controllers\Admin\CitaAdminController;
 use App\Http\Controllers\Admin\UserAdminController;
 use App\Http\Controllers\Admin\MetricasController;
 use App\Http\Controllers\Admin\CalendarioController;
+use App\Http\Controllers\Admin\AgendaController;
+use App\Http\Controllers\AgendaPublicaController;
 use App\Http\Controllers\Admin\EventoController;
 use App\Http\Controllers\Admin\EventoSolicitudesController;
 use App\Http\Controllers\Admin\TorreControlController;
@@ -51,6 +53,13 @@ Route::get('/api/tv/{token}/publico',  [\App\Http\Controllers\Admin\PantallaTvCo
 // Encuestas de satisfacción (sin autenticación — acceso por token)
 Route::get('/encuesta/{token}',  [EncuestaController::class, 'show'])->name('encuestas.responder');
 Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])->name('encuestas.responder.store');
+
+// Respuesta del proveedor a una propuesta de agenda (sin autenticación — acceso por token)
+Route::prefix('agenda')->name('agenda.')->group(function () {
+    Route::get('/propuesta/{token}', [AgendaPublicaController::class, 'ver'])->name('ver');
+    Route::get('/aceptar/{token}',   [AgendaPublicaController::class, 'aceptar'])->name('aceptar');
+    Route::get('/rechazar/{token}',  [AgendaPublicaController::class, 'rechazar'])->name('rechazar');
+});
 
 // Aceptación del Aviso de Privacidad (solo auth, sin aviso.aceptado para evitar loop)
 Route::middleware('auth:sanctum')->group(function () {
@@ -138,6 +147,7 @@ Route::middleware([
         Route::get('/restauranteros', [RestauranteroAdminController::class, 'index'])->name('restauranteros.index');
         Route::post('/restauranteros', [RestauranteroAdminController::class, 'store'])->name('restauranteros.store');
         Route::get('/restauranteros/{restaurantero}', [RestauranteroAdminController::class, 'show'])->name('restauranteros.show');
+        Route::get('/restauranteros/{restaurantero}/editar', [RestauranteroAdminController::class, 'editar'])->name('restauranteros.editar');
         Route::post('/restauranteros/{restaurantero}/update', [RestauranteroAdminController::class, 'update'])->name('restauranteros.update');
         Route::patch('/restauranteros/{restaurantero}/toggle', [RestauranteroAdminController::class, 'toggleActivo'])->name('restauranteros.toggle');
         Route::patch('/restauranteros/{restaurantero}/categoria', [RestauranteroAdminController::class, 'updateCategoria'])->name('restauranteros.update-categoria');
@@ -151,6 +161,8 @@ Route::middleware([
 
         Route::get('/usuarios', [UserAdminController::class, 'index'])->name('usuarios.index');
         Route::get('/clientes/{user}', [UserAdminController::class, 'show'])->name('clientes.show');
+        Route::get('/clientes/{user}/editar', [UserAdminController::class, 'editar'])->name('clientes.editar');
+        Route::put('/clientes/{user}', [UserAdminController::class, 'actualizar'])->name('clientes.actualizar');
         Route::delete('/usuarios/{user}', [UserAdminController::class, 'destroy'])->name('usuarios.destroy');
 
         Route::get('/metricas', [MetricasController::class, 'index'])->name('metricas');
@@ -172,6 +184,17 @@ Route::middleware([
             Route::post('/{evento}/solicitudes/{user}/revertir', [EventoSolicitudesController::class, 'revertirPendiente'])->name('solicitudes.revertir');
             Route::post('/{evento}/solicitudes/{user}/eliminar', [EventoSolicitudesController::class, 'eliminar'])->name('solicitudes.eliminar');
             Route::post('/{evento}/solicitudes/aprobar-todos', [EventoSolicitudesController::class, 'aprobarTodos'])->name('solicitudes.aprobar-todos');
+            Route::post('/{evento}/solicitudes/agregar-proveedor', [EventoSolicitudesController::class, 'agregarProveedor'])->name('solicitudes.agregar-proveedor');
+            Route::post('/{evento}/solicitudes/agregar-comprador', [EventoSolicitudesController::class, 'agregarComprador'])->name('solicitudes.agregar-comprador');
+        });
+
+        // Agenda: propuestas de citas enviadas por correo al proveedor
+        Route::prefix('agenda')->name('agenda.')->group(function () {
+            Route::get('/',            [AgendaController::class, 'index'])->name('index');
+            Route::get('/crear',       [AgendaController::class, 'crear'])->name('crear');
+            Route::post('/',           [AgendaController::class, 'store'])->name('store');
+            Route::post('/{agenda}/enviar',  [AgendaController::class, 'enviar'])->name('enviar');
+            Route::delete('/{agenda}', [AgendaController::class, 'destroy'])->name('destroy');
         });
 
         Route::get('/calendario', [CalendarioController::class, 'index'])->name('calendario');

@@ -144,8 +144,37 @@ const seleccionarCategoria = (cat) => {
                 </button>
             </div>
 
+            <!-- Lista móvil compacta (< 640px) -->
+            <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0"
+                class="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm mb-6">
+                <Link v-for="r in restauranteros.data" :key="'m-' + r.id"
+                    :href="route('proveedores.show', r.id)"
+                    class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <div class="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden border-2 border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                        <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
+                            class="w-full h-full object-cover" />
+                        <span v-else class="text-xl text-gray-400">🏪</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
+                            {{ r.nombre_restaurante }}
+                        </p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                            {{ r.municipio || r.direccion || r.descripcion }}
+                        </p>
+                        <span v-if="r.categoria"
+                            class="inline-block mt-1 text-[10px] font-semibold bg-guinda-50 text-guinda-700 dark:bg-guinda-900/30 dark:text-guinda-400 px-2 py-0.5 rounded-full">
+                            {{ r.categoria }}
+                        </span>
+                    </div>
+                    <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                    </svg>
+                </Link>
+            </div>
+
             <!-- Grid -->
-            <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0" class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <Link v-for="r in restauranteros.data" :key="r.id"
                     :href="route('proveedores.show', r.id)"
                     class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">
@@ -225,7 +254,35 @@ const seleccionarCategoria = (cat) => {
                     <p class="text-gray-500 dark:text-gray-400 mt-1">Conoce a todos los proveedores activos de Impulsate, sin importar el evento.</p>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <!-- Lista móvil compacta (< 640px) -->
+                <div class="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm mb-6">
+                    <Link v-for="r in proveedoresPlataforma.data" :key="'m-plataforma-' + r.id"
+                        :href="route('proveedores.show', r.id)"
+                        class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <div class="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden border-2 border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                            <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
+                                class="w-full h-full object-cover" />
+                            <span v-else class="text-xl text-gray-400">🏪</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
+                                {{ r.nombre_restaurante }}
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                {{ r.municipio || r.direccion || r.descripcion }}
+                            </p>
+                            <span v-if="r.categoria"
+                                class="inline-block mt-1 text-[10px] font-semibold bg-guinda-50 text-guinda-700 dark:bg-guinda-900/30 dark:text-guinda-400 px-2 py-0.5 rounded-full">
+                                {{ r.categoria }}
+                            </span>
+                        </div>
+                        <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </Link>
+                </div>
+
+                <div class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     <Link v-for="r in proveedoresPlataforma.data" :key="'plataforma-' + r.id"
                         :href="route('proveedores.show', r.id)"
                         class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">

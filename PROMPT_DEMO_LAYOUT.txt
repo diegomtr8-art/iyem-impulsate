@@ -1,0 +1,386 @@
+PROMPT PARA CLAUDE CODE - DEMO ZONA COMERCIAL YUCATÁN 200
+==========================================
+Proyecto base: C:\xampp\htdocs\citas (Laravel 11 + Inertia.js + Vue 3)
+Páginas nuevas (sin auth, sin middleware, sin conexión a la BD):
+  GET /demo-prueba/layout  → resources/js/Pages/Demo/Layout.vue
+  GET /demo-prueba/paid    → resources/js/Pages/Demo/Paid.vue
+Fuente tipográfica: Figtree (ya instalada en el proyecto vía bunny.net)
+Color guinda IYEM: #8b1028. Fondo oscuro tipo motorsport (negro/carbono).
+Esta es una DEMO de alto impacto para el evento Yucatán 200 — debe verse
+PROFESIONAL, MODERNA y con una experiencia UX/UI de primer nivel.
+
+==========================================
+PASO 0: RUTAS Y CONTROLADOR
+==========================================
+En routes/web.php agregar (sin middleware, públicas):
+```php
+Route::get('/demo-prueba/layout', fn() => Inertia::render('Demo/Layout'))->name('demo.layout');
+Route::get('/demo-prueba/paid',   fn() => Inertia::render('Demo/Paid'))->name('demo.paid');
+```
+
+==========================================
+PASO 1: DATOS DE LOS ESPACIOS COMERCIALES
+==========================================
+El layout muestra una fila de stands comerciales numerados. Definir como constante
+en el componente Vue el array completo de espacios, en orden de izquierda a derecha:
+
+```js
+// Tipos:
+// L = Espacio 9x4 m    (color: morado   #7c3aed)
+// M = Espacio 6x4 m    (color: rojo     #dc2626)
+// C = Comida 9x4 m     (color: verde    #16a34a)
+// B = Bebida 9x4 m     (color: turquesa #0891b2)
+
+const SPACES = [
+  // ─── BLOQUE 1 ───
+  { id:'L1',  type:'L', label:'L1',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L2',  type:'L', label:'L2',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L3',  type:'L', label:'L3',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L4',  type:'L', label:'L4',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'M1',  type:'M', label:'M1',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M2',  type:'M', label:'M2',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M3',  type:'M', label:'M3',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'C1',  type:'C', label:'C1',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B1',  type:'B', label:'B1',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 2 ───
+  { id:'M4',  type:'M', label:'M4',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M5',  type:'M', label:'M5',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M6',  type:'M', label:'M6',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'L5',  type:'L', label:'L5',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L6',  type:'L', label:'L6',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L7',  type:'L', label:'L7',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'C2',  type:'C', label:'C2',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B2',  type:'B', label:'B2',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 3 ───
+  { id:'L8',  type:'L', label:'L8',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L9',  type:'L', label:'L9',  size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L10', type:'L', label:'L10', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L11', type:'L', label:'L11', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'M7',  type:'M', label:'M7',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M8',  type:'M', label:'M8',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M9',  type:'M', label:'M9',  size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'C3',  type:'C', label:'C3',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B3',  type:'B', label:'B3',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 4 ───
+  { id:'M10', type:'M', label:'M10', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M11', type:'M', label:'M11', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M12', type:'M', label:'M12', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'L12', type:'L', label:'L12', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L13', type:'L', label:'L13', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L14', type:'L', label:'L14', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'C5',  type:'C', label:'C5',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B5',  type:'B', label:'B5',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 5 (CENTRAL) ───
+  { id:'L15', type:'L', label:'L15', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L16', type:'L', label:'L16', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L17', type:'L', label:'L17', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L18', type:'L', label:'L18', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'M13', type:'M', label:'M13', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M14', type:'M', label:'M14', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M15', type:'M', label:'M15', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'C6',  type:'C', label:'C6',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B6',  type:'B', label:'B6',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 6 ───
+  { id:'M16', type:'M', label:'M16', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M17', type:'M', label:'M17', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M18', type:'M', label:'M18', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'L19', type:'L', label:'L19', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L20', type:'L', label:'L20', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L21', type:'L', label:'L21', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'C7',  type:'C', label:'C7',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B7',  type:'B', label:'B7',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 7 ───
+  { id:'L22', type:'L', label:'L22', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L23', type:'L', label:'L23', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L24', type:'L', label:'L24', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L25', type:'L', label:'L25', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'M19', type:'M', label:'M19', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M20', type:'M', label:'M20', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M21', type:'M', label:'M21', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'C8',  type:'C', label:'C8',  size:'9×4 m', category:'Zona de Comida',    precio:9500  },
+  { id:'B8',  type:'B', label:'B8',  size:'9×4 m', category:'Zona de Bebidas',   precio:9500  },
+  // ─── BLOQUE 8 ───
+  { id:'M22', type:'M', label:'M22', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M23', type:'M', label:'M23', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'M24', type:'M', label:'M24', size:'6×4 m', category:'Espacio Comercial', precio:5500  },
+  { id:'L26', type:'L', label:'L26', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L27', type:'L', label:'L27', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+  { id:'L28', type:'L', label:'L28', size:'9×4 m', category:'Espacio Comercial', precio:8500  },
+];
+
+// Simular algunos como "vendidos" para que la demo sea realista
+const VENDIDOS = ['L1','M3','C1','B2','L8','M9','L15','C6','M16','L22','B7','M22'];
+```
+
+==========================================
+PASO 2: PÁGINA /demo-prueba/layout (Vista principal)
+==========================================
+Archivo: resources/js/Pages/Demo/Layout.vue
+
+DISEÑO GENERAL: página fullscreen con fondo tipo carbono/motorsport:
+```css
+background: #0a0a0a;
+/* partículas o patrón sutil de bandera de cuadros en el fondo (CSS pattern) */
+```
+
+── NAVBAR DEMO ──────────────────────────────────────────
+Header fijo, 64px de alto, con:
+  - Logo Yucatán 200 (texto estilizado si no hay imagen: "Y·200" con tipografía bold)
+  - Título: "ZONA COMERCIAL — Layout Interactivo"
+  - Contador: "X espacios disponibles" actualizado reactivamente
+  - Botón "← Volver" que lleva a /
+Fondo: negro semitransparente con blur, borde inferior dorado (#f59e0b).
+
+── HERO INTRO (aparece por 3 seg y desaparece con animación) ──
+Superposición con mensaje animado tipo pantalla de carga:
+  "CARGANDO ZONA COMERCIAL..." con barra de progreso dorada.
+  Desaparece revelando el layout con una animación fade-in.
+
+── VISTA PRINCIPAL: CANVAS 3D ISOMÉTRICO ──────────────────
+Usar THREE.js desde CDN (https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js).
+Importar en el componente Vue mediante script dinámico o import en onMounted.
+
+ESCENA 3D:
+  Cámara: perspectiva isométrica (ortográfica), ángulo desde arriba-izquierda, mirando
+  la zona comercial de forma que se vea la profundidad de los stands.
+
+  ELEMENTOS DE LA ESCENA (de lejos a cerca, de atrás hacia adelante):
+
+  1. PISTA (más lejos, fondo de la escena):
+     - Plano largo y angosto, textura negra con líneas blancas (rayas de asfalto).
+     - Texto "PISTA" en blanco grande sobre la superficie.
+     - Bandera de cuadros en el extremo derecho (geometría simple o textura).
+     - Ligero movimiento de cámara tipo "pulso" para dar vida.
+
+  2. GRADAS (entre pista y zona comercial):
+     - 5 secciones de izquierda a derecha, como en el layout original:
+       • Gradas Generales izquierda  → color #7f1d1d (rojo oscuro)
+       • VIP izquierda               → color #d97706 (dorado/ámbar)
+       • Grada Principal central     → color #1e3a5f (azul marino)
+       • VIP derecha                 → color #d97706
+       • Gradas Generales derecha    → color #7f1d1d
+     - Escalonadas: cada sección tiene pequeñas gradas en 3D (escalones).
+     - Labels flotantes sobre cada sección con su nombre.
+
+  3. PASO DE GENTE:
+     - Franja gris oscura entre gradas y stands.
+     - Flechas animadas (usando líneas/planes con opacidad que se mueven) indicando flujo
+       de personas de izquierda a derecha y viceversa.
+     - Label "PASO DE GENTE" en blanco.
+
+  4. STANDS COMERCIALES (zona principal interactiva, más cerca de la cámara):
+     Renderizar cada espacio del array SPACES como una caja 3D (BoxGeometry):
+       - Tipo L (9×4m): ancho=1.8, profundidad=0.8, alto=1.2
+       - Tipo M (6×4m): ancho=1.2, profundidad=0.8, alto=1.0
+       - Tipo C y B (9×4m): ancho=1.8, profundidad=0.8, alto=1.2
+     Color base según tipo: L=#7c3aed, M=#dc2626, C=#16a34a, B=#0891b2
+     Si el espacio está en VENDIDOS: color gris #4b5563, opacidad reducida, sin interacción.
+
+     INTERACCIÓN POR STAND:
+       - Hover: el stand se eleva ligeramente (Y +0.15) con tween suave, brillo/glow
+         del color del tipo. Cursor cambia a pointer.
+       - Click: el stand se eleva más (+0.3), escala ligeramente (1.05), y se abre el
+         PANEL LATERAL de detalle (ver abajo).
+       - Stand seleccionado: contorno/wireframe dorado (#f59e0b) encima del mesh.
+
+     TECHO de cada stand: plano con textura de carpa (rayas del color del tipo + blanco).
+     FRENTE de cada stand: pequeño letrero con el ID del stand (L1, M3, etc.) en blanco
+     sobre plano más oscuro.
+
+  5. CONTROLES DE CÁMARA:
+     OrbitControls NO disponible en r128 via CDN simple — implementar manualmente:
+       - Arrastrar (mousedown+move): orbitar la cámara alrededor del centro.
+       - Scroll: zoom in/out (FOV o distancia, limitado entre mín y máx razonable).
+       - Click derecho + arrastrar: pan.
+       - Touch: pinch para zoom, 1 dedo para rotar.
+       - Botones UI overlay: [⟳ Resetear vista] [+ Zoom] [- Zoom] [↑↓←→ Pan arrows]
+
+  6. ILUMINACIÓN:
+     - AmbientLight: #ffffff, intensidad 0.4
+     - DirectionalLight desde arriba-derecha: #fbbf24 (dorado), intensidad 0.8
+     - PointLight cerca de la pista: #ef4444 (rojo), intensidad 0.3, para dramatismo
+     - Fog suave: color #0a0a0a, near=20, far=80 (profundidad atmosférica)
+
+── PANEL LATERAL (slide-in desde la derecha) ──────────────
+Se abre al hacer click en un stand disponible. Ocupa 380px en desktop,
+fullscreen en móvil. Fondo: #111827 (gris muy oscuro), borde izquierdo del color del tipo.
+
+Contenido del panel:
+  ┌──────────────────────────────────────┐
+  │  [X] cerrar                          │
+  │                                      │
+  │  [Badge tipo en color]  DISPONIBLE   │
+  │  ══════════════════════════════════  │
+  │  ESPACIO  L7                         │  ← nombre grande, bold
+  │  Zona Comercial Yucatán 200          │
+  │                                      │
+  │  📐 Dimensiones:  9 × 4 metros       │
+  │  🏷 Categoría:    Espacio Comercial  │
+  │  📍 Ubicación:    Bloque 2, Fila A   │
+  │  👁 Vista:        Frente a Gradas    │
+  │                                      │
+  │  ──── INCLUYE ────                   │
+  │  ✓ Espacio delimitado con señalética │
+  │  ✓ 1 mesa y 2 sillas                 │
+  │  ✓ Conexión eléctrica 110v           │
+  │  ✓ Acceso peatonal desde ambos lados │
+  │  ✓ Visibilidad directa a la pista    │
+  │                                      │
+  │  ──── PRECIO ────                    │
+  │  $8,500 MXN                          │  ← precio grande, dorado
+  │  Precio por día de evento            │
+  │                                      │
+  │  [    RESERVAR ESPACIO    ]          │  ← botón dorado, grande
+  │  Serás dirigido al formulario de pago│
+  └──────────────────────────────────────┘
+
+El botón "RESERVAR ESPACIO" redirige a /demo-prueba/paid pasando el ID del espacio
+como query param: /demo-prueba/paid?espacio=L7&precio=8500&tipo=Espacio+Comercial
+
+── LEYENDA FLOTANTE (abajo izquierda, fija) ──────────────
+Mini leyenda con los 4 tipos de espacios + estados (disponible/vendido):
+  ■ Espacio 9×4 m (morado) | ■ Espacio 6×4 m (rojo)
+  ■ Comida 9×4 m (verde)   | ■ Bebidas 9×4 m (turquesa)
+  ■ Vendido (gris)
+
+── CONTADOR GENERAL (arriba derecha, badge flotante) ──────
+  "XX disponibles de YY espacios"
+  Barra de progreso de disponibilidad (guinda → dorado según lleno).
+
+── TOOLTIP EN HOVER ───────────────────────────────────────
+Pequeño tooltip que sigue al cursor mostrando:
+  "[ID] — [Categoría] — $[Precio] MXN — Click para más info"
+  Fondo negro semitransparente, texto blanco, borde del color del tipo.
+
+── ANIMACIONES GENERALES ──────────────────────────────────
+  - Al cargar la escena: cámara hace un movimiento de "fly-in" desde arriba aterrizando
+    en la posición inicial (2 segundos, easing ease-out).
+  - Stands aparecen con un efecto de "construcción" (crecen desde Y=0 hacia arriba, con
+    delay escalonado de 30ms por stand, de izquierda a derecha).
+  - Fondo: sutil animación de partículas tipo polvo/chispas (usar BufferGeometry con
+    puntos animados en el shader o simplemente con requestAnimationFrame).
+  - Las gradas: efecto de "lleno de gente" con textura animada o puntos flotantes
+    naranjas/rojos simulando espectadores.
+
+==========================================
+PASO 3: PÁGINA /demo-prueba/paid (Formulario de pago)
+==========================================
+Archivo: resources/js/Pages/Demo/Paid.vue
+
+Leer los query params de la URL: espacio, precio, tipo.
+Mostrar una página de checkout limpia y profesional:
+
+DISEÑO: fondo negro, card central blanca/gris oscuro, 2 columnas en desktop:
+
+COLUMNA IZQUIERDA — Resumen del pedido:
+  - Header con logo Y·200 + "RESUMEN DE COMPRA"
+  - Card con:
+    • Ilustración/icono del tipo de espacio (SVG de carpa/stand)
+    • Nombre: "Espacio [ID]"
+    • Tipo/categoría
+    • Dimensiones
+    • Precio en grande: "$X,XXX MXN"
+    • Lista de beneficios incluidos (misma lista del panel lateral)
+  - Nota: "⚠ Esta es una demostración. No se realizará ningún cargo real."
+    en badge ámbar.
+
+COLUMNA DERECHA — Formulario de contacto/reserva:
+  Campos:
+    1. Nombre completo *
+    2. Empresa/Marca *
+    3. Correo electrónico *
+    4. Teléfono * (formato MX, 10 dígitos)
+    5. Giro del negocio (select: Alimentos, Bebidas, Moda, Tecnología, Servicios,
+       Artesanías, Automotriz, Otro)
+    6. ¿Es primera vez en el evento? (radio: Sí / No)
+    7. Comentarios adicionales (textarea, opcional)
+    8. Checkbox: "Acepto los términos y condiciones del evento"
+
+  Botón "CONFIRMAR RESERVA" (dorado, ancho completo):
+    - Al hacer click (sin backend): mostrar un modal de "¡Reserva recibida!"
+      con animación de confeti (usando canvas-confetti desde CDN:
+      https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js)
+    - Modal de éxito:
+      • Ícono de palomita animado (SVG animado con stroke-dashoffset)
+      • "¡Tu reserva ha sido recibida!"
+      • "Un asesor se pondrá en contacto contigo en menos de 24 horas."
+      • "Espacio reservado: [ID]"
+      • "Número de folio: DEMO-[timestamp]"
+      • Botón "Ver otro espacio" → vuelve a /demo-prueba/layout
+      • Botón "Ir al inicio" → vuelve a /
+
+DISEÑO DE PÁGINA paid:
+  - Fondo: degradado sutil #0a0a0a → #111827
+  - Card principal: borde dorado (#f59e0b), border-radius generoso
+  - Tipografía: Figtree (ya instalada), headings muy bold
+  - Colores de acento: dorado para CTAs, del tipo de espacio para detalles
+  - Animaciones: fade-in por secciones al cargar, focus ring dorado en inputs
+  - Responsive: en móvil las 2 columnas se apilan (resumen arriba, form abajo)
+
+==========================================
+PASO 4: RESPONSIVIDAD Y FALLBACK
+==========================================
+Si el dispositivo no soporta WebGL (Three.js falla):
+  - Mostrar una vista alternativa en 2D (top-down) usando SVG o Canvas 2D.
+  - El SVG 2D replica exactamente el layout de la imagen de referencia.
+  - La misma lógica de hover/click/panel aplica sobre los elementos SVG.
+  - Detectar con: try { new THREE.WebGLRenderer() } catch(e) { usarVista2D() }
+
+En móvil (< 768px):
+  - Vista 3D en orientación landscape (mostrar hint "Gira tu dispositivo" en portrait).
+  - O bien, en portrait mostrar directamente la vista 2D SVG más el panel de detalle.
+  - Los botones de control de cámara deben ser más grandes (touch-friendly, 48px mínimo).
+
+==========================================
+PASO 5: DETALLES TÉCNICOS DE IMPLEMENTACIÓN
+==========================================
+1. Three.js: cargarlo dinámicamente en onMounted() para evitar SSR issues:
+   ```js
+   onMounted(async () => {
+     const script = document.createElement('script');
+     script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+     script.onload = () => initScene();
+     document.head.appendChild(script);
+   });
+   ```
+
+2. Raycasting para interacción: usar THREE.Raycaster con el array de meshes de stands.
+   En cada mousemove/click, calcular intersecciones y actuar según resultado.
+
+3. Tween suave para animaciones de stands: implementar con requestAnimationFrame y
+   interpolación lineal simple (lerp). No necesita librería externa.
+
+4. El panel lateral de detalle: es un div Vue con v-if y transición CSS (slide-in 300ms).
+   No es parte del canvas 3D — es HTML sobre el canvas (position: absolute o fixed).
+
+5. Estado reactivo: usar ref() de Vue para:
+   - selectedSpace (el espacio clickeado, null si ninguno)
+   - hoveredSpace (el espacio en hover, para tooltip)
+   - vendidos (array, inicializado con VENDIDOS constante)
+
+6. Guardar meshes en un Map<id, mesh> para poder actualizarlos (hover color, selected).
+
+7. Cleanup: en onUnmounted(), llamar a renderer.dispose() y cancelar requestAnimationFrame.
+
+==========================================
+PASO 6: CALIDAD Y PULIDO FINAL
+==========================================
+Antes de dar por terminada la implementación, verificar:
+
+□ La escena 3D se carga sin errores en Chrome, Firefox y Safari.
+□ La animación de fly-in inicial funciona suavemente.
+□ Hover en stands cambia color, eleva el stand y muestra tooltip.
+□ Click en stand disponible abre el panel lateral correctamente.
+□ Click en stand vendido no hace nada (o muestra tooltip "Espacio no disponible").
+□ El botón "Reservar espacio" en el panel redirige a /demo-prueba/paid con los params.
+□ La página /demo-prueba/paid recibe y muestra correctamente el espacio seleccionado.
+□ El formulario valida campos requeridos antes de "confirmar".
+□ El modal de éxito se abre con animación de confeti.
+□ La leyenda y el contador de disponibles son visibles y correctos.
+□ La vista 2D de fallback funciona si WebGL no está disponible.
+□ Responsive: funciona en móvil (375px) en ambas páginas.
+□ Las rutas /demo-prueba/layout y /demo-prueba/paid cargan sin errores en producción.
+□ No hay referencias a la base de datos ni a ningún modelo de la plataforma.
+□ `npm run build` pasa sin errores ni warnings relevantes.
+
+NO hacer deploy a producción hasta confirmar con el usuario.
