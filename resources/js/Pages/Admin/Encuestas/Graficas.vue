@@ -20,6 +20,7 @@ const filtros = ref({
     segmento:     props.filtros.segmento    ?? '',
     desde:        props.filtros.desde       ?? '',
     hasta:        props.filtros.hasta       ?? '',
+    canirac:      props.filtros.canirac     ?? '',
 });
 
 const aplicarFiltros = () => {
@@ -61,6 +62,7 @@ const urlReporte = computed(() => {
     const params = new URLSearchParams();
     if (filtros.value.evento_id)    params.set('evento_id', filtros.value.evento_id);
     if (filtros.value.plantilla_id) params.set('plantilla_id', filtros.value.plantilla_id);
+    if (filtros.value.canirac)      params.set('canirac', filtros.value.canirac);
     return route('admin.encuestas.reporte-pdf') + '?' + params.toString();
 });
 
@@ -68,6 +70,7 @@ const urlExcel = computed(() => {
     const params = new URLSearchParams();
     if (filtros.value.evento_id)    params.set('evento_id', filtros.value.evento_id);
     if (filtros.value.plantilla_id) params.set('plantilla_id', filtros.value.plantilla_id);
+    if (filtros.value.canirac)      params.set('canirac', filtros.value.canirac);
     return route('admin.encuestas.reporte-excel') + '?' + params.toString();
 });
 
@@ -171,8 +174,15 @@ const pieOptions = (pregunta) => ({
                     <input v-model="filtros.hasta" type="date"
                            class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-guinda-500" />
 
+                    <select v-model="filtros.canirac"
+                            class="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-guinda-500">
+                        <option value="">Canirac: Todos</option>
+                        <option value="si">✅ Solo Canirac</option>
+                        <option value="no">❌ No Canirac</option>
+                    </select>
+
                     <button type="submit"
-                            class="col-span-2 md:col-span-5 bg-guinda-800 hover:bg-guinda-700 text-white
+                            class="col-span-2 md:col-span-6 bg-guinda-800 hover:bg-guinda-700 text-white
                                    rounded-lg py-2 text-sm font-semibold transition-colors">
                         Aplicar filtros
                     </button>
@@ -180,7 +190,7 @@ const pieOptions = (pregunta) => ({
             </div>
 
             <!-- KPIs -->
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div class="grid grid-cols-2 md:grid-cols-6 gap-4">
                 <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 text-center">
                     <p class="text-3xl font-black text-gray-900 dark:text-white">{{ kpis.total_enviadas }}</p>
                     <p class="text-gray-500 dark:text-gray-500 text-xs mt-1">Enviadas</p>
@@ -200,6 +210,10 @@ const pieOptions = (pregunta) => ({
                 <div class="bg-white dark:bg-gray-900 border border-purple-200 dark:border-purple-800/50 rounded-2xl p-5 text-center">
                     <p class="text-3xl font-black text-purple-600 dark:text-purple-400">{{ kpis.proveedores }}</p>
                     <p class="text-gray-500 dark:text-gray-500 text-xs mt-1">Proveedores</p>
+                </div>
+                <div class="bg-white dark:bg-gray-900 border border-orange-200 dark:border-orange-800/50 rounded-2xl p-5 text-center">
+                    <p class="text-3xl font-black text-orange-600 dark:text-orange-400">{{ kpis.canirac }}</p>
+                    <p class="text-gray-500 dark:text-gray-500 text-xs mt-1">Canirac</p>
                 </div>
             </div>
 

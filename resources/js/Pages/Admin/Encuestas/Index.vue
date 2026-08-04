@@ -1,7 +1,7 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Link, router } from '@inertiajs/vue3';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import axios from 'axios';
 
 const props = defineProps({
@@ -12,6 +12,7 @@ const props = defineProps({
     ultimasRespondidas: Array,
     plantillas:         { type: Array, default: () => [] },
     plantillaActiva:    { type: Object, default: null },
+    recordatorioResultado: { type: Object, default: null },
 });
 
 const segmentosEnvio = [
@@ -61,6 +62,46 @@ const enviarPrueba = () => {
     }, {
         preserveScroll: true,
         onSuccess: () => { emailPrueba.value = ''; },
+    });
+};
+
+// ── Recordatorio de prueba ───────────────────────────────────────────
+const emailRecordatorioPrueba     = ref('');
+const plantillaRecordatorioPruebaId = ref('');
+
+const enviarRecordatorioPrueba = () => {
+    if (!emailRecordatorioPrueba.value) return;
+    router.post(route('admin.encuestas.enviar-recordatorio-prueba'), {
+        email:        emailRecordatorioPrueba.value,
+        plantilla_id: plantillaRecordatorioPruebaId.value || undefined,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => { emailRecordatorioPrueba.value = ''; },
+    });
+};
+
+// ── Popup de resultado del recordatorio ──────────────────────────────
+const modalRecordatorio = ref(false);
+
+watch(() => props.recordatorioResultado, (val) => {
+    if (val) modalRecordatorio.value = true;
+}, { immediate: true });
+
+// ── Eliminar respuestas ───────────────────────────────────────────────
+const eliminarId     = ref(null);
+const eliminarNombre = ref('');
+const modalEliminar  = ref(false);
+
+const confirmarEliminar = (id, nombre) => {
+    eliminarId.value     = id;
+    eliminarNombre.value = nombre ?? 'esta persona';
+    modalEliminar.value  = true;
+};
+
+const ejecutarEliminar = () => {
+    router.delete(route('admin.encuestas.eliminar-respuestas', eliminarId.value), {
+        preserveScroll: true,
+        onSuccess: () => { modalEliminar.value = false; },
     });
 };
 
@@ -267,6 +308,33 @@ function enviarPersonalizado() {
                 </button>
             </div>
 
+            <!-- Recordatorio de prueba -->
+            <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-500/20 rounded-2xl p-4">
+                <h3 class="text-amber-700 dark:text-amber-400 font-semibold text-sm mb-1">
+                    ⏰ Prueba de Recordatorio
+                </h3>
+                <p class="text-gray-500 dark:text-gray-400 text-xs mb-3">
+                    Envíate el correo de recordatorio para ver cómo se ve antes de mandarlo a los pendientes.
+                </p>
+                <div class="flex flex-wrap items-end gap-3">
+                    <div class="flex-1 min-w-[220px]">
+                        <input v-model="emailRecordatorioPrueba" type="email" placeholder="tu@correo.com"
+                            class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500" />
+                    </div>
+                    <div class="min-w-[200px]">
+                        <select v-model="plantillaRecordatorioPruebaId"
+                            class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500">
+                            <option value="">Plantilla activa</option>
+                            <option v-for="p in plantillas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                        </select>
+                    </div>
+                    <button @click="enviarRecordatorioPrueba" :disabled="!emailRecordatorioPrueba"
+                        class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition-colors whitespace-nowrap">
+                        Enviar prueba
+                    </button>
+                </div>
+            </div>
+
             <!-- Stats rápidos -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 text-center">
@@ -403,11 +471,18 @@ function enviarPersonalizado() {
                                 {{ enc.completada_at ?? '—' }}
                             </td>
                             <td class="px-4 py-3 text-right">
-                                <Link v-if="enc.completada"
-                                    :href="route('admin.encuestas.ver', enc.id)"
-                                    class="text-xs px-3 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">
-                                    👁 Ver
-                                </Link>
+                                <div class="flex items-center justify-end gap-2">
+                                    <Link v-if="enc.completada"
+                                        :href="route('admin.encuestas.ver', enc.id)"
+                                        class="text-xs px-3 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">
+                                        👁 Ver
+                                    </Link>
+                                    <button v-if="enc.completada"
+                                        @click="confirmarEliminar(enc.id, enc.usuario?.name)"
+                                        class="text-xs px-3 py-1 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-800/40 text-red-600 dark:text-red-400 rounded-lg transition-colors border border-red-200 dark:border-red-500/20">
+                                        🗑 Borrar
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -550,6 +625,110 @@ function enviarPersonalizado() {
                         <button @click="enviarPersonalizado" :disabled="seleccionados.length === 0"
                             class="px-6 py-2 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shrink-0">
                             Enviar a {{ seleccionados.length }} persona(s)
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Modal confirmar eliminar respuestas -->
+        <Teleport to="body">
+            <div v-if="modalEliminar"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style="background:rgba(0,0,0,0.55)" @click.self="modalEliminar = false">
+                <div class="bg-white dark:bg-gray-900 border border-red-200 dark:border-red-500/30 rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+                    <p class="text-2xl mb-2 text-center">🗑</p>
+                    <h3 class="text-gray-900 dark:text-white font-bold text-lg text-center mb-2">¿Eliminar respuestas?</h3>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm text-center mb-6">
+                        Se borrarán todas las respuestas de
+                        <strong class="text-gray-900 dark:text-white">{{ eliminarNombre }}</strong>.
+                        Esta acción no se puede deshacer.<br />
+                        <span class="text-amber-600 dark:text-amber-400 text-xs mt-1 block">
+                            La persona podrá volver a recibir la encuesta.
+                        </span>
+                    </p>
+                    <div class="flex gap-3">
+                        <button @click="modalEliminar = false"
+                            class="flex-1 px-4 py-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors">
+                            Cancelar
+                        </button>
+                        <button @click="ejecutarEliminar"
+                            class="flex-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition-colors">
+                            Sí, eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- Modal resultado de recordatorio -->
+        <Teleport to="body">
+            <div v-if="modalRecordatorio && recordatorioResultado"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style="background:rgba(0,0,0,0.55)" @click.self="modalRecordatorio = false">
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+
+                    <!-- Header -->
+                    <div class="p-6 border-b border-gray-100 dark:border-white/10">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <span class="text-3xl">
+                                    {{ recordatorioResultado.enviados === 0 ? '🎉' : '⏰' }}
+                                </span>
+                                <div>
+                                    <h3 class="text-gray-900 dark:text-white font-bold text-lg">Recordatorio enviado</h3>
+                                    <p class="text-gray-500 dark:text-gray-400 text-sm">{{ recordatorioResultado.mensaje }}</p>
+                                </div>
+                            </div>
+                            <button @click="modalRecordatorio = false"
+                                class="text-gray-400 hover:text-gray-700 dark:hover:text-white text-2xl leading-none transition-colors">✕</button>
+                        </div>
+                    </div>
+
+                    <!-- KPIs -->
+                    <div class="grid grid-cols-2 gap-4 p-6 border-b border-gray-100 dark:border-white/10">
+                        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-500/20 rounded-xl p-4 text-center">
+                            <p class="text-3xl font-bold text-amber-600 dark:text-amber-400">
+                                {{ recordatorioResultado.enviados }}
+                            </p>
+                            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Recordatorios enviados</p>
+                        </div>
+                        <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-500/20 rounded-xl p-4 text-center">
+                            <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
+                                {{ recordatorioResultado.ya_contestaron }}
+                            </p>
+                            <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Ya habían contestado</p>
+                        </div>
+                    </div>
+
+                    <!-- Lista de personas a quienes se envió -->
+                    <div v-if="recordatorioResultado.personas?.length > 0" class="p-6">
+                        <p class="text-gray-400 dark:text-gray-500 text-xs uppercase tracking-wider mb-3">
+                            Se envió recordatorio a:
+                        </p>
+                        <div class="max-h-48 overflow-y-auto space-y-2">
+                            <div v-for="p in recordatorioResultado.personas" :key="p.email"
+                                class="flex items-center gap-3 bg-gray-50 dark:bg-white/5 rounded-lg px-3 py-2">
+                                <span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                                    :class="p.tipo === 'proveedor'
+                                        ? 'bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400'
+                                        : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'">
+                                    {{ p.tipo === 'proveedor' ? '🏭' : '🛒' }}
+                                </span>
+                                <div class="min-w-0">
+                                    <p class="text-gray-900 dark:text-white text-sm truncate">{{ p.nombre }}</p>
+                                    <p class="text-gray-500 dark:text-gray-400 text-xs truncate">{{ p.email }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="px-6 pb-6">
+                        <button @click="modalRecordatorio = false"
+                            class="w-full py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white rounded-lg font-medium transition-colors">
+                            Entendido
                         </button>
                     </div>
 

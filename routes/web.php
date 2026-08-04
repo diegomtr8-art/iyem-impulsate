@@ -226,6 +226,8 @@ Route::middleware([
         Route::post('/encuestas/enviar-evento', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarParaEvento'])->name('encuestas.enviar-evento');
         Route::post('/encuestas/enviar-prueba', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarPrueba'])->name('encuestas.enviar-prueba');
         Route::post('/encuestas/enviar-recordatorio', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarRecordatorio'])->name('encuestas.enviar-recordatorio');
+        Route::post('/encuestas/enviar-recordatorio-prueba', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarRecordatorioPrueba'])->name('encuestas.enviar-recordatorio-prueba');
+        Route::delete('/encuestas/{encuesta}/eliminar-respuestas', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'eliminarRespuestas'])->name('encuestas.eliminar-respuestas');
         Route::get('/encuestas/plantillas',     [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'plantillas'])->name('encuestas.plantillas');
         Route::post('/encuestas/plantillas',    [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'guardarPlantilla'])->name('encuestas.plantillas.guardar');
         Route::post('/encuestas/plantillas/{plantilla}/activar',  [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'activarPlantilla'])->name('encuestas.plantillas.activar');

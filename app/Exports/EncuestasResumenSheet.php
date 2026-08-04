@@ -15,11 +15,12 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, WithTitle
 {
-    private array $boldRows = [1, 8];
+    private array $boldRows = [1, 10];
 
     public function __construct(
         private EncuestaPlantilla $plantilla,
-        private ?int $eventoId
+        private ?int $eventoId,
+        private ?string $canirac = null // 'si' | 'no' | null
     ) {}
 
     public function title(): string
@@ -37,7 +38,24 @@ class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, 
         $encuestaIds = EncuestaSatisfaccion::where('es_prueba', false)
             ->whereNotNull('completada_at')
             ->when($this->eventoId, fn ($q) => $q->where('evento_id', $this->eventoId))
+            ->when($this->canirac === 'si', fn ($q) =>
+                $q->whereHas('user', fn ($u) => $u->where('camara_asociacion', 'CANIRAC'))
+            )
+            ->when($this->canirac === 'no', fn ($q) =>
+                $q->whereHas('user', fn ($u) => $u->where(
+                    fn ($u2) => $u2->whereNull('camara_asociacion')->orWhere('camara_asociacion', '!=', 'CANIRAC')
+                ))
+            )
             ->pluck('id');
+
+        $caniracRespondidos   = EncuestaSatisfaccion::whereIn('id', $encuestaIds)
+            ->whereHas('user', fn ($q) => $q->where('camara_asociacion', 'CANIRAC'))
+            ->count();
+        $noCaniracRespondidos = EncuestaSatisfaccion::whereIn('id', $encuestaIds)
+            ->whereHas('user', fn ($q) => $q->where(
+                fn ($q2) => $q2->whereNull('camara_asociacion')->orWhere('camara_asociacion', '!=', 'CANIRAC')
+            ))
+            ->count();
 
         $totalRespondidas = $encuestaIds->count();
         $totalEnviadas    = EncuestaSatisfaccion::where('es_prueba', false)
@@ -51,6 +69,8 @@ class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, 
             ['Total respondidas:', $totalRespondidas, '', ''],
             ['Tasa de respuesta:', ($totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0) . '%', '', ''],
             ['Generado:', now()->format('d/m/Y H:i'), '', ''],
+            ['Miembros Canirac respondidos:', $caniracRespondidos, '', ''],
+            ['No Canirac respondidos:', $noCaniracRespondidos, '', ''],
             ['', '', '', ''],
             ['PREGUNTA', 'OPCIÓN DE RESPUESTA', 'CANTIDAD', '% DEL TOTAL'],
         ];
@@ -115,7 +135,7 @@ class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, 
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        $sheet->getStyle('A8:D8')->applyFromArray([
+        $sheet->getStyle('A10:D10')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '8B1028']],
         ]);

@@ -1,25 +1,41 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { Link } from '@inertiajs/vue3';
+import { Link, router } from '@inertiajs/vue3';
+import { ref } from 'vue';
 
-defineProps({
+const props = defineProps({
     encuesta: Object,
 });
+
+const confirmarBorrar = ref(false);
+
+const eliminarRespuestas = () => {
+    router.delete(route('admin.encuestas.eliminar-respuestas', props.encuesta.id), {
+        onSuccess: () => router.visit(route('admin.encuestas.index')),
+    });
+};
 </script>
 
 <template>
     <AdminLayout title="Detalle de Respuesta">
         <template #header>
-            <div class="flex items-center gap-3 flex-wrap">
-                <Link :href="route('admin.encuestas.index')"
-                    class="text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors text-sm">
-                    ← Volver a Encuestas
-                </Link>
-                <h1 class="text-xl font-bold text-gray-900 dark:text-white">Respuesta #{{ encuesta.id }}</h1>
-                <span v-if="encuesta.es_prueba"
-                    class="px-3 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-semibold">
-                    PRUEBA
-                </span>
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div class="flex items-center gap-3 flex-wrap">
+                    <Link :href="route('admin.encuestas.index')"
+                        class="text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors text-sm">
+                        ← Volver a Encuestas
+                    </Link>
+                    <h1 class="text-xl font-bold text-gray-900 dark:text-white">Respuesta #{{ encuesta.id }}</h1>
+                    <span v-if="encuesta.es_prueba"
+                        class="px-3 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-semibold">
+                        PRUEBA
+                    </span>
+                </div>
+                <button @click="confirmarBorrar = true"
+                    class="px-4 py-2 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-800/50 border border-red-200 dark:border-red-500/30
+                           text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 rounded-lg text-sm transition-colors">
+                    🗑 Eliminar respuestas
+                </button>
             </div>
         </template>
 
@@ -85,5 +101,35 @@ defineProps({
             </div>
 
         </div>
+
+        <!-- Modal de confirmación -->
+        <Teleport to="body">
+            <div v-if="confirmarBorrar"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style="background:rgba(0,0,0,0.55)" @click.self="confirmarBorrar = false">
+                <div class="bg-white dark:bg-gray-900 border border-red-200 dark:border-red-500/30 rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+                    <p class="text-2xl mb-2 text-center">🗑</p>
+                    <h3 class="text-gray-900 dark:text-white font-bold text-lg text-center mb-2">¿Eliminar respuestas?</h3>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm text-center mb-6">
+                        Se borrarán todas las respuestas de
+                        <strong class="text-gray-900 dark:text-white">{{ encuesta.usuario?.name ?? 'esta persona' }}</strong>.
+                        Esta acción no se puede deshacer.<br />
+                        <span class="text-amber-600 dark:text-amber-400 text-xs mt-1 block">
+                            La persona podrá volver a recibir la encuesta.
+                        </span>
+                    </p>
+                    <div class="flex gap-3">
+                        <button @click="confirmarBorrar = false"
+                            class="flex-1 px-4 py-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors">
+                            Cancelar
+                        </button>
+                        <button @click="eliminarRespuestas"
+                            class="flex-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition-colors">
+                            Sí, eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AdminLayout>
 </template>

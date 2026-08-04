@@ -19,7 +19,8 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
         private EncuestaPlantilla $plantilla,
         private ?int $eventoId,
         private ?string $tipo, // null=todos, 'comprador', 'proveedor'
-        private string $titulo
+        private string $titulo,
+        private ?string $canirac = null // 'si' | 'no' | null
     ) {}
 
     public function title(): string
@@ -29,7 +30,7 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
 
     public function columnWidths(): array
     {
-        return ['A' => 25, 'B' => 25, 'C' => 30, 'D' => 14, 'E' => 20];
+        return ['A' => 25, 'B' => 25, 'C' => 30, 'D' => 14, 'E' => 12, 'F' => 20];
     }
 
     public function collection()
@@ -41,6 +42,14 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
             ->whereNotNull('completada_at')
             ->when($this->eventoId, fn ($q) => $q->where('evento_id', $this->eventoId))
             ->when($this->tipo, fn ($q) => $q->where('tipo', $this->tipo))
+            ->when($this->canirac === 'si', fn ($q) =>
+                $q->whereHas('user', fn ($u) => $u->where('camara_asociacion', 'CANIRAC'))
+            )
+            ->when($this->canirac === 'no', fn ($q) =>
+                $q->whereHas('user', fn ($u) => $u->where(
+                    fn ($u2) => $u2->whereNull('camara_asociacion')->orWhere('camara_asociacion', '!=', 'CANIRAC')
+                ))
+            )
             ->orderBy('tipo')
             ->orderBy('completada_at');
 
@@ -52,6 +61,7 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
                 'Participante'    => $enc->user?->name ?? '—',
                 'Email'           => $enc->user?->email ?? '—',
                 'Tipo'            => ucfirst($enc->tipo),
+                'Canirac'         => $enc->user?->camara_asociacion === 'CANIRAC' ? 'Sí' : 'No',
                 'Fecha respuesta' => $enc->completada_at?->format('d/m/Y H:i'),
             ];
 
@@ -66,7 +76,7 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
     public function headings(): array
     {
         $preguntas = $this->plantilla->preguntas ?? [];
-        $base      = ['Evento', 'Participante', 'Email', 'Tipo', 'Fecha respuesta'];
+        $base      = ['Evento', 'Participante', 'Email', 'Tipo', 'Canirac', 'Fecha respuesta'];
         foreach ($preguntas as $p) {
             $base[] = $p['texto'];
         }

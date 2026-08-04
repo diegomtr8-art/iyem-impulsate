@@ -107,6 +107,7 @@ class EncuestaAdminController extends Controller
                 'binario'           => $metricasBinario,
             ],
             'ultimasRespondidas' => $ultimasRespondidas,
+            'recordatorioResultado' => session('recordatorio_resultado'),
         ]);
     }
 
@@ -142,6 +143,7 @@ class EncuestaAdminController extends Controller
         $segmento    = $request->get('segmento'); // 'comprador' | 'proveedor' | null
         $desde       = $request->get('desde');
         $hasta       = $request->get('hasta');
+        $canirac     = $request->get('canirac'); // 'si' | 'no' | null
 
         // Plantilla activa o la seleccionada
         $plantilla = $this->resolverPlantilla($plantillaId);
@@ -162,6 +164,7 @@ class EncuestaAdminController extends Controller
         if ($hasta) {
             $base->whereDate('completada_at', '<=', $hasta);
         }
+        $this->aplicarFiltroCanirac($base, $canirac);
 
         $encuestaIds       = (clone $base)->pluck('id');
         $totalRespondidas  = $encuestaIds->count();
@@ -174,6 +177,7 @@ class EncuestaAdminController extends Controller
 
         $compradores = (clone $base)->where('tipo', 'comprador')->count();
         $proveedores = (clone $base)->where('tipo', 'proveedor')->count();
+        $caniracCount = (clone $base)->whereHas('user', fn ($q) => $q->where('camara_asociacion', 'CANIRAC'))->count();
 
         // Agrupar respuestas por pregunta
         $respuestasAgrupadas = $this->agruparRespuestasPorPregunta($encuestaIds);
@@ -204,13 +208,14 @@ class EncuestaAdminController extends Controller
             ] : null,
             'plantillas' => EncuestaPlantilla::orderByDesc('activa')->get(['id', 'nombre', 'activa']),
             'eventos'    => Evento::orderByDesc('created_at')->get(['id', 'nombre']),
-            'filtros'    => compact('eventoId', 'plantillaId', 'segmento', 'desde', 'hasta'),
+            'filtros'    => compact('eventoId', 'plantillaId', 'segmento', 'desde', 'hasta', 'canirac'),
             'kpis'       => [
                 'total_enviadas'    => $totalEnviadas,
                 'total_respondidas' => $totalRespondidas,
                 'tasa'              => $totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0,
                 'compradores'       => $compradores,
                 'proveedores'       => $proveedores,
+                'canirac'           => $caniracCount,
             ],
             'datos'      => $respuestasAgrupadas,
             'respondientes' => $respondientes,
@@ -269,6 +274,17 @@ class EncuestaAdminController extends Controller
             : EncuestaPlantilla::where('activa', true)->first();
     }
 
+    private function aplicarFiltroCanirac($query, ?string $canirac): void
+    {
+        if ($canirac === 'si') {
+            $query->whereHas('user', fn ($u) => $u->where('camara_asociacion', 'CANIRAC'));
+        } elseif ($canirac === 'no') {
+            $query->whereHas('user', fn ($u) => $u->where(
+                fn ($u2) => $u2->whereNull('camara_asociacion')->orWhere('camara_asociacion', '!=', 'CANIRAC')
+            ));
+        }
+    }
+
     public function exportar(Request $request)
     {
         $eventoId = $request->get('evento_id');
@@ -286,11 +302,13 @@ class EncuestaAdminController extends Controller
         }
 
         $eventoId = $request->get('evento_id');
+        $canirac  = $request->get('canirac'); // 'si' | 'no' | null
         $evento   = $eventoId ? Evento::find($eventoId) : null;
 
         $base = EncuestaSatisfaccion::where('es_prueba', false)
             ->whereNotNull('completada_at')
             ->when($eventoId, fn ($q) => $q->where('evento_id', $eventoId));
+        $this->aplicarFiltroCanirac($base, $canirac);
 
         $totalRespondidas = (clone $base)->count();
         $totalEnviadas    = EncuestaSatisfaccion::where('es_prueba', false)
@@ -343,9 +361,10 @@ class EncuestaAdminController extends Controller
         }
 
         $eventoId = $request->get('evento_id');
+        $canirac  = $request->get('canirac'); // 'si' | 'no' | null
         $filename = 'encuestas-' . now()->format('Y-m-d') . '.xlsx';
 
-        return Excel::download(new EncuestasReporteExport($plantilla, $eventoId), $filename);
+        return Excel::download(new EncuestasReporteExport($plantilla, $eventoId, $canirac), $filename);
     }
 
     // ── Plantillas ────────────────────────────────────────────────────────────
@@ -463,21 +482,77 @@ class EncuestaAdminController extends Controller
             'evento_id' => 'required|exists:eventos,id',
         ]);
 
-        $pendientes = EncuestaSatisfaccion::where('evento_id', $request->evento_id)
+        $pendientes = EncuestaSatisfaccion::with('user')
+            ->where('evento_id', $request->evento_id)
             ->where('es_prueba', false)
             ->whereNull('completada_at')
             ->get();
 
+        $yaContestaron = EncuestaSatisfaccion::where('evento_id', $request->evento_id)
+            ->where('es_prueba', false)
+            ->whereNotNull('completada_at')
+            ->count();
+
         if ($pendientes->isEmpty()) {
-            return back()->with('info', 'Todos los participantes ya respondieron la encuesta. 🎉');
+            return back()->with('recordatorio_resultado', [
+                'enviados'       => 0,
+                'ya_contestaron' => $yaContestaron,
+                'personas'       => [],
+                'mensaje'        => '¡Todos han contestado!',
+            ]);
         }
 
+        $personas = [];
         foreach ($pendientes as $encuesta) {
             \App\Jobs\SendRecordatorioJob::dispatch($encuesta->id)
                 ->onQueue('encuestas');
+            $personas[] = [
+                'nombre' => $encuesta->user?->name ?? $encuesta->email_prueba ?? '—',
+                'email'  => $encuesta->user?->email ?? $encuesta->email_prueba ?? '—',
+                'tipo'   => $encuesta->tipo,
+            ];
         }
 
-        return back()->with('success', "Recordatorio enviado a {$pendientes->count()} persona(s) que no han contestado.");
+        return back()->with('recordatorio_resultado', [
+            'enviados'       => $pendientes->count(),
+            'ya_contestaron' => $yaContestaron,
+            'personas'       => $personas,
+            'mensaje'        => "Recordatorio enviado a {$pendientes->count()} persona(s) pendiente(s).",
+        ]);
+    }
+
+    public function enviarRecordatorioPrueba(Request $request)
+    {
+        $request->validate([
+            'email'        => 'required|email',
+            'plantilla_id' => 'nullable|exists:encuesta_plantillas,id',
+        ]);
+
+        $plantilla = $this->resolverPlantilla($request->plantilla_id);
+
+        $encuesta = EncuestaSatisfaccion::create([
+            'evento_id'             => null,
+            'user_id'               => null,
+            'tipo'                  => 'proveedor',
+            'token'                 => Str::random(40),
+            'encuesta_plantilla_id' => $plantilla?->id,
+            'es_prueba'             => true,
+            'email_prueba'          => $request->email,
+        ]);
+
+        Mail::to($request->email)->send(new \App\Mail\EncuestaRecordatorioMail($encuesta->load('plantilla')));
+
+        return back()->with('success', "Correo de recordatorio de prueba enviado a {$request->email}.");
+    }
+
+    public function eliminarRespuestas(EncuestaSatisfaccion $encuesta)
+    {
+        $nombre = $encuesta->user?->name ?? $encuesta->email_prueba ?? "ID {$encuesta->id}";
+
+        $encuesta->respuestas()->delete();
+        $encuesta->delete();
+
+        return back()->with('success', "Respuestas de {$nombre} eliminadas. Puede volver a recibir la encuesta.");
     }
 
     public function participantes(Request $request)
