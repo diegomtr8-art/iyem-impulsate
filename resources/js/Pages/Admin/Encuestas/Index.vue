@@ -2,6 +2,7 @@
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { ref, computed } from 'vue';
+import axios from 'axios';
 
 const props = defineProps({
     encuestas:          Object,
@@ -9,24 +10,55 @@ const props = defineProps({
     filtroEvento:       [String, Number, null],
     metricas:           Object,
     ultimasRespondidas: Array,
+    plantillas:         { type: Array, default: () => [] },
+    plantillaActiva:    { type: Object, default: null },
 });
 
+const segmentosEnvio = [
+    { value: 'todos', label: 'Todos' },
+    { value: 'proveedores_evento', label: 'Proveedores del evento' },
+    { value: 'compradores_evento', label: 'Compradores del evento' },
+    { value: 'proveedores', label: 'Solo proveedores' },
+    { value: 'compradores', label: 'Solo compradores' },
+];
+
 const eventoSeleccionado = ref(props.filtroEvento ?? '');
-const emailPrueba = ref('');
-const abiertas    = ref([]);
+const plantillaEnvioId   = ref(props.plantillaActiva?.id ?? '');
+const segmentoEnvio      = ref('todos');
+const emailPrueba        = ref('');
+const plantillaPruebaId  = ref('');
+const abiertas           = ref([]);
 
 const filtrar = () => {
     router.get(route('admin.encuestas.index'), { evento_id: eventoSeleccionado.value || undefined }, { preserveScroll: true });
 };
 
 const enviarAEvento = () => {
-    if (!eventoSeleccionado.value) return;
-    if (!confirm('¿Enviar la encuesta a todos los participantes aprobados de este evento que aún no la han recibido?')) return;
-    router.post(route('admin.encuestas.enviar-evento'), { evento_id: eventoSeleccionado.value }, { preserveScroll: true });
+    if (!eventoSeleccionado.value || !plantillaEnvioId.value) return;
+    if (!confirm('¿Enviar la encuesta a los participantes aprobados de este evento que aún no la han recibido?')) return;
+    router.post(route('admin.encuestas.enviar-evento'), {
+        evento_id:    eventoSeleccionado.value,
+        plantilla_id: plantillaEnvioId.value,
+        segmento:     segmentoEnvio.value,
+    }, { preserveScroll: true });
+};
+
+const enviarRecordatorio = () => {
+    if (!eventoSeleccionado.value) {
+        alert('Selecciona un evento primero.');
+        return;
+    }
+    if (!confirm('¿Enviar recordatorio a todos los que NO han contestado aún?')) return;
+    router.post(route('admin.encuestas.enviar-recordatorio'), {
+        evento_id: eventoSeleccionado.value,
+    }, { preserveScroll: true });
 };
 
 const enviarPrueba = () => {
-    router.post(route('admin.encuestas.enviar-prueba'), { email: emailPrueba.value }, {
+    router.post(route('admin.encuestas.enviar-prueba'), {
+        email:        emailPrueba.value,
+        plantilla_id: plantillaPruebaId.value || undefined,
+    }, {
         preserveScroll: true,
         onSuccess: () => { emailPrueba.value = ''; },
     });
@@ -42,6 +74,83 @@ const urlExportar = computed(() => {
     const base = route('admin.encuestas.exportar');
     return eventoSeleccionado.value ? `${base}?evento_id=${eventoSeleccionado.value}` : base;
 });
+
+// ── Envío personalizado ──────────────────────────────────────────────
+const modalPersonalizado     = ref(false);
+const eventoSelPersonalizado = ref('');
+const plantillaPersonalizada = ref('');
+const participantes          = ref([]);
+const cargandoPart           = ref(false);
+const filtroTipo             = ref(''); // '' | 'proveedor' | 'comprador'
+const busquedaPart            = ref('');
+const seleccionados           = ref([]); // array de user_ids
+
+const participantesFiltrados = computed(() => {
+    let lista = participantes.value;
+    if (filtroTipo.value) lista = lista.filter(p => p.tipo === filtroTipo.value);
+    if (busquedaPart.value) {
+        const q = busquedaPart.value.toLowerCase();
+        lista = lista.filter(p =>
+            p.name.toLowerCase().includes(q) ||
+            p.nombre_negocio.toLowerCase().includes(q) ||
+            p.email.toLowerCase().includes(q)
+        );
+    }
+    return lista;
+});
+
+const todosSeleccionados = computed(() =>
+    participantesFiltrados.value.length > 0 &&
+    participantesFiltrados.value.every(p => seleccionados.value.includes(p.user_id))
+);
+
+async function cargarParticipantes() {
+    if (!eventoSelPersonalizado.value) return;
+    cargandoPart.value = true;
+    seleccionados.value = [];
+    try {
+        const { data } = await axios.get(route('admin.encuestas.participantes'), {
+            params: { evento_id: eventoSelPersonalizado.value },
+        });
+        participantes.value = data;
+    } finally {
+        cargandoPart.value = false;
+    }
+}
+
+function toggleTodos() {
+    const ids = participantesFiltrados.value.map(p => p.user_id);
+    if (todosSeleccionados.value) {
+        seleccionados.value = seleccionados.value.filter(id => !ids.includes(id));
+    } else {
+        seleccionados.value = [...new Set([...seleccionados.value, ...ids])];
+    }
+}
+
+function abrirPersonalizado() {
+    modalPersonalizado.value = true;
+    eventoSelPersonalizado.value = '';
+    plantillaPersonalizada.value = '';
+    participantes.value = [];
+    seleccionados.value = [];
+    busquedaPart.value = '';
+    filtroTipo.value = '';
+}
+
+function enviarPersonalizado() {
+    if (seleccionados.value.length === 0) return;
+    router.post(route('admin.encuestas.enviar-seleccion'), {
+        evento_id:    eventoSelPersonalizado.value,
+        plantilla_id: plantillaPersonalizada.value || undefined,
+        user_ids:     seleccionados.value,
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            modalPersonalizado.value = false;
+            seleccionados.value = [];
+        },
+    });
+}
 </script>
 
 <template>
@@ -53,6 +162,14 @@ const urlExportar = computed(() => {
                     <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">Respuestas de participantes por evento</p>
                 </div>
                 <div class="flex items-center gap-2">
+                    <button @click="abrirPersonalizado"
+                        class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors">
+                        🎯 Envío personalizado
+                    </button>
+                    <Link :href="route('admin.encuestas.graficas')"
+                        class="inline-flex items-center gap-2 px-4 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
+                        📊 Ver Gráficas
+                    </Link>
                     <Link :href="route('admin.encuestas.plantillas')"
                         class="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -73,7 +190,7 @@ const urlExportar = computed(() => {
 
         <div class="space-y-6 max-w-5xl">
 
-            <!-- Filtro por evento + enviar encuestas -->
+            <!-- Filtro por evento -->
             <div class="flex flex-wrap items-end gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4">
                 <div class="flex-1 min-w-[200px]">
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Filtrar por evento</label>
@@ -87,10 +204,46 @@ const urlExportar = computed(() => {
                     class="px-4 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
                     Filtrar
                 </button>
-                <button @click="enviarAEvento" :disabled="!eventoSeleccionado"
-                    class="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
-                    Enviar encuestas a este evento
-                </button>
+            </div>
+
+            <!-- Enviar encuestas -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 space-y-3">
+                <h3 class="text-sm font-bold text-gray-900 dark:text-white">Enviar encuestas a un evento</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Plantilla</label>
+                        <select v-model="plantillaEnvioId"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                            <option value="">— Selecciona plantilla —</option>
+                            <option v-for="p in plantillas" :key="p.id" :value="p.id">{{ p.activa ? '✓ ' : '' }}{{ p.nombre }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Evento</label>
+                        <select v-model="eventoSeleccionado"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                            <option value="">— Selecciona evento —</option>
+                            <option v-for="ev in eventos" :key="ev.id" :value="ev.id">{{ ev.nombre }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Segmento</label>
+                        <select v-model="segmentoEnvio"
+                            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                            <option v-for="s in segmentosEnvio" :key="s.value" :value="s.value">{{ s.label }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button @click="enviarAEvento" :disabled="!eventoSeleccionado || !plantillaEnvioId"
+                        class="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
+                        Enviar encuestas
+                    </button>
+                    <button @click="enviarRecordatorio" :disabled="!eventoSeleccionado"
+                        class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-xl text-sm font-medium transition-colors flex items-center gap-2">
+                        ⏰ Recordatorio a pendientes
+                    </button>
+                </div>
             </div>
 
             <!-- Botón de prueba -->
@@ -99,6 +252,14 @@ const urlExportar = computed(() => {
                     <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Enviar encuesta de prueba a</label>
                     <input v-model="emailPrueba" type="email" placeholder="tu-correo@ejemplo.com"
                         class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500" />
+                </div>
+                <div class="min-w-[200px]">
+                    <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Plantilla a probar</label>
+                    <select v-model="plantillaPruebaId"
+                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                        <option value="">Plantilla activa</option>
+                        <option v-for="p in plantillas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
+                    </select>
                 </div>
                 <button @click="enviarPrueba" :disabled="!emailPrueba"
                     class="px-4 py-2 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 text-white text-sm font-semibold rounded-xl transition-colors">
@@ -209,6 +370,7 @@ const urlExportar = computed(() => {
                             <th class="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Tipo</th>
                             <th class="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Estado</th>
                             <th class="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Respondida</th>
+                            <th class="text-left px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
@@ -240,6 +402,13 @@ const urlExportar = computed(() => {
                             <td class="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">
                                 {{ enc.completada_at ?? '—' }}
                             </td>
+                            <td class="px-4 py-3 text-right">
+                                <Link v-if="enc.completada"
+                                    :href="route('admin.encuestas.ver', enc.id)"
+                                    class="text-xs px-3 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg transition-colors">
+                                    👁 Ver
+                                </Link>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -264,5 +433,128 @@ const urlExportar = computed(() => {
             </div>
 
         </div>
+
+        <!-- Modal Envío Personalizado -->
+        <Teleport to="body">
+            <div v-if="modalPersonalizado"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style="background:rgba(0,0,0,0.55)" @click.self="modalPersonalizado = false">
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+
+                    <!-- Header -->
+                    <div class="flex items-center justify-between p-6 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+                        <div>
+                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">🎯 Envío Personalizado</h2>
+                            <p class="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Selecciona exactamente a quién enviar la encuesta</p>
+                        </div>
+                        <button @click="modalPersonalizado = false"
+                            class="text-gray-400 hover:text-gray-700 dark:hover:text-white text-2xl leading-none transition-colors">✕</button>
+                    </div>
+
+                    <!-- Filtros de carga -->
+                    <div class="p-6 border-b border-gray-100 dark:border-gray-800 flex-shrink-0 space-y-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Evento *</label>
+                                <select v-model="eventoSelPersonalizado" @change="cargarParticipantes"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                                    <option value="">Selecciona un evento</option>
+                                    <option v-for="e in eventos" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Plantilla</label>
+                                <select v-model="plantillaPersonalizada"
+                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                                    <option value="">Usar plantilla activa</option>
+                                    <option v-for="p in plantillas" :key="p.id" :value="p.id">
+                                        {{ p.nombre }}{{ p.activa ? ' ✓' : '' }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Filtros de lista -->
+                        <div v-if="participantes.length > 0" class="flex gap-3">
+                            <input v-model="busquedaPart" type="text" placeholder="Buscar por nombre o correo..."
+                                class="flex-1 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500" />
+                            <select v-model="filtroTipo"
+                                class="text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500">
+                                <option value="">Todos</option>
+                                <option value="proveedor">Proveedores</option>
+                                <option value="comprador">Compradores</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Lista de participantes -->
+                    <div class="flex-1 overflow-y-auto">
+                        <div v-if="cargandoPart" class="flex items-center justify-center py-16">
+                            <div class="w-8 h-8 border-2 border-guinda-600 border-t-transparent rounded-full animate-spin"></div>
+                        </div>
+
+                        <div v-else-if="!eventoSelPersonalizado" class="text-center py-16 text-gray-400 dark:text-gray-600 text-sm">
+                            Selecciona un evento para ver los participantes
+                        </div>
+
+                        <div v-else-if="participantesFiltrados.length === 0" class="text-center py-16 text-gray-400 dark:text-gray-600 text-sm">
+                            No hay participantes con los filtros seleccionados
+                        </div>
+
+                        <div v-else>
+                            <div class="sticky top-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur px-6 py-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
+                                <label class="flex items-center gap-3 cursor-pointer">
+                                    <input type="checkbox" :checked="todosSeleccionados" @change="toggleTodos"
+                                        class="w-4 h-4 accent-guinda-700 rounded" />
+                                    <span class="text-gray-600 dark:text-gray-300 text-sm">
+                                        Seleccionar todos ({{ participantesFiltrados.length }})
+                                    </span>
+                                </label>
+                                <span class="text-guinda-700 dark:text-guinda-400 text-sm font-medium">
+                                    {{ seleccionados.length }} seleccionado(s)
+                                </span>
+                            </div>
+
+                            <div class="divide-y divide-gray-100 dark:divide-gray-800">
+                                <label v-for="p in participantesFiltrados" :key="p.user_id"
+                                    class="flex items-center gap-4 px-6 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
+                                    :class="p.ya_enviada ? 'opacity-50' : ''">
+                                    <input type="checkbox" :value="p.user_id" v-model="seleccionados" :disabled="p.ya_enviada"
+                                        class="w-4 h-4 accent-guinda-700 rounded flex-shrink-0" />
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-gray-900 dark:text-white text-sm font-medium truncate">{{ p.nombre_negocio }}</span>
+                                            <span v-if="p.ya_enviada"
+                                                class="text-[10px] px-2 py-0.5 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 rounded-full flex-shrink-0">
+                                                ya enviada
+                                            </span>
+                                        </div>
+                                        <p class="text-gray-400 dark:text-gray-500 text-xs truncate">{{ p.email }}</p>
+                                    </div>
+                                    <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium"
+                                        :class="p.tipo === 'proveedor'
+                                            ? 'bg-guinda-100 dark:bg-guinda-900/30 text-guinda-700 dark:text-guinda-400'
+                                            : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'">
+                                        {{ p.tipo === 'proveedor' ? '🏭 Proveedor' : '🛒 Comprador' }}
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="p-6 border-t border-gray-100 dark:border-gray-800 flex-shrink-0 flex items-center justify-between gap-4">
+                        <p class="text-gray-400 dark:text-gray-500 text-xs">
+                            Los participantes con "ya enviada" no volverán a recibir la encuesta.
+                        </p>
+                        <button @click="enviarPersonalizado" :disabled="seleccionados.length === 0"
+                            class="px-6 py-2 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 shrink-0">
+                            Enviar a {{ seleccionados.length }} persona(s)
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </Teleport>
     </AdminLayout>
 </template>

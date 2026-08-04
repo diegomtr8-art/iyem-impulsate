@@ -12,6 +12,7 @@ class EncuestaSatisfaccion extends Model
         'evento_id',
         'user_id',
         'tipo',
+        'segmento',
         'token',
         'completada_at',
         'encuesta_plantilla_id',

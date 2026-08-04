@@ -8,7 +8,7 @@ class EncuestaPlantilla extends Model
 {
     protected $table = 'encuesta_plantillas';
 
-    protected $fillable = ['nombre', 'descripcion', 'preguntas', 'activa'];
+    protected $fillable = ['nombre', 'descripcion', 'preguntas', 'activa', 'segmento'];
 
     protected function casts(): array
     {

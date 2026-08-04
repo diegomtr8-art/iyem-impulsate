@@ -43,7 +43,12 @@ class EncuestaController extends Controller
 
         foreach ($preguntas as $pregunta) {
             $respuesta = $request->input($pregunta['id']);
-            if ($respuesta !== null && $respuesta !== '') {
+
+            if ($pregunta['tipo'] === 'multiple' && is_array($respuesta)) {
+                $respuesta = implode(', ', array_filter($respuesta));
+            }
+
+            if ($respuesta !== null && $respuesta !== '' && $respuesta !== []) {
                 EncuestaRespuesta::create([
                     'encuesta_satisfaccion_id' => $encuesta->id,
                     'pregunta'                 => $pregunta['texto'],

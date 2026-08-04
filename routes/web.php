@@ -219,12 +219,19 @@ Route::middleware([
         // Encuestas de satisfacción (admin)
         Route::get('/encuestas',          [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'index'])->name('encuestas.index');
         Route::get('/encuestas/exportar', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'exportar'])->name('encuestas.exportar');
+        Route::get('/encuestas/graficas', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'graficas'])->name('encuestas.graficas');
+        Route::get('/encuestas/reporte-pdf',   [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'reportePdf'])->name('encuestas.reporte-pdf');
+        Route::get('/encuestas/reporte-excel', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'reporteExcel'])->name('encuestas.reporte-excel');
+        Route::get('/encuestas/{encuesta}/ver', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'verRespuesta'])->name('encuestas.ver');
         Route::post('/encuestas/enviar-evento', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarParaEvento'])->name('encuestas.enviar-evento');
         Route::post('/encuestas/enviar-prueba', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarPrueba'])->name('encuestas.enviar-prueba');
+        Route::post('/encuestas/enviar-recordatorio', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarRecordatorio'])->name('encuestas.enviar-recordatorio');
         Route::get('/encuestas/plantillas',     [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'plantillas'])->name('encuestas.plantillas');
         Route::post('/encuestas/plantillas',    [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'guardarPlantilla'])->name('encuestas.plantillas.guardar');
         Route::post('/encuestas/plantillas/{plantilla}/activar',  [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'activarPlantilla'])->name('encuestas.plantillas.activar');
         Route::delete('/encuestas/plantillas/{plantilla}', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'eliminarPlantilla'])->name('encuestas.plantillas.eliminar');
+        Route::get('/encuestas/participantes',      [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'participantes'])->name('encuestas.participantes');
+        Route::post('/encuestas/enviar-seleccion',  [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarSeleccion'])->name('encuestas.enviar-seleccion');
 
         // ── Módulos exclusivos del super-administrador ──────────────────────────
         Route::middleware('super-admin')->group(function () {

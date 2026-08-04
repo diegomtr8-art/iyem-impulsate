@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encuesta de satisfacción</title>
+    <title>Recordatorio: Encuesta de satisfacción</title>
 </head>
 <body style="margin:0;padding:0;background-color:#f9fafb;font-family:'Segoe UI',Arial,sans-serif;">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:40px 20px;">
@@ -23,7 +23,7 @@
                 <tr>
                     <td style="padding:0;text-align:center;">
                         <div style="display:inline-block;background:#fef2f4;border:1px solid #f5a8b5;border-radius:999px;padding:8px 20px;margin:24px auto 0;font-size:13px;font-weight:700;color:#8b1028;">
-                            ⭐ Encuesta de satisfacción
+                            ⏰ Recordatorio de encuesta
                         </div>
                     </td>
                 </tr>
@@ -35,10 +35,10 @@
                             Hola, <strong>{{ $user?->name ?? 'Participante' }}</strong>
                         </p>
                         <p style="margin:0 0 16px;font-size:15px;color:#374151;">
-                            Gracias por participar como <strong>{{ $tipo === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>{!! $evento ? ' en el evento <strong>' . e($evento->nombre) . '</strong>' : '' !!}.
+                            Te recordamos que aún no has respondido la encuesta de satisfacción como <strong>{{ $tipo === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>{!! $evento ? ' en el evento <strong>' . e($evento->nombre) . '</strong>' : '' !!}.
                         </p>
                         <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
-                            Tu opinión es muy importante para nosotros. Por favor tómate unos minutos para contestar nuestra breve encuesta de satisfacción.
+                            Tu opinión es muy importante para nosotros. Solo te tomará unos minutos.
                         </p>
 
                         <!-- CTA -->
