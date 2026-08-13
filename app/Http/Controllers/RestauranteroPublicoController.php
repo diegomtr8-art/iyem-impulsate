@@ -22,13 +22,45 @@ class RestauranteroPublicoController extends Controller
             ->paginate(8, ['*'], 'plataforma_page')
             ->withQueryString();
 
-        if (!$evento) {
+        // Para bazares, mostrar todos los proveedores de la plataforma
+        // (no hay "proveedores del evento" en un bazar)
+        if (!$evento || $evento->tipo_evento === 'bazar_exposicion') {
+            // Sin evento: mostrar todos los proveedores como contenido principal
+            $queryTodos = Restaurantero::query()
+                ->where('activo', true)
+                ->where('aprobado', true)
+                ->where('perfil_completo', true)
+                ->withCount('citas')
+                ->orderByDesc('created_at');
+
+            if ($request->filled('search')) {
+                $s = $request->search;
+                $queryTodos->where(function ($q) use ($s) {
+                    $q->where('nombre_restaurante', 'like', "%{$s}%")
+                      ->orWhere('direccion', 'like', "%{$s}%")
+                      ->orWhere('descripcion', 'like', "%{$s}%")
+                      ->orWhere('municipio', 'like', "%{$s}%");
+                });
+            }
+
+            if ($request->filled('categoria')) {
+                $queryTodos->where('categoria', $request->categoria);
+            }
+
+            $categoriasTodos = Restaurantero::where('activo', true)
+                ->where('aprobado', true)
+                ->where('perfil_completo', true)
+                ->whereNotNull('categoria')
+                ->distinct()
+                ->orderBy('categoria')
+                ->pluck('categoria');
+
             return Inertia::render('Restauranteros/Index', [
-                'restauranteros'        => [],
+                'restauranteros'        => $queryTodos->paginate(12)->withQueryString(),
                 'sin_evento'            => true,
                 'filters'               => $request->only(['search', 'categoria']),
-                'categorias'            => [],
-                'proveedoresPlataforma' => $proveedoresPlataforma,
+                'categorias'            => $categoriasTodos,
+                'proveedoresPlataforma' => null,
             ]);
         }
 

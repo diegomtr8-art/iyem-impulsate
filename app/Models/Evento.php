@@ -25,6 +25,10 @@ class Evento extends Model
         'fecha_inicio',
         'fecha_corte',
         'activa',
+        'tipo_evento',
+        'fecha_aceptacion_solicitudes',
+        'max_espacios',
+        'con_criterios_evaluacion',
         'fecha_hora_inicio',
         'fecha_hora_fin',
         'fecha_hora_inicio_proveedores',
@@ -52,6 +56,7 @@ class Evento extends Model
     {
         return [
             'activa'                         => 'boolean',
+            'con_criterios_evaluacion'       => 'boolean',
             'fecha_inicio'                   => 'date',
             'fecha_corte'                    => 'date',
             'fecha_inicio_agenda'            => 'date',
@@ -62,6 +67,7 @@ class Evento extends Model
             'fecha_hora_fin_proveedores'     => 'datetime',
             'fecha_hora_inicio_compradores'  => 'datetime',
             'fecha_hora_fin_compradores'     => 'datetime',
+            'fecha_aceptacion_solicitudes'   => 'datetime',
         ];
     }
 
@@ -135,6 +141,31 @@ class Evento extends Model
                     ->withTimestamps();
     }
 
+    public function criterios()
+    {
+        return $this->hasMany(EventoCriterio::class)->orderBy('orden');
+    }
+
+    public function evaluaciones()
+    {
+        return $this->hasMany(EventoEvaluacion::class);
+    }
+
+    public function esBazar(): bool
+    {
+        return $this->tipo_evento === 'bazar_exposicion';
+    }
+
+    public function espaciosDisponibles(): int
+    {
+        if (!$this->max_espacios) return 0;
+        $seleccionados = DB::table('evento_usuario')
+            ->where('evento_id', $this->id)
+            ->where('seleccionado', true)
+            ->count();
+        return max(0, $this->max_espacios - $seleccionados);
+    }
+
     public static function registrarProveedorEnEventoActivo(int $userId, bool $aprobadoAutomatico = false): void
     {
         $evento = self::activo();
@@ -157,5 +188,25 @@ class Evento extends Model
             'created_at'    => now(),
             'updated_at'    => now(),
         ]);
+    }
+
+    /**
+     * Segundos restantes hasta que abra el registro de solicitudes de bazar.
+     * Retorna null si ya abrió o si no hay fecha configurada.
+     */
+    public function segundosHastaSolicitudes(): ?int
+    {
+        if (!$this->fecha_aceptacion_solicitudes) return null;
+        $diff = now()->diffInSeconds($this->fecha_aceptacion_solicitudes, false);
+        return $diff > 0 ? $diff : null;
+    }
+
+    /**
+     * ¿Está abierto el registro de solicitudes de bazar ahora mismo?
+     */
+    public function registroSolicitudesAbierto(): bool
+    {
+        if (!$this->fecha_aceptacion_solicitudes) return true; // sin fecha = siempre abierto
+        return now()->gte($this->fecha_aceptacion_solicitudes);
     }
 }

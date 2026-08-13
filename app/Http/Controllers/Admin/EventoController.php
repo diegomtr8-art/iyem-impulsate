@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Cita;
 use App\Models\Evento;
+use App\Models\EventoCriterio;
 use App\Models\Restaurantero;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +24,7 @@ class EventoController extends Controller
             ->pluck('total', 'evento_id');
 
         $eventos = Evento::withCount(['citas', 'restauranteros'])
+            ->with('criterios')
             ->orderByDesc('created_at')
             ->get()
             ->map(function ($evento) use ($pendientesPorEvento) {
@@ -64,7 +66,41 @@ class EventoController extends Controller
                     }
                 },
             ],
+            'tipo_evento'                     => 'required|in:encuentro_negocios,bazar_exposicion',
+            'fecha_aceptacion_solicitudes'    => 'nullable|date',
+            'max_espacios'                    => 'nullable|integer|min:1|max:9999',
+            'con_criterios_evaluacion'        => 'boolean',
+            'criterios'                       => 'nullable|array',
+            'criterios.*.nombre'              => 'required_with:criterios|string|max:200',
+            'criterios.*.porcentaje'          => 'required_with:criterios|numeric|min:1|max:100',
         ];
+    }
+
+    private function validarSumaCriterios(Request $request): ?\Illuminate\Http\RedirectResponse
+    {
+        if ($request->boolean('con_criterios_evaluacion') && !empty($request->criterios)) {
+            $total = collect($request->criterios)->sum('porcentaje');
+            if (abs($total - 100) > 0.01) {
+                return back()->withErrors(['criterios' => 'Los porcentajes deben sumar exactamente 100%.']);
+            }
+        }
+        return null;
+    }
+
+    private function sincronizarCriterios(Evento $evento, Request $request): void
+    {
+        $evento->criterios()->delete();
+
+        if ($request->boolean('con_criterios_evaluacion') && !empty($request->criterios)) {
+            foreach ($request->criterios as $index => $criterio) {
+                EventoCriterio::create([
+                    'evento_id'  => $evento->id,
+                    'nombre'     => $criterio['nombre'],
+                    'porcentaje' => $criterio['porcentaje'],
+                    'orden'      => $index,
+                ]);
+            }
+        }
     }
 
     private function eventoFields(Request $request): array
@@ -82,12 +118,22 @@ class EventoController extends Controller
             'fecha_hora_fin_compradores'     => $request->fecha_hora_fin_compradores,
             'max_citas_por_comprador'        => $request->max_citas_por_comprador ?? 3,
             'tiempo_entre_citas_minutos'     => $request->tiempo_entre_citas_minutos ?? 30,
+            'tipo_evento'                    => $request->tipo_evento ?? 'encuentro_negocios',
+            'fecha_aceptacion_solicitudes'   => $request->fecha_aceptacion_solicitudes ?: null,
+            'max_espacios'                   => $request->tipo_evento === 'bazar_exposicion'
+                                                    ? $request->max_espacios
+                                                    : null,
+            'con_criterios_evaluacion'       => $request->boolean('con_criterios_evaluacion'),
         ];
     }
 
     public function store(Request $request)
     {
         $request->validate($this->validationRules());
+
+        if ($error = $this->validarSumaCriterios($request)) {
+            return $error;
+        }
 
         $fields = array_merge($this->eventoFields($request), [
             'fecha_inicio' => $request->fecha_hora_inicio ?? now()->toDateString(),
@@ -102,7 +148,9 @@ class EventoController extends Controller
             $fields['imagen_carrusel'] = $request->file('imagen_carrusel')->store('eventos', 'public');
         }
 
-        Evento::create($fields);
+        $evento = Evento::create($fields);
+
+        $this->sincronizarCriterios($evento, $request);
 
         return back()->with('success', 'Evento creado. Actívalo cuando estés listo.');
     }
@@ -110,6 +158,10 @@ class EventoController extends Controller
     public function update(Request $request, Evento $evento)
     {
         $request->validate($this->validationRules());
+
+        if ($error = $this->validarSumaCriterios($request)) {
+            return $error;
+        }
 
         $fields = $this->eventoFields($request);
 
@@ -129,12 +181,20 @@ class EventoController extends Controller
 
         $evento->update($fields);
 
+        $this->sincronizarCriterios($evento, $request);
+
         return back()->with('success', 'Evento actualizado correctamente.');
     }
 
     public function enviarEncuestas(Evento $evento)
     {
-        $enviados = app(\App\Services\EncuestaEnvioService::class)->enviarParaEvento($evento);
+        $plantilla = \App\Models\EncuestaPlantilla::where('activa', true)->first();
+
+        if (!$plantilla) {
+            return back()->withErrors(['error' => 'No hay plantilla de encuesta activa. Activa una plantilla primero.']);
+        }
+
+        $enviados = app(\App\Services\EncuestaEnvioService::class)->enviarParaEvento($evento, $plantilla);
 
         return back()->with('success', "Encuestas enviadas a {$enviados} participante(s). Las ya existentes se omitieron.");
     }

@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\PlantillaCorreoMail;
 use App\Models\Evento;
 use App\Models\Notificacion;
+use App\Models\PlantillaCorreo;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class EventoRegistroController extends Controller
@@ -137,5 +140,118 @@ class EventoRegistroController extends Controller
         }
 
         return back()->with('success', 'Tu solicitud de registro como proveedor fue enviada. El administrador la aprobará pronto.');
+    }
+
+    public function registrarBazar(Request $request, Evento $evento)
+    {
+        if ($evento->tipo_evento !== 'bazar_exposicion') {
+            throw ValidationException::withMessages([
+                'error' => 'Este evento no es de tipo Bazar/Exposición.',
+            ]);
+        }
+
+        if (!$evento->activa) {
+            throw ValidationException::withMessages([
+                'error' => 'Este evento no está activo.',
+            ]);
+        }
+
+        if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
+            throw ValidationException::withMessages([
+                'error' => 'Este evento ya ha finalizado.',
+            ]);
+        }
+
+        // Verificar que la ventana de solicitudes esté abierta
+        if (
+            $evento->fecha_aceptacion_solicitudes &&
+            now()->lt($evento->fecha_aceptacion_solicitudes)
+        ) {
+            throw ValidationException::withMessages([
+                'error' => 'El registro aún no está abierto. Apertura: '
+                    . $evento->fecha_aceptacion_solicitudes->format('d/m/Y H:i') . '.',
+            ]);
+        }
+
+        $user = $request->user();
+
+        // Verificar que el usuario tenga INE subida
+        if (!$user->ine_path) {
+            throw ValidationException::withMessages([
+                'error' => 'Debes subir tu INE antes de registrarte al bazar.',
+            ]);
+        }
+
+        // Verificar que el usuario tenga CSF subida y vigente (máx. 3 meses)
+        if (!$user->csf_path || !$user->csf_fecha) {
+            throw ValidationException::withMessages([
+                'error' => 'Debes subir tu Constancia de Situación Fiscal (CSF) con su fecha de emisión.',
+            ]);
+        }
+
+        $limiteFecha = \Carbon\Carbon::now()->subMonths(3);
+        if (\Carbon\Carbon::parse($user->csf_fecha)->lt($limiteFecha)) {
+            throw ValidationException::withMessages([
+                'error' => 'Tu Constancia de Situación Fiscal (CSF) tiene más de 3 meses de antigüedad. Sube una versión reciente.',
+            ]);
+        }
+
+        $registro = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $user->id)
+            ->where('tipo', 'expositor')
+            ->first();
+
+        if ($registro) {
+            if (in_array($registro->estado, ['pendiente', 'aprobado'])) {
+                return back()->with('success', 'Ya tienes una solicitud registrada para este evento.');
+            }
+            DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $user->id)
+                ->where('tipo', 'expositor')
+                ->update([
+                    'estado'          => 'pendiente',
+                    'motivo_rechazo'  => null,
+                    'respondido_at'   => null,
+                    'seleccionado'    => false,
+                    'updated_at'      => now(),
+                ]);
+        } else {
+            DB::table('evento_usuario')->insert([
+                'evento_id'   => $evento->id,
+                'user_id'     => $user->id,
+                'tipo'        => 'expositor',
+                'estado'      => 'pendiente',
+                'seleccionado'=> false,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]);
+        }
+
+        $admin = User::role('admin')->first();
+        if ($admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de bazar',
+                $user->name . ' solicita participar en "' . $evento->nombre . '".'
+            );
+        }
+
+        $plantilla = PlantillaCorreo::paraClave('bazar_solicitud_recibida');
+        if ($plantilla) {
+            try {
+                Mail::to($user->email)->queue(new PlantillaCorreoMail($plantilla, [
+                    'nombre_usuario' => $user->name,
+                    'nombre_evento'  => $evento->nombre,
+                ]));
+            } catch (\Exception $e) {
+                \Log::warning("Error al enviar correo bazar_solicitud_recibida: " . $e->getMessage());
+            }
+        }
+
+        return back()->with('success',
+            'Tu solicitud fue enviada. Te notificaremos por correo cuando sea revisada.');
     }
 }
