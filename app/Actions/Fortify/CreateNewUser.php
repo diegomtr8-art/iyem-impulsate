@@ -41,13 +41,14 @@ class CreateNewUser implements CreatesNewUsers
         ])->validate();
 
         $user = User::create([
-            'name'           => $input['name'],
-            'email'          => $input['email'],
-            'password'       => Hash::make($input['password']),
-            'telefono'       => $input['telefono'] ?? null,
-            'curp'           => $input['curp'] ?? null,
-            'active_role'    => 'comprador',
-            'acepta_aviso_at'=> now(),
+            'name'             => $input['name'],
+            'email'            => $input['email'],
+            'password'         => Hash::make($input['password']),
+            'telefono'         => $input['telefono'] ?? null,
+            'curp'             => $input['curp'] ?? null,
+            'active_role'      => 'comprador',
+            'acepta_aviso_at'  => now(),
+            'email_verified_at'=> now(),
         ]);
 
         $user->assignRole('cliente');
