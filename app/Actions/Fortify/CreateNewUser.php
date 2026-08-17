@@ -48,8 +48,11 @@ class CreateNewUser implements CreatesNewUsers
             'curp'             => $input['curp'] ?? null,
             'active_role'      => 'comprador',
             'acepta_aviso_at'  => now(),
-            'email_verified_at'=> now(),
         ]);
+
+        // email_verified_at no está en $fillable (por diseño, para que no sea
+        // asignable desde formularios) — forceFill es necesario para setearlo aquí.
+        $user->forceFill(['email_verified_at' => now()])->save();
 
         $user->assignRole('cliente');
 
