@@ -154,6 +154,11 @@ const submit = () => {
                                     class="text-guinda-700 dark:text-guinda-400 underline">
                                     Aviso de Privacidad
                                 </Link>
+                                y los
+                                <Link :href="route('terminos.condiciones')" target="_blank"
+                                    class="text-guinda-700 dark:text-guinda-400 underline">
+                                    Términos y Condiciones
+                                </Link>
                                 del Instituto Yucateco de Emprendedores (IYEM).
                             </span>
                         </label>

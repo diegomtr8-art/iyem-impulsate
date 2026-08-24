@@ -1,9 +1,16 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 
 const props = defineProps({ numMesas: { type: Number, default: 10 } });
+
+// ── Configuración de número de mesas ────────────────────────────────
+const formMesas = useForm({ num_mesas: props.numMesas });
+const guardarMesas = () => {
+    formMesas.patch(route('admin.config.mesas'), { preserveScroll: true });
+};
 
 // ── Estado ────────────────────────────────────────────────────────
 const citas      = ref([]);
@@ -138,9 +145,27 @@ const coloresMesa = {
                     <h1 class="text-xl font-bold text-gray-900 dark:text-white">Torre de Control</h1>
                     <p class="text-xs text-gray-500 mt-0.5">Centro operativo del evento · Actualiza cada 3s · {{ timestamp }}</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span class="text-xs text-emerald-500 font-semibold">EN VIVO</span>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-1.5">
+                        <span class="text-xs font-bold text-gray-700 dark:text-gray-300 whitespace-nowrap">🪑 Mesas:</span>
+                        <input
+                            v-model.number="formMesas.num_mesas"
+                            type="number"
+                            min="1"
+                            max="500"
+                            class="w-16 border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-0.5 text-sm text-center font-bold bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-guinda-500"
+                        />
+                        <button @click="guardarMesas"
+                            :disabled="formMesas.processing"
+                            class="px-3 py-1 bg-guinda-800 hover:bg-guinda-700 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-60">
+                            Guardar
+                        </button>
+                        <span v-if="formMesas.recentlySuccessful" class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">✓</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span class="text-xs text-emerald-500 font-semibold">EN VIVO</span>
+                    </div>
                 </div>
             </div>
         </template>

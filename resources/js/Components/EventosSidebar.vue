@@ -8,13 +8,6 @@ const props = defineProps({
 
 const page = usePage();
 const collapsed = ref(false);
-const activeRole = computed(() => page.props.auth?.user?.active_role ?? 'comprador');
-const registradoEnEvento = computed(() => page.props.registradoEnEvento ?? {});
-
-const estaRegistrado = computed(() => {
-    const tipo = activeRole.value === 'proveedor' ? 'proveedor' : 'comprador';
-    return registradoEnEvento.value?.[tipo]?.estado === 'aprobado';
-});
 
 const badgeClase = (evento) => {
     if (evento.activa) return 'bg-emerald-500/90 text-white';
@@ -115,24 +108,21 @@ const formatFecha = (fecha) => {
                             </p>
 
                             <!-- Acciones -->
-                            <div v-if="estaRegistrado" class="flex items-center justify-between pt-0.5">
-                                <span class="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                                    </svg>
-                                    Registrado
-                                </span>
-                                <Link :href="route('proveedores.index')"
-                                    class="text-xs text-guinda-600 dark:text-guinda-400 hover:text-guinda-800 dark:hover:text-guinda-300 font-bold transition-colors">
-                                    Ver proveedores →
-                                </Link>
-                            </div>
-
-                            <Link v-else :href="route('proveedores.index')"
+                            <!-- Encuentro de negocios: ir a proveedores -->
+                            <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
+                                :href="route('proveedores.index')"
                                 class="block text-center text-sm font-bold py-2.5 rounded-xl
                                        bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
                                        text-white transition-colors shadow-sm">
                                 Ver Proveedores
+                            </Link>
+                            <!-- Bazar: ir a solicitar participación -->
+                            <Link v-else
+                                :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                       text-white transition-colors shadow-sm">
+                                Regístrate
                             </Link>
                         </div>
                     </div>
@@ -211,11 +201,19 @@ const formatFecha = (fecha) => {
                         class="text-xs text-guinda-600 dark:text-guinda-400 font-medium">
                         {{ formatFecha(evento.fecha_hora_inicio) }}
                     </p>
-                    <Link v-if="evento.activa"
+                    <!-- Encuentro de negocios -->
+                    <Link v-if="evento.activa && evento.tipo_evento !== 'bazar_exposicion'"
                         :href="route('proveedores.index')"
                         class="block text-center text-xs font-bold py-1.5 rounded-lg
                                bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
                         Ver Proveedores
+                    </Link>
+                    <!-- Bazar -->
+                    <Link v-else-if="evento.activa && evento.tipo_evento === 'bazar_exposicion'"
+                        :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                        class="block text-center text-xs font-bold py-1.5 rounded-lg
+                               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+                        Regístrate
                     </Link>
                 </div>
             </div>

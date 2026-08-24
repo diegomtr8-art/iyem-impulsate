@@ -1,0 +1,568 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Módulo de Respuestas y Gráficas de Encuestas
+Archivo: PROMPT_ENCUESTAS_RESPUESTAS_GRAFICAS.txt
+================================================================================
+
+OBJETIVO:
+  Crear dentro del módulo Admin/Encuestas dos secciones nuevas:
+  1. Vista de detalle de una respuesta individual (VerRespuesta)
+  2. Dashboard de gráficas interactivo por pregunta (Graficas)
+
+  El diseño debe seguir el estilo glassmorphism oscuro ya implementado en
+  el módulo de Métricas: fondo dark, tarjetas con backdrop-blur, color
+  corporativo guinda #8B1028. NUNCA usar azul/índigo.
+
+  No tocar ni romper ninguna funcionalidad existente.
+  Chart.js ya está instalado en el proyecto — usarlo directamente.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 1 — RUTAS (routes/web.php)
+════════════════════════════════════════════════════════════════════════════════
+
+Dentro del grupo admin existente, después de las rutas de encuestas actuales,
+agregar:
+
+    // Respuestas y gráficas
+    Route::get('/encuestas/graficas',      [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'graficas'])->name('encuestas.graficas');
+    Route::get('/encuestas/{encuesta}/ver', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'verRespuesta'])->name('encuestas.ver');
+
+IMPORTANTE: La ruta /graficas debe ir ANTES de /{encuesta}/ver para que
+Laravel no interprete "graficas" como un ID de encuesta.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 2 — CONTROLLER: agregar 2 métodos a EncuestaAdminController
+════════════════════════════════════════════════════════════════════════════════
+
+── Método verRespuesta ──────────────────────────────────────────────────────
+
+    public function verRespuesta(EncuestaSatisfaccion $encuesta)
+    {
+        $encuesta->load(['evento', 'user', 'respuestas', 'plantilla']);
+
+        return Inertia::render('Admin/Encuestas/VerRespuesta', [
+            'encuesta' => [
+                'id'            => $encuesta->id,
+                'evento'        => $encuesta->evento?->only(['id', 'nombre']),
+                'usuario'       => $encuesta->user?->only(['id', 'name', 'email']),
+                'tipo'          => $encuesta->tipo,
+                'segmento'      => $encuesta->segmento,
+                'es_prueba'     => $encuesta->es_prueba,
+                'completada_at' => $encuesta->completada_at?->format('d/m/Y H:i'),
+                'created_at'    => $encuesta->created_at->format('d/m/Y H:i'),
+                'plantilla'     => $encuesta->plantilla?->only(['id', 'nombre']),
+                'respuestas'    => $encuesta->respuestas->map(fn($r) => [
+                    'id'        => $r->id,
+                    'pregunta'  => $r->pregunta,
+                    'tipo'      => $r->tipo,
+                    'respuesta' => $r->respuesta,
+                ])->values(),
+            ],
+        ]);
+    }
+
+── Método graficas ──────────────────────────────────────────────────────────
+
+    public function graficas(Request $request)
+    {
+        $eventoId    = $request->get('evento_id');
+        $plantillaId = $request->get('plantilla_id');
+        $segmento    = $request->get('segmento'); // 'comprador' | 'proveedor' | null
+        $desde       = $request->get('desde');
+        $hasta       = $request->get('hasta');
+
+        // Plantilla activa o la seleccionada
+        $plantilla = $plantillaId
+            ? EncuestaPlantilla::find($plantillaId)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        // Base query de encuestas completadas
+        $base = EncuestaSatisfaccion::where('es_prueba', false)
+            ->whereNotNull('completada_at');
+
+        if ($eventoId)  $base->where('evento_id', $eventoId);
+        if ($segmento)  $base->where('tipo', $segmento);
+        if ($desde)     $base->whereDate('completada_at', '>=', $desde);
+        if ($hasta)     $base->whereDate('completada_at', '<=', $hasta);
+
+        $encuestaIds  = (clone $base)->pluck('id');
+        $totalRespondidas = $encuestaIds->count();
+
+        // Totales enviadas (sin filtro completada_at)
+        $totalEnviadas = EncuestaSatisfaccion::where('es_prueba', false)
+            ->when($eventoId,  fn($q) => $q->where('evento_id', $eventoId))
+            ->when($segmento,  fn($q) => $q->where('tipo', $segmento))
+            ->count();
+
+        $compradores = (clone $base)->where('tipo', 'comprador')->count();
+        $proveedores = (clone $base)->where('tipo', 'proveedor')->count();
+
+        // Agrupar respuestas por pregunta
+        $respuestasAgrupadas = EncuestaRespuesta::whereIn('encuesta_satisfaccion_id', $encuestaIds)
+            ->selectRaw('pregunta, tipo, respuesta, COUNT(*) as total')
+            ->groupBy('pregunta', 'tipo', 'respuesta')
+            ->orderBy('pregunta')
+            ->get()
+            ->groupBy('pregunta')
+            ->map(function($grupo) {
+                $tipo       = $grupo->first()->tipo;
+                $totalResp  = $grupo->sum('total');
+                $opciones   = $grupo->mapWithKeys(fn($r) => [
+                    $r->respuesta => [
+                        'count'      => $r->total,
+                        'porcentaje' => $totalResp > 0 ? round($r->total * 100 / $totalResp, 1) : 0,
+                    ]
+                ]);
+
+                $promedio = null;
+                if (in_array($tipo, ['escala', 'nps'])) {
+                    $promedio = round(
+                        $grupo->sum(fn($r) => (float)$r->respuesta * $r->total) / max($totalResp, 1),
+                        1
+                    );
+                }
+
+                return [
+                    'tipo'     => $tipo,
+                    'total'    => $totalResp,
+                    'opciones' => $opciones,
+                    'promedio' => $promedio,
+                    // Para tipo 'texto', lista de respuestas individuales
+                    'textos'   => $tipo === 'texto'
+                        ? $grupo->pluck('respuesta')->filter()->values()
+                        : [],
+                ];
+            });
+
+        return Inertia::render('Admin/Encuestas/Graficas', [
+            'plantilla'     => $plantilla ? [
+                'id'        => $plantilla->id,
+                'nombre'    => $plantilla->nombre,
+                'preguntas' => $plantilla->preguntas,
+            ] : null,
+            'plantillas'    => EncuestaPlantilla::orderByDesc('activa')->get(['id', 'nombre', 'activa']),
+            'eventos'       => Evento::orderByDesc('created_at')->get(['id', 'nombre']),
+            'filtros'       => compact('eventoId', 'plantillaId', 'segmento', 'desde', 'hasta'),
+            'kpis'          => [
+                'total_enviadas'    => $totalEnviadas,
+                'total_respondidas' => $totalRespondidas,
+                'tasa'              => $totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0,
+                'compradores'       => $compradores,
+                'proveedores'       => $proveedores,
+            ],
+            'datos'         => $respuestasAgrupadas,
+        ]);
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 3 — VISTA: resources/js/Pages/Admin/Encuestas/VerRespuesta.vue
+════════════════════════════════════════════════════════════════════════════════
+
+Crear archivo nuevo. Diseño dark glassmorphism con guinda.
+
+<template>
+  <AdminLayout title="Detalle de Respuesta">
+    <div class="min-h-screen bg-gray-950 p-6">
+
+      <!-- Encabezado -->
+      <div class="flex items-center gap-4 mb-8">
+        <Link :href="route('encuestas.index')"
+              class="text-gray-400 hover:text-white transition-colors">
+          ← Volver a Encuestas
+        </Link>
+        <h1 class="text-2xl font-bold text-white">Respuesta #{{ encuesta.id }}</h1>
+        <span v-if="encuesta.es_prueba"
+              class="px-3 py-1 bg-yellow-500/20 text-yellow-400 rounded-full text-xs">
+          PRUEBA
+        </span>
+      </div>
+
+      <!-- Meta info -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-4">
+          <p class="text-gray-400 text-xs mb-1">Evento</p>
+          <p class="text-white font-medium text-sm">{{ encuesta.evento?.nombre ?? '—' }}</p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-4">
+          <p class="text-gray-400 text-xs mb-1">Participante</p>
+          <p class="text-white font-medium text-sm">{{ encuesta.usuario?.name ?? '—' }}</p>
+          <p class="text-gray-400 text-xs">{{ encuesta.usuario?.email ?? '' }}</p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-4">
+          <p class="text-gray-400 text-xs mb-1">Perfil</p>
+          <p class="font-semibold text-sm"
+             :class="encuesta.tipo === 'proveedor' ? 'text-[#8B1028]' : 'text-emerald-400'">
+            {{ encuesta.tipo === 'proveedor' ? '🏭 Proveedor' : '🛒 Comprador' }}
+          </p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-4">
+          <p class="text-gray-400 text-xs mb-1">Respondida</p>
+          <p class="text-white font-medium text-sm">{{ encuesta.completada_at ?? '—' }}</p>
+        </div>
+      </div>
+
+      <!-- Respuestas -->
+      <div class="space-y-4">
+        <div
+          v-for="(resp, idx) in encuesta.respuestas"
+          :key="resp.id"
+          class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5"
+        >
+          <div class="flex items-start gap-4">
+            <span class="flex-shrink-0 w-8 h-8 rounded-full bg-[#8B1028]/20 text-[#c2435d]
+                         flex items-center justify-center text-sm font-bold">
+              {{ idx + 1 }}
+            </span>
+            <div class="flex-1 min-w-0">
+              <p class="text-gray-300 text-sm mb-2">{{ resp.pregunta }}</p>
+              <!-- Texto libre -->
+              <p v-if="resp.tipo === 'texto'"
+                 class="text-white bg-white/5 rounded-lg p-3 text-sm italic">
+                {{ resp.respuesta || '(sin respuesta)' }}
+              </p>
+              <!-- Opciones / binario / escala -->
+              <span v-else
+                    class="inline-block px-4 py-2 bg-[#8B1028]/30 border border-[#8B1028]/50
+                           text-white rounded-lg text-sm font-medium">
+                {{ resp.respuesta }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="!encuesta.respuestas.length"
+             class="text-center text-gray-500 py-12">
+          Esta encuesta no tiene respuestas registradas.
+        </div>
+      </div>
+
+    </div>
+  </AdminLayout>
+</template>
+
+<script setup>
+import { Link } from '@inertiajs/vue3'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
+
+defineProps({
+  encuesta: Object,
+})
+</script>
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 4 — VISTA: resources/js/Pages/Admin/Encuestas/Graficas.vue
+════════════════════════════════════════════════════════════════════════════════
+
+Crear archivo nuevo. Es el dashboard principal de análisis.
+
+ESTRUCTURA DEL COMPONENTE:
+
+<template>
+  <AdminLayout title="Gráficas de Encuestas">
+    <div class="min-h-screen bg-gray-950 p-6">
+
+      <!-- ── Encabezado ── -->
+      <div class="flex items-center justify-between mb-8">
+        <div>
+          <h1 class="text-3xl font-bold text-white">📊 Análisis de Encuestas</h1>
+          <p class="text-gray-400 mt-1">{{ plantilla?.nombre ?? 'Sin plantilla activa' }}</p>
+        </div>
+        <Link :href="route('encuestas.index')"
+              class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg text-sm transition">
+          ← Volver
+        </Link>
+      </div>
+
+      <!-- ── Filtros ── -->
+      <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 mb-8">
+        <form @submit.prevent="aplicarFiltros"
+              class="grid grid-cols-2 md:grid-cols-5 gap-4">
+
+          <select v-model="filtros.evento_id"
+                  class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+            <option value="">Todos los eventos</option>
+            <option v-for="e in eventos" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+          </select>
+
+          <select v-model="filtros.plantilla_id"
+                  class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+            <option value="">Plantilla activa</option>
+            <option v-for="p in plantillas" :key="p.id" :value="p.id">
+              {{ p.nombre }}{{ p.activa ? ' ✓' : '' }}
+            </option>
+          </select>
+
+          <select v-model="filtros.segmento"
+                  class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+            <option value="">Todos los perfiles</option>
+            <option value="comprador">Solo Compradores</option>
+            <option value="proveedor">Solo Proveedores</option>
+          </select>
+
+          <input v-model="filtros.desde" type="date"
+                 class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" />
+          <input v-model="filtros.hasta" type="date"
+                 class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm" />
+
+          <button type="submit"
+                  class="col-span-2 md:col-span-5 bg-[#8B1028] hover:bg-[#a01230] text-white
+                         rounded-lg py-2 text-sm font-medium transition">
+            Aplicar filtros
+          </button>
+        </form>
+      </div>
+
+      <!-- ── KPIs ── -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 text-center">
+          <p class="text-4xl font-bold text-white">{{ kpis.total_enviadas }}</p>
+          <p class="text-gray-400 text-sm mt-1">Enviadas</p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 text-center">
+          <p class="text-4xl font-bold text-emerald-400">{{ kpis.total_respondidas }}</p>
+          <p class="text-gray-400 text-sm mt-1">Respondidas</p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 text-center">
+          <p class="text-4xl font-bold text-[#c2435d]">{{ kpis.tasa }}%</p>
+          <p class="text-gray-400 text-sm mt-1">Tasa respuesta</p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 text-center">
+          <p class="text-4xl font-bold text-blue-400">{{ kpis.compradores }}</p>
+          <p class="text-gray-400 text-sm mt-1">Compradores</p>
+        </div>
+        <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 text-center">
+          <p class="text-4xl font-bold text-purple-400">{{ kpis.proveedores }}</p>
+          <p class="text-gray-400 text-sm mt-1">Proveedores</p>
+        </div>
+      </div>
+
+      <!-- ── Sin datos ── -->
+      <div v-if="!plantilla || kpis.total_respondidas === 0"
+           class="text-center text-gray-500 py-20">
+        <p class="text-5xl mb-4">📭</p>
+        <p class="text-xl">No hay respuestas con los filtros seleccionados.</p>
+      </div>
+
+      <!-- ── Gráficas por pregunta ── -->
+      <div v-else class="space-y-6">
+
+        <!-- Agrupar visualmente por sección -->
+        <template v-for="(pregunta, idx) in plantilla.preguntas" :key="pregunta.id">
+
+          <!-- Separador de sección -->
+          <div v-if="esInicioSeccion(idx)"
+               class="pt-4 pb-2 border-b border-white/10">
+            <h2 class="text-white font-semibold text-lg">{{ labelSeccion(pregunta) }}</h2>
+          </div>
+
+          <!-- Tarjeta de pregunta (solo si tiene datos) -->
+          <div v-if="datos[pregunta.texto]"
+               class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-6">
+
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <span class="text-xs text-gray-500 uppercase tracking-wider">
+                  {{ labelTipo(pregunta.tipo) }}
+                  <span v-if="pregunta.condicion" class="ml-2 px-2 py-0.5 bg-gray-700 rounded text-gray-400">
+                    Solo {{ pregunta.condicion.valor }}
+                  </span>
+                </span>
+                <h3 class="text-white font-medium mt-1">{{ pregunta.texto }}</h3>
+              </div>
+              <span class="text-gray-400 text-sm flex-shrink-0 ml-4">
+                {{ datos[pregunta.texto].total }} resp.
+              </span>
+            </div>
+
+            <!-- TIPO: opciones / multiple / binario → Barras horizontales -->
+            <div v-if="['opciones','multiple','binario'].includes(pregunta.tipo)">
+              <div v-for="(stat, opcion) in datos[pregunta.texto].opciones"
+                   :key="opcion" class="mb-3">
+                <div class="flex justify-between text-sm mb-1">
+                  <span class="text-gray-300">{{ opcion }}</span>
+                  <span class="text-white font-medium">
+                    {{ stat.porcentaje }}% <span class="text-gray-500">({{ stat.count }})</span>
+                  </span>
+                </div>
+                <div class="w-full bg-gray-800 rounded-full h-2.5">
+                  <div class="h-2.5 rounded-full bg-gradient-to-r from-[#8B1028] to-[#c2435d] transition-all duration-700"
+                       :style="{ width: stat.porcentaje + '%' }">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TIPO: escala / nps → Promedio + distribución -->
+            <div v-else-if="['escala','nps'].includes(pregunta.tipo)">
+              <div class="flex items-center gap-6 mb-4">
+                <div class="text-center">
+                  <p class="text-5xl font-bold text-[#c2435d]">
+                    {{ datos[pregunta.texto].promedio }}
+                  </p>
+                  <p class="text-gray-400 text-xs mt-1">promedio</p>
+                </div>
+                <div class="flex-1">
+                  <div v-for="(stat, valor) in datos[pregunta.texto].opciones"
+                       :key="valor" class="mb-2">
+                    <div class="flex justify-between text-xs mb-0.5">
+                      <span class="text-gray-400">{{ valor }}</span>
+                      <span class="text-white">{{ stat.count }}</span>
+                    </div>
+                    <div class="w-full bg-gray-800 rounded-full h-1.5">
+                      <div class="h-1.5 rounded-full bg-[#8B1028]"
+                           :style="{ width: stat.porcentaje + '%' }"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TIPO: texto → Lista de respuestas -->
+            <div v-else-if="pregunta.tipo === 'texto'">
+              <div v-if="datos[pregunta.texto].textos.length === 0"
+                   class="text-gray-500 text-sm italic">Sin respuestas de texto.</div>
+              <div v-else>
+                <div class="max-h-60 overflow-y-auto space-y-2 pr-2
+                            scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+                  <div v-for="(txt, i) in datos[pregunta.texto].textos" :key="i"
+                       class="bg-white/5 rounded-lg px-4 py-2 text-gray-200 text-sm border-l-2 border-[#8B1028]">
+                    {{ txt }}
+                  </div>
+                </div>
+                <p class="text-gray-500 text-xs mt-2">
+                  {{ datos[pregunta.texto].total }} respuestas escritas
+                </p>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Tarjeta vacía (pregunta sin respuestas aún) -->
+          <div v-else
+               class="bg-white/3 border border-dashed border-white/10 rounded-xl p-4
+                      flex items-center gap-3 opacity-50">
+            <span class="text-gray-500 text-sm">{{ pregunta.texto }}</span>
+            <span class="text-xs text-gray-600 ml-auto">Sin datos</span>
+          </div>
+
+        </template>
+      </div>
+
+    </div>
+  </AdminLayout>
+</template>
+
+<script setup>
+import { ref } from 'vue'
+import { Link, router } from '@inertiajs/vue3'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
+
+const props = defineProps({
+  plantilla:  Object,
+  plantillas: Array,
+  eventos:    Array,
+  filtros:    Object,
+  kpis:       Object,
+  datos:      Object,  // keyed por pregunta.texto
+})
+
+const filtros = ref({
+  evento_id:    props.filtros.eventoId    ?? '',
+  plantilla_id: props.filtros.plantillaId ?? '',
+  segmento:     props.filtros.segmento    ?? '',
+  desde:        props.filtros.desde       ?? '',
+  hasta:        props.filtros.hasta       ?? '',
+})
+
+function aplicarFiltros() {
+  const params = Object.fromEntries(
+    Object.entries(filtros.value).filter(([, v]) => v !== '')
+  )
+  router.get(route('encuestas.graficas'), params, { preserveState: false })
+}
+
+function labelTipo(tipo) {
+  const map = {
+    opciones: 'Opción única',
+    multiple:  'Múltiple',
+    binario:   'Sí / No',
+    escala:    'Escala',
+    nps:       'NPS',
+    texto:     'Texto libre',
+  }
+  return map[tipo] ?? tipo
+}
+
+// Detección de inicio de sección para separadores visuales
+const SECCIONES = [
+  { preguntaId: 'c_oferta_coincide',    label: '🛒 Sección Compradores' },
+  { preguntaId: 'p_perfil_compradores', label: '🏭 Sección Proveedores' },
+  { preguntaId: 'tiempo_cita',          label: '📋 Logística y Organización' },
+]
+
+function esInicioSeccion(idx) {
+  if (!props.plantilla) return false
+  const p = props.plantilla.preguntas[idx]
+  return SECCIONES.some(s => s.preguntaId === p.id)
+}
+
+function labelSeccion(pregunta) {
+  const sec = SECCIONES.find(s => s.preguntaId === pregunta.id)
+  return sec?.label ?? ''
+}
+</script>
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 5 — Agregar botones en Index.vue (ya existente)
+════════════════════════════════════════════════════════════════════════════════
+
+En resources/js/Pages/Admin/Encuestas/Index.vue busca la sección de acciones
+de la tabla de encuestas (donde aparece cada fila con el estado completada/pendiente)
+y agrega dos botones:
+
+  <!-- Botón Ver respuesta (solo si está completada) -->
+  <Link v-if="encuesta.completada"
+        :href="route('encuestas.ver', encuesta.id)"
+        class="text-xs px-3 py-1 bg-white/10 hover:bg-white/20 text-gray-200
+               rounded-lg transition">
+    👁 Ver
+  </Link>
+
+Además, en el encabezado de la página o en la barra de acciones, agrega un
+botón prominente para ir al dashboard de gráficas:
+
+  <Link :href="route('encuestas.graficas')"
+        class="px-5 py-2 bg-[#8B1028] hover:bg-[#a01230] text-white rounded-lg
+               font-medium text-sm transition flex items-center gap-2">
+    📊 Ver Gráficas
+  </Link>
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 6 — VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Ve a Admin → Encuestas
+2. Botón "📊 Ver Gráficas" → debe cargar /admin/encuestas/graficas
+3. Verifica los KPIs (enviadas, respondidas, tasa, compradores, proveedores)
+4. Aplica filtro por evento → los datos deben actualizarse
+5. Aplica filtro "Solo Compradores" → las preguntas de Proveedores deben
+   mostrar "Sin datos" (ya que solo hay respuestas de compradores)
+6. Verifica que las barras de opciones suman ~100%
+7. Clic en "👁 Ver" en una fila completada → debe abrir el detalle con
+   todas las respuestas de esa persona
+8. Verifica que la sección "Solo Proveedor" / "Solo Comprador" aparece
+   con el badge de condicional correcto
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    npm run build
+    php artisan optimize
+
+    # Sin migraciones — solo nuevas rutas, métodos y vistas
+
+================================================================================
+FIN DEL PROMPT — Módulo Respuestas y Gráficas de Encuestas
+================================================================================

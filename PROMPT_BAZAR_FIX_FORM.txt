@@ -1,0 +1,239 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Fix: Crear evento Bazar + ocultar campos exclusivos
+Archivo: PROMPT_BAZAR_FIX_FORM.txt
+================================================================================
+
+PROBLEMA REPORTADO:
+  1. Al crear un evento de tipo "Exposición / Bazar" el formulario falla
+     (la columna tipo_evento no existe en la tabla eventos todavía)
+  2. La "Secuencia temporal" (registro proveedores, agendado compradores, etc.)
+     y los campos "Máx. citas por comprador" / "Tiempo entre citas" se muestran
+     siempre, incluso cuando el tipo es Bazar — no tienen sentido ahí
+
+ARCHIVOS A TOCAR: 2
+
+════════════════════════════════════════════════════════════════════════════════
+FIX 1 — MIGRACIÓN (si aún no existe / no se ha ejecutado)
+════════════════════════════════════════════════════════════════════════════════
+
+Verificar en la base de datos si la columna `tipo_evento` ya existe en `eventos`:
+
+    php artisan tinker --execute="echo Schema::hasColumn('eventos','tipo_evento') ? 'OK' : 'FALTA';"
+
+Si responde FALTA, crear y ejecutar la migración:
+
+    php artisan make:migration add_bazar_fields_to_eventos_table
+
+Contenido de la migración:
+
+    public function up(): void
+    {
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->string('tipo_evento')->default('encuentro_negocios')->after('activa');
+            $table->unsignedInteger('max_espacios')->nullable()->after('tipo_evento');
+            $table->boolean('con_criterios_evaluacion')->default(false)->after('max_espacios');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->dropColumn(['tipo_evento', 'max_espacios', 'con_criterios_evaluacion']);
+        });
+    }
+
+Ejecutar:
+    php artisan migrate
+
+════════════════════════════════════════════════════════════════════════════════
+FIX 2 — TABLA evento_criterios (si tampoco existe)
+════════════════════════════════════════════════════════════════════════════════
+
+Verificar:
+    php artisan tinker --execute="echo Schema::hasTable('evento_criterios') ? 'OK' : 'FALTA';"
+
+Si responde FALTA:
+
+    php artisan make:migration create_evento_criterios_table
+
+    public function up(): void
+    {
+        Schema::create('evento_criterios', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('evento_id')->constrained('eventos')->cascadeOnDelete();
+            $table->string('nombre');
+            $table->decimal('porcentaje', 5, 2);
+            $table->unsignedTinyInteger('orden')->default(0);
+            $table->timestamps();
+        });
+    }
+
+    php artisan migrate
+
+════════════════════════════════════════════════════════════════════════════════
+FIX 3 — Model Evento.php: agregar campos al fillable y relación criterios
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: app/Models/Evento.php
+
+Agregar al array $fillable (si no están):
+    'tipo_evento',
+    'max_espacios',
+    'con_criterios_evaluacion',
+
+Agregar relación (si no existe):
+    public function criterios()
+    {
+        return $this->hasMany(\App\Models\EventoCriterio::class)->orderBy('orden');
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+FIX 4 — Vue Index.vue: ocultar campos que no aplican a Bazar
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: resources/js/Pages/Admin/Eventos/Index.vue
+
+LÓGICA: cuando tipo_evento === 'bazar_exposicion':
+  - Ocultar toda la sección "Secuencia temporal del evento" (fechas proveedores y compradores)
+  - Ocultar los campos "Máximo de citas por comprador" y "Tiempo entre citas"
+  - Solo mostrar "Fecha y Hora de Inicio del Evento" y "Fecha y Hora de Finalización"
+  - El diagrama de secuencia tampoco aplica para Bazar
+
+─ 4A. FORMULARIO DE CREACIÓN (form) ─────────────────────────────────────────
+
+Buscar el bloque que envuelve la sección "Secuencia temporal del evento" en el
+formulario de creación (la card con la clase bg-guinda-50 que contiene todos
+los datetime-local). Actualmente NO tiene v-if. Cambiarlo así:
+
+ANTES (la div envolvente de la sección temporal completa):
+    <div class="mt-5 p-4 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-800/30 rounded-xl">
+        <p class="text-xs font-semibold text-guinda-700 dark:text-guinda-400 mb-3 flex items-center gap-1.5">
+            ...
+            Secuencia temporal del evento
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- fechas de proveedores y compradores -->
+        </div>
+        ...
+    </div>
+
+DESPUÉS — agregar v-if en el div que tiene TODO (fechas prov/comp + diagrama):
+Reemplazar la grid de 6 campos por dos secciones separadas:
+
+    <!-- SECCIÓN TEMPORAL: Encuentro de negocios → muestra todo -->
+    <div class="mt-5 p-4 bg-guinda-50 dark:bg-guinda-950/20 border border-guinda-200 dark:border-guinda-800/30 rounded-xl">
+        <p class="text-xs font-semibold text-guinda-700 dark:text-guinda-400 mb-3 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Fecha{{ form.tipo_evento === 'bazar_exposicion' ? '' : ' y secuencia temporal' }} del evento
+        </p>
+
+        <!-- Grid de fechas proveedores/compradores: SOLO para encuentro de negocios -->
+        <div v-if="form.tipo_evento === 'encuentro_negocios'" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Inicio registro proveedores</label>
+                <input v-model="form.fecha_hora_inicio_proveedores" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fin registro proveedores <span class="text-gray-400">(opcional)</span></label>
+                <input v-model="form.fecha_hora_fin_proveedores" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Inicio agendado compradores</label>
+                <input v-model="form.fecha_hora_inicio_compradores" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fin agendado compradores <span class="text-gray-400">(opcional)</span></label>
+                <input v-model="form.fecha_hora_fin_compradores" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+            <!-- Inicio y fin del evento dentro del grid de encuentro_negocios -->
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha y Hora de Inicio del Evento *</label>
+                <input v-model="form.fecha_hora_inicio" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha y Hora de Finalización</label>
+                <input v-model="form.fecha_hora_fin" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+        </div>
+
+        <!-- Solo fecha inicio/fin para Bazar -->
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha y Hora de Inicio *</label>
+                <input v-model="form.fecha_hora_inicio" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Fecha y Hora de Finalización</label>
+                <input v-model="form.fecha_hora_fin" type="datetime-local"
+                    class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
+            </div>
+        </div>
+
+        <!-- Diagrama de secuencia: solo para encuentro_negocios -->
+        <div v-if="form.tipo_evento === 'encuentro_negocios' && secuenciaValida" class="mt-4 flex items-center gap-1 flex-wrap text-xs">
+            <!-- ...el diagrama existente sin cambios... -->
+        </div>
+    </div>
+
+Después del bloque temporal, envolver también el bloque de citas con v-if:
+    <!-- Config de citas: SOLO para encuentro de negocios -->
+    <div v-if="form.tipo_evento === 'encuentro_negocios'" class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Máximo de citas por comprador</label>
+            <input v-model.number="form.max_citas_por_comprador" type="number" min="1" max="50" ... />
+        </div>
+        <div>
+            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tiempo entre citas (minutos)</label>
+            <input v-model.number="form.tiempo_entre_citas_minutos" type="number" min="5" max="120" step="5" ... />
+            <p class="text-xs text-gray-400 mt-0.5">Debe ser múltiplo de 5 (ej: 10, 15, 30)</p>
+        </div>
+    </div>
+
+─ 4B. MODAL DE EDICIÓN (formEditar) — aplicar exactamente los mismos cambios
+
+En el modal de edición, la sección "Ventanas temporales" (bg-guinda-50 dentro
+del modal) tiene el mismo problema. Aplicar la misma lógica:
+
+  - v-if="formEditar.tipo_evento === 'encuentro_negocios'" en las 4 fechas de
+    proveedores/compradores
+  - v-else con solo inicio/fin del evento
+  - v-if="formEditar.tipo_evento === 'encuentro_negocios' && secuenciaValidaEditar"
+    en el diagrama de secuencia
+  - v-if="formEditar.tipo_evento === 'encuentro_negocios'" en el grid de
+    max_citas_por_comprador y tiempo_entre_citas_minutos
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Tinker: confirmar que columnas existen
+   php artisan tinker
+   Schema::hasColumn('eventos','tipo_evento');     // true
+   Schema::hasColumn('eventos','max_espacios');    // true
+   Schema::hasTable('evento_criterios');           // true
+
+2. Crear evento tipo "Exposición / Bazar":
+   - El formulario muestra solo "Fecha y Hora de Inicio" + "Fecha y Hora de Fin"
+   - NO aparece la sección de proveedores/compradores
+   - NO aparece "Máx. citas" ni "Tiempo entre citas"
+   - Sí aparece el campo "Número máximo de espacios" y los criterios
+   - Al guardar: éxito
+
+3. Cambiar a "Encuentro de negocios":
+   - Reaparece la secuencia temporal completa
+   - Reaparecen los campos de citas
+
+4. Al editar un evento Bazar existente: el modal muestra el mismo comportamiento
+
+================================================================================
+FIN DEL PROMPT
+================================================================================

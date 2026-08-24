@@ -1,0 +1,155 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Fix Correo Masivo: filtro por evento + tipo consistente
+Archivo: PROMPT_CORREO_MASIVO_FIX.txt
+================================================================================
+
+CONTEXTO:
+  Archivo: app/Http/Controllers/Admin/SuperAdmin/CorreoMasivoController.php
+  Método clave: filtrarDestinatarios(Request $request)
+
+ESTADO ACTUAL — LO QUE YA FUNCIONA BIEN:
+  El método filtrarDestinatarios() ya usa roles Spatie correctamente:
+    - 'proveedores'  → whereHas roles where name = 'restaurantero'  ✅
+    - 'compradores'  → whereHas roles where name = 'cliente'        ✅
+  Esto coincide con la fuente de verdad de la plataforma.
+
+PROBLEMA IDENTIFICADO:
+  Cuando el admin selecciona un evento + estado (ej. "Aprobados"), el filtro
+  de evento usa solo DB::table('evento_usuario') pluck('user_id') sin
+  distinguir el tipo de participación del usuario en ese evento.
+
+  Esto significa que si un usuario con rol 'cliente' aparece en evento_usuario
+  con tipo = 'proveedor' (caso edge), pasaría el filtro de compradores aunque
+  participó como proveedor en ese evento.
+
+  Además: NO existe filtro por Canirac (users.camara_asociacion = 'CANIRAC')
+  que sería útil para segmentar comunicaciones.
+
+════════════════════════════════════════════════════════════════════════════════
+FIX 1 — Mejorar filtro de evento para respetar el tipo de participación
+════════════════════════════════════════════════════════════════════════════════
+
+En filtrarDestinatarios(), REEMPLAZAR el bloque del evento:
+
+ANTES:
+    if ($eventoId) {
+        $eventoQuery = DB::table('evento_usuario')->where('evento_id', $eventoId);
+        if ($estadoEvento) {
+            $eventoQuery->where('estado', $estadoEvento);
+        }
+        $userIdsEnEvento = $eventoQuery->pluck('user_id');
+        $query->whereIn('id', $userIdsEnEvento);
+    }
+
+DESPUÉS:
+    if ($eventoId) {
+        $query->whereHas('eventoUsuarios', function ($q) use ($eventoId, $estadoEvento, $tipo) {
+            $q->where('evento_id', $eventoId);
+
+            if ($estadoEvento) {
+                $q->where('estado', $estadoEvento);
+            }
+
+            // Filtrar también por el tipo de participación en el evento,
+            // solo cuando hay un segmento específico seleccionado.
+            // Esto evita que un 'cliente' que participó como proveedor
+            // aparezca en el filtro de compradores.
+            if ($tipo === 'compradores') {
+                $q->where('tipo', 'comprador');
+            } elseif ($tipo === 'proveedores') {
+                $q->where('tipo', 'proveedor');
+            }
+        });
+    }
+
+NOTA: Para que whereHas('eventoUsuarios') funcione, verificar que el modelo
+User tenga la relación definida. Si no existe, agregarla en app/Models/User.php:
+
+    public function eventoUsuarios()
+    {
+        return $this->hasMany(\App\Models\EventoUsuario::class, 'user_id');
+    }
+
+  (o el nombre que tenga el modelo EventoUsuario en el proyecto)
+
+════════════════════════════════════════════════════════════════════════════════
+FIX 2 — Agregar filtro Canirac
+════════════════════════════════════════════════════════════════════════════════
+
+Campo: users.camara_asociacion = 'CANIRAC'
+
+─ 2A. En filtrarDestinatarios(), agregar al inicio de los filtros: ──────────
+
+    $canirac = $request->input('canirac'); // 'si' | 'no' | null
+
+    // ... después de los filtros de tipo existentes ...
+
+    if ($canirac === 'si') {
+        $query->where('camara_asociacion', 'CANIRAC');
+    } elseif ($canirac === 'no') {
+        $query->where(fn($q) =>
+            $q->whereNull('camara_asociacion')
+              ->orWhere('camara_asociacion', '!=', 'CANIRAC')
+        );
+    }
+
+─ 2B. En Index.vue del Correo Masivo — agregar selector Canirac: ────────────
+
+En el panel de filtros, junto a los demás selectores:
+
+    <select v-model="filtros.canirac"
+            @change="verDestinatarios"
+            class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+      <option value="">Canirac: Todos</option>
+      <option value="si">Solo Canirac</option>
+      <option value="no">No Canirac</option>
+    </select>
+
+Agregar 'canirac' al objeto filtros:
+    const filtros = ref({
+        tipo:             'todos',
+        evento_id:        '',
+        estado_evento:    '',
+        estado_proveedor: '',
+        categoria:        '',
+        canirac:          '',   // ← nuevo
+    })
+
+Y pasarlo en la petición de preview y envío:
+    // Ya debería incluirse si se envía filtros completo como payload
+
+─ 2C. Mostrar indicador Canirac en la lista de destinatarios: ───────────────
+
+En el método preview(), agregar el campo al map:
+
+    ->take(20)->map(fn ($u) => [
+        'id'      => $u->id,
+        'name'    => $u->name,
+        'email'   => $u->email,
+        'rol'     => $u->roles->pluck('name')->join(', '),
+        'canirac' => $u->camara_asociacion === 'CANIRAC',   // ← nuevo
+    ])
+
+En el frontend, mostrar un badge "CANIRAC" junto al nombre si canirac === true:
+
+    <span v-if="dest.canirac"
+          class="text-xs px-1.5 py-0.5 bg-orange-900/30 text-orange-400
+                 border border-orange-500/20 rounded font-medium">
+      CANIRAC
+    </span>
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Ir a /admin/correo-masivo
+2. Seleccionar "Solo compradores" + evento activo + "Aprobados" → Ver destinatarios
+   → Debe mostrar 176 (igual que antes, el número no cambia porque los roles ya
+     eran correctos; el fix solo cierra el edge case del tipo en evento)
+3. Seleccionar "Solo Canirac" → Ver destinatarios → solo usuarios Canirac
+4. Combinar: "Solo compradores" + "Solo Canirac" → subconjunto Canirac compradores
+5. Enviar correo de prueba a un email propio y verificar que llega correctamente
+
+================================================================================
+FIN DEL PROMPT — Fix Correo Masivo filtro evento + Canirac
+================================================================================

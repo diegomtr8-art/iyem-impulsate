@@ -182,6 +182,7 @@ class CitaDobleBookingTest extends TestCase
             'restaurantero_id' => $this->restaurantero->id,
             'fecha'            => $fecha,
             'hora'             => '10:00',
+            'duracion'         => 30,
         ]);
 
         $responseB = $this->actingAs($admin)->post(route('admin.citas.store'), [
@@ -189,6 +190,7 @@ class CitaDobleBookingTest extends TestCase
             'restaurantero_id' => $this->restaurantero->id,
             'fecha'            => $fecha,
             'hora'             => '10:00',
+            'duracion'         => 30,
         ]);
 
         $responseB->assertSessionHasErrors('fecha');

@@ -1,0 +1,862 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Módulo Bazar / Exposición completo
+Archivo: PROMPT_BAZAR_EXPOSICION_COMPLETO.txt
+================================================================================
+
+CONTEXTO DEL SISTEMA:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode: 'class')
+  Color corporativo: guinda #8B1028 — NUNCA azul/índigo
+  Roles Spatie: admin, super-admin, restaurantero, cliente
+  PlantillaCorreo: modelo con clave, nombre, asunto, contenido, método reemplazar(array)
+  Placeholders en plantillas: {{nombre_usuario}}, {{nombre_evento}}, etc.
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 1 — MIGRACIONES
+════════════════════════════════════════════════════════════════════════════════
+
+─ 1A. Agregar campos al modelo Evento ──────────────────────────────────────
+
+Crear migration: add_bazar_fields_to_eventos_table
+
+    Schema::table('eventos', function (Blueprint $table) {
+        $table->string('tipo_evento')->default('encuentro_negocios')->after('activa');
+        // Valores: 'encuentro_negocios' | 'bazar_exposicion'
+
+        $table->unsignedInteger('max_espacios')->nullable()->after('tipo_evento');
+        // Solo aplica cuando tipo_evento = 'bazar_exposicion'
+        // Define cuántos participantes pueden quedar seleccionados (N espacios)
+
+        $table->boolean('con_criterios_evaluacion')->default(false)->after('max_espacios');
+        // Si true, se habilita la evaluación por criterios con porcentajes
+    });
+
+─ 1B. Nueva tabla: evento_criterios ────────────────────────────────────────
+
+    Schema::create('evento_criterios', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('evento_id')->constrained('eventos')->cascadeOnDelete();
+        $table->string('nombre');           // Ej: "Grado de innovación"
+        $table->decimal('porcentaje', 5, 2); // Ej: 30.00
+        $table->unsignedTinyInteger('orden')->default(0);
+        $table->timestamps();
+    });
+
+─ 1C. Nueva tabla: evento_evaluaciones ─────────────────────────────────────
+
+    Schema::create('evento_evaluaciones', function (Blueprint $table) {
+        $table->id();
+        $table->foreignId('evento_id')->constrained('eventos')->cascadeOnDelete();
+        $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
+        $table->foreignId('criterio_id')->constrained('evento_criterios')->cascadeOnDelete();
+        $table->decimal('puntaje', 5, 2);   // 0 - 100 (ponderado al porcentaje)
+        $table->timestamps();
+        $table->unique(['evento_id', 'user_id', 'criterio_id']);
+    });
+
+─ 1D. Agregar campos a evento_usuario ─────────────────────────────────────
+
+    Schema::table('evento_usuario', function (Blueprint $table) {
+        $table->decimal('puntaje_total', 5, 2)->nullable()->after('estado');
+        // Suma ponderada de los puntajes por criterio
+
+        $table->boolean('seleccionado')->default(false)->after('puntaje_total');
+        // true = admin lo eligió dentro de los N espacios del bazar
+
+        $table->string('token_evaluacion', 60)->nullable()->unique()->after('seleccionado');
+        // Token para que el rechazado pueda ver su evaluación públicamente
+
+        $table->boolean('correo_aprobacion_enviado')->default(false)->after('token_evaluacion');
+        $table->boolean('correo_rechazo_enviado')->default(false)->after('correo_aprobacion_enviado');
+    });
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 2 — MODELOS
+════════════════════════════════════════════════════════════════════════════════
+
+─ 2A. Nuevo modelo: app/Models/EventoCriterio.php ──────────────────────────
+
+    class EventoCriterio extends Model {
+        protected $table = 'evento_criterios';
+        protected $fillable = ['evento_id', 'nombre', 'porcentaje', 'orden'];
+        protected function casts(): array { return ['porcentaje' => 'decimal:2']; }
+        public function evento() { return $this->belongsTo(Evento::class); }
+        public function evaluaciones() { return $this->hasMany(EventoEvaluacion::class, 'criterio_id'); }
+    }
+
+─ 2B. Nuevo modelo: app/Models/EventoEvaluacion.php ────────────────────────
+
+    class EventoEvaluacion extends Model {
+        protected $table = 'evento_evaluaciones';
+        protected $fillable = ['evento_id', 'user_id', 'criterio_id', 'puntaje'];
+        protected function casts(): array { return ['puntaje' => 'decimal:2']; }
+        public function criterio() { return $this->belongsTo(EventoCriterio::class, 'criterio_id'); }
+        public function user() { return $this->belongsTo(User::class); }
+    }
+
+─ 2C. Actualizar app/Models/Evento.php ─────────────────────────────────────
+
+Agregar a $fillable:
+    'tipo_evento', 'max_espacios', 'con_criterios_evaluacion',
+
+Agregar relaciones:
+    public function criterios() {
+        return $this->hasMany(EventoCriterio::class)->orderBy('orden');
+    }
+    public function evaluaciones() {
+        return $this->hasMany(EventoEvaluacion::class);
+    }
+
+Agregar helpers:
+    public function esBazar(): bool {
+        return $this->tipo_evento === 'bazar_exposicion';
+    }
+    public function espaciosDisponibles(): int {
+        if (!$this->max_espacios) return 0;
+        $seleccionados = DB::table('evento_usuario')
+            ->where('evento_id', $this->id)
+            ->where('seleccionado', true)
+            ->count();
+        return max(0, $this->max_espacios - $seleccionados);
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 3 — EVENTOSCONTROLLER: crear/editar evento con nuevos campos
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: app/Http/Controllers/Admin/EventoController.php
+
+─ 3A. Agregar a validationRules() ─────────────────────────────────────────
+
+    'tipo_evento'               => 'required|in:encuentro_negocios,bazar_exposicion',
+    'max_espacios'              => 'nullable|integer|min:1|max:9999',
+    'con_criterios_evaluacion'  => 'boolean',
+    'criterios'                 => 'nullable|array',
+    'criterios.*.nombre'        => 'required_with:criterios|string|max:200',
+    'criterios.*.porcentaje'    => 'required_with:criterios|numeric|min:1|max:100',
+
+    // Validación personalizada: si con_criterios_evaluacion=true, criterios deben sumar 100%
+    // Agregar en store() y update() antes de guardar:
+    if ($request->con_criterios_evaluacion && !empty($request->criterios)) {
+        $total = collect($request->criterios)->sum('porcentaje');
+        if (abs($total - 100) > 0.01) {
+            return back()->withErrors(['criterios' => 'Los porcentajes deben sumar exactamente 100%.']);
+        }
+    }
+
+─ 3B. Agregar a eventoFields() ─────────────────────────────────────────────
+
+    'tipo_evento'              => $request->tipo_evento ?? 'encuentro_negocios',
+    'max_espacios'             => $request->tipo_evento === 'bazar_exposicion'
+                                    ? $request->max_espacios
+                                    : null,
+    'con_criterios_evaluacion' => $request->boolean('con_criterios_evaluacion'),
+
+─ 3C. Después de store() y update(): sincronizar criterios ─────────────────
+
+    // Eliminar criterios anteriores y reinserta los nuevos
+    private function sincronizarCriterios(Evento $evento, Request $request): void
+    {
+        $evento->criterios()->delete();
+
+        if ($request->boolean('con_criterios_evaluacion') && !empty($request->criterios)) {
+            foreach ($request->criterios as $index => $criterio) {
+                EventoCriterio::create([
+                    'evento_id'  => $evento->id,
+                    'nombre'     => $criterio['nombre'],
+                    'porcentaje' => $criterio['porcentaje'],
+                    'orden'      => $index,
+                ]);
+            }
+        }
+    }
+
+    // Llamar al final de store() y update():
+    $this->sincronizarCriterios($evento, $request);
+
+─ 3D. Pasar criterios al frontend en edit() ────────────────────────────────
+
+    // En el return de edit(), agregar:
+    'criterios' => $evento->criterios()->get(['id', 'nombre', 'porcentaje', 'orden']),
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 4 — NUEVO CONTROLLER: BazarEvaluacionController
+════════════════════════════════════════════════════════════════════════════════
+
+Crear: app/Http/Controllers/Admin/BazarEvaluacionController.php
+
+    namespace App\Http\Controllers\Admin;
+
+    use App\Models\Evento;
+    use App\Models\EventoCriterio;
+    use App\Models\EventoEvaluacion;
+    use Illuminate\Http\Request;
+    use Illuminate\Support\Facades\DB;
+    use Illuminate\Support\Str;
+    use Inertia\Inertia;
+
+─ 4A. index($eventoId) — Lista de participantes con evaluaciones ────────────
+
+    public function index(Evento $evento)
+    {
+        // Validar que sea bazar con criterios
+        abort_if(!$evento->esBazar(), 404, 'Este evento no es de tipo Bazar/Exposición.');
+
+        $criterios = $evento->criterios()->get();
+
+        $participantes = DB::table('evento_usuario as eu')
+            ->join('users as u', 'u.id', '=', 'eu.user_id')
+            ->where('eu.evento_id', $evento->id)
+            ->where('eu.estado', 'aprobado')
+            ->select([
+                'eu.user_id', 'u.name', 'u.email',
+                'eu.puntaje_total', 'eu.seleccionado',
+                'eu.correo_aprobacion_enviado', 'eu.correo_rechazo_enviado',
+            ])
+            ->orderByDesc('eu.puntaje_total')
+            ->get()
+            ->map(function ($p) use ($criterios, $evento) {
+                // Cargar puntajes por criterio
+                $evaluaciones = EventoEvaluacion::where('evento_id', $evento->id)
+                    ->where('user_id', $p->user_id)
+                    ->pluck('puntaje', 'criterio_id');
+
+                $p->evaluaciones = $criterios->map(fn($c) => [
+                    'criterio_id' => $c->id,
+                    'nombre'      => $c->nombre,
+                    'porcentaje'  => $c->porcentaje,
+                    'puntaje'     => $evaluaciones[$c->id] ?? null,
+                ]);
+                $p->evaluado = $evaluaciones->count() === $criterios->count();
+                return $p;
+            });
+
+        $totalSolicitudes = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)->count();
+
+        $seleccionados = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('seleccionado', true)->count();
+
+        return Inertia::render('Admin/Eventos/BazarEvaluacion', [
+            'evento'      => $evento->only('id', 'nombre', 'max_espacios', 'con_criterios_evaluacion'),
+            'criterios'   => $criterios,
+            'participantes' => $participantes,
+            'kpis' => [
+                'total_solicitudes' => $totalSolicitudes,
+                'aprobados'         => $participantes->count(),
+                'evaluados'         => $participantes->where('evaluado', true)->count(),
+                'seleccionados'     => $seleccionados,
+                'max_espacios'      => $evento->max_espacios,
+                'disponibles'       => max(0, ($evento->max_espacios ?? 0) - $seleccionados),
+            ],
+        ]);
+    }
+
+─ 4B. evaluar($evento, $userId) — Guardar puntajes por criterio ────────────
+
+    public function evaluar(Request $request, Evento $evento, int $userId)
+    {
+        $request->validate([
+            'evaluaciones'               => 'required|array',
+            'evaluaciones.*.criterio_id' => 'required|exists:evento_criterios,id',
+            'evaluaciones.*.puntaje'     => 'required|numeric|min:0|max:100',
+        ]);
+
+        $puntajeTotal = 0;
+
+        foreach ($request->evaluaciones as $eval) {
+            $criterio = EventoCriterio::find($eval['criterio_id']);
+
+            EventoEvaluacion::updateOrCreate(
+                ['evento_id' => $evento->id, 'user_id' => $userId, 'criterio_id' => $eval['criterio_id']],
+                ['puntaje'   => $eval['puntaje']]
+            );
+
+            // Puntaje ponderado: (puntaje/100) * porcentaje
+            $puntajeTotal += ($eval['puntaje'] / 100) * $criterio->porcentaje;
+        }
+
+        // Guardar puntaje total en evento_usuario
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $userId)
+            ->update(['puntaje_total' => round($puntajeTotal, 2)]);
+
+        return back()->with('success', 'Evaluación guardada.');
+    }
+
+─ 4C. toggleSeleccion($evento) — Seleccionar/deseleccionar participante ────
+
+    public function toggleSeleccion(Request $request, Evento $evento)
+    {
+        $request->validate([
+            'user_id'     => 'required|integer|exists:users,id',
+            'seleccionado' => 'required|boolean',
+        ]);
+
+        // Si está intentando seleccionar, verificar que no exceda max_espacios
+        if ($request->seleccionado && $evento->max_espacios) {
+            $actuales = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('seleccionado', true)
+                ->count();
+
+            if ($actuales >= $evento->max_espacios) {
+                return back()->withErrors([
+                    'error' => "Ya alcanzaste el límite de {$evento->max_espacios} espacios."
+                ]);
+            }
+        }
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $request->user_id)
+            ->update(['seleccionado' => $request->seleccionado]);
+
+        return back()->with('success', $request->seleccionado
+            ? 'Participante seleccionado.'
+            : 'Participante deseleccionado.');
+    }
+
+─ 4D. enviarAprobacion($evento) — Solo a los seleccionados ────────────────
+
+    public function enviarAprobacion(Request $request, Evento $evento)
+    {
+        $seleccionados = DB::table('evento_usuario as eu')
+            ->join('users as u', 'u.id', '=', 'eu.user_id')
+            ->where('eu.evento_id', $evento->id)
+            ->where('eu.seleccionado', true)
+            ->where('eu.correo_aprobacion_enviado', false)
+            ->select('eu.user_id', 'u.name', 'u.email')
+            ->get();
+
+        if ($seleccionados->isEmpty()) {
+            return back()->withErrors(['error' => 'No hay participantes seleccionados pendientes de notificar.']);
+        }
+
+        $plantilla = \App\Models\PlantillaCorreo::paraClave('bazar_seleccionado');
+        if (!$plantilla) {
+            return back()->withErrors(['error' => 'Plantilla "bazar_seleccionado" no encontrada.']);
+        }
+
+        $enviados = 0;
+        foreach ($seleccionados as $p) {
+            try {
+                $contenido = $plantilla->reemplazar([
+                    'nombre_usuario' => $p->name,
+                    'nombre_evento'  => $evento->nombre,
+                ]);
+
+                \Illuminate\Support\Facades\Mail::to($p->email)
+                    ->queue(new \App\Mail\PlantillaCorreoMail(
+                        (object) ['asunto' => $plantilla->asunto, 'contenido' => $contenido],
+                        ['nombre_usuario' => $p->name]
+                    ));
+
+                DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $p->user_id)
+                    ->update(['correo_aprobacion_enviado' => true]);
+
+                $enviados++;
+            } catch (\Exception $e) {
+                \Log::warning("Error correo aprobación bazar user {$p->user_id}: " . $e->getMessage());
+            }
+        }
+
+        return back()->with('success', "Correo de aprobación enviado a {$enviados} participante(s).");
+    }
+
+─ 4E. enviarRechazo($evento) — A los no seleccionados, con link de evaluación
+
+    public function enviarRechazo(Request $request, Evento $evento)
+    {
+        // No seleccionados = aprobados pero no están en los N espacios
+        $rechazados = DB::table('evento_usuario as eu')
+            ->join('users as u', 'u.id', '=', 'eu.user_id')
+            ->where('eu.evento_id', $evento->id)
+            ->where('eu.estado', 'aprobado')
+            ->where('eu.seleccionado', false)
+            ->where('eu.correo_rechazo_enviado', false)
+            ->select('eu.user_id', 'u.name', 'u.email', 'eu.token_evaluacion')
+            ->get();
+
+        if ($rechazados->isEmpty()) {
+            return back()->withErrors(['error' => 'No hay participantes pendientes de notificar rechazo.']);
+        }
+
+        $plantilla = \App\Models\PlantillaCorreo::paraClave('bazar_rechazado');
+        if (!$plantilla) {
+            return back()->withErrors(['error' => 'Plantilla "bazar_rechazado" no encontrada.']);
+        }
+
+        $enviados = 0;
+        foreach ($rechazados as $p) {
+            try {
+                // Generar token único si no tiene
+                $token = $p->token_evaluacion ?? Str::random(48);
+
+                if (!$p->token_evaluacion) {
+                    DB::table('evento_usuario')
+                        ->where('evento_id', $evento->id)
+                        ->where('user_id', $p->user_id)
+                        ->update(['token_evaluacion' => $token]);
+                }
+
+                $urlEvaluacion = route('bazar.evaluacion.publica', ['token' => $token]);
+
+                $contenido = $plantilla->reemplazar([
+                    'nombre_usuario'  => $p->name,
+                    'nombre_evento'   => $evento->nombre,
+                    'url_evaluacion'  => $urlEvaluacion,
+                ]);
+
+                \Illuminate\Support\Facades\Mail::to($p->email)
+                    ->queue(new \App\Mail\PlantillaCorreoMail(
+                        (object) ['asunto' => $plantilla->asunto, 'contenido' => $contenido],
+                        ['nombre_usuario' => $p->name]
+                    ));
+
+                DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $p->user_id)
+                    ->update(['correo_rechazo_enviado' => true]);
+
+                $enviados++;
+            } catch (\Exception $e) {
+                \Log::warning("Error correo rechazo bazar user {$p->user_id}: " . $e->getMessage());
+            }
+        }
+
+        return back()->with('success', "Correo de rechazo enviado a {$enviados} participante(s).");
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 5 — CONTROLLER PÚBLICO: ver evaluación (token)
+════════════════════════════════════════════════════════════════════════════════
+
+Crear: app/Http/Controllers/BazarPublicoController.php
+
+    public function evaluacion(string $token)
+    {
+        $registro = DB::table('evento_usuario as eu')
+            ->join('users as u', 'u.id', '=', 'eu.user_id')
+            ->join('eventos as e', 'e.id', '=', 'eu.evento_id')
+            ->where('eu.token_evaluacion', $token)
+            ->select([
+                'u.name', 'e.nombre as nombre_evento', 'e.id as evento_id',
+                'eu.puntaje_total', 'eu.user_id',
+            ])
+            ->first();
+
+        abort_if(!$registro, 404, 'Enlace de evaluación no encontrado o inválido.');
+
+        // Cargar criterios y puntajes del participante
+        $criterios = DB::table('evento_criterios as c')
+            ->leftJoin('evento_evaluaciones as e', function ($j) use ($registro) {
+                $j->on('e.criterio_id', '=', 'c.id')
+                  ->where('e.user_id', $registro->user_id)
+                  ->where('e.evento_id', $registro->evento_id);
+            })
+            ->where('c.evento_id', $registro->evento_id)
+            ->orderBy('c.orden')
+            ->select([
+                'c.nombre', 'c.porcentaje',
+                'e.puntaje',
+            ])
+            ->get()
+            ->map(fn($c) => [
+                'nombre'          => $c->nombre,
+                'porcentaje'      => $c->porcentaje,
+                'puntaje'         => $c->puntaje ?? 0,
+                'puntaje_maximo'  => 100,
+                'puntaje_ponderado' => round(($c->puntaje ?? 0) / 100 * $c->porcentaje, 2),
+            ]);
+
+        return Inertia::render('Bazar/EvaluacionPublica', [
+            'nombre_usuario'  => $registro->name,
+            'nombre_evento'   => $registro->nombre_evento,
+            'puntaje_total'   => $registro->puntaje_total,
+            'criterios'       => $criterios,
+        ]);
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 6 — RUTAS
+════════════════════════════════════════════════════════════════════════════════
+
+En routes/web.php, agregar dentro del grupo de admin:
+
+    // Bazar — evaluación de participantes
+    Route::prefix('admin/eventos/{evento}/bazar')->name('admin.bazar.')->group(function () {
+        Route::get('evaluacion',
+            [\App\Http\Controllers\Admin\BazarEvaluacionController::class, 'index'])
+            ->name('evaluacion');
+
+        Route::post('evaluar/{userId}',
+            [\App\Http\Controllers\Admin\BazarEvaluacionController::class, 'evaluar'])
+            ->name('evaluar');
+
+        Route::post('toggle-seleccion',
+            [\App\Http\Controllers\Admin\BazarEvaluacionController::class, 'toggleSeleccion'])
+            ->name('toggle-seleccion');
+
+        Route::post('enviar-aprobacion',
+            [\App\Http\Controllers\Admin\BazarEvaluacionController::class, 'enviarAprobacion'])
+            ->name('enviar-aprobacion');
+
+        Route::post('enviar-rechazo',
+            [\App\Http\Controllers\Admin\BazarEvaluacionController::class, 'enviarRechazo'])
+            ->name('enviar-rechazo');
+    });
+
+// Ruta PÚBLICA — sin autenticación
+Route::get('/bazar/evaluacion/{token}',
+    [\App\Http\Controllers\BazarPublicoController::class, 'evaluacion'])
+    ->name('bazar.evaluacion.publica');
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 7 — SEEDER: Plantillas de correo para bazar
+════════════════════════════════════════════════════════════════════════════════
+
+Crear: database/seeders/PlantillasBazarSeeder.php
+Ejecutar con: php artisan db:seed --class=PlantillasBazarSeeder
+
+    PlantillaCorreo::updateOrCreate(['clave' => 'bazar_solicitud_recibida'], [
+        'nombre'           => 'Bazar — Solicitud recibida',
+        'asunto'           => 'Recibimos tu solicitud para {{nombre_evento}}',
+        'tipo_destinatario' => 'expositor',
+        'activo'           => true,
+        'es_sistema'       => true,
+        'contenido'        => <<<HTML
+Hola {{nombre_usuario}},<br><br>
+Hemos recibido tu solicitud de participación para el evento <strong>{{nombre_evento}}</strong>.<br><br>
+Tu registro fue recibido correctamente. Recuerda que esto <strong>no garantiza un espacio</strong> en el evento,
+ya que todas las solicitudes serán evaluadas por nuestro equipo y se seleccionarán los participantes
+con base en los criterios establecidos.<br><br>
+Te notificaremos el resultado de tu evaluación a la brevedad.<br><br>
+Saludos,<br>
+Equipo Impulsate — Instituto Yucateco de Emprendedores
+HTML,
+    ]);
+
+    PlantillaCorreo::updateOrCreate(['clave' => 'bazar_seleccionado'], [
+        'nombre'           => 'Bazar — Participación aprobada',
+        'asunto'           => '¡Felicidades! Fuiste seleccionado para {{nombre_evento}}',
+        'tipo_destinatario' => 'expositor',
+        'activo'           => true,
+        'es_sistema'       => true,
+        'contenido'        => <<<HTML
+Hola {{nombre_usuario}},<br><br>
+¡Tenemos excelentes noticias! Después de evaluar todas las solicitudes recibidas,
+te informamos que <strong>has sido seleccionado(a)</strong> para participar como expositor
+en <strong>{{nombre_evento}}</strong>.<br><br>
+En los próximos días recibirás información sobre los siguientes pasos, logística del evento y
+detalles de tu espacio asignado.<br><br>
+¡Bienvenido(a) a Impulsate!<br><br>
+Saludos,<br>
+Equipo Impulsate — Instituto Yucateco de Emprendedores
+HTML,
+    ]);
+
+    PlantillaCorreo::updateOrCreate(['clave' => 'bazar_rechazado'], [
+        'nombre'           => 'Bazar — Participación no seleccionada',
+        'asunto'           => 'Resultado de tu solicitud para {{nombre_evento}}',
+        'tipo_destinatario' => 'expositor',
+        'activo'           => true,
+        'es_sistema'       => true,
+        'contenido'        => <<<HTML
+Hola {{nombre_usuario}},<br><br>
+Agradecemos tu interés en participar en <strong>{{nombre_evento}}</strong> y el tiempo que dedicaste
+a completar tu solicitud.<br><br>
+Después de revisar y evaluar todas las solicitudes recibidas, en esta ocasión
+<strong>tu solicitud no fue seleccionada</strong> para ocupar un espacio en el evento.
+La demanda fue alta y tuvimos que tomar decisiones difíciles.<br><br>
+Puedes consultar el detalle de tu evaluación y los criterios con los que fuiste calificado(a)
+haciendo clic en el siguiente botón:<br><br>
+<div style="text-align:center;margin:24px 0;">
+  <a href="{{url_evaluacion}}"
+     style="background:#8B1028;color:#ffffff;padding:12px 28px;border-radius:8px;
+            text-decoration:none;font-weight:bold;display:inline-block;">
+    Ver mi evaluación
+  </a>
+</div>
+Te invitamos a seguir mejorando y a participar en futuros eventos de la plataforma Impulsate.<br><br>
+Saludos,<br>
+Equipo Impulsate — Instituto Yucateco de Emprendedores
+HTML,
+    ]);
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 8 — VUE: Formulario de crear/editar evento
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: resources/js/Pages/Admin/Eventos/Create.vue (y Edit.vue si existe separado)
+
+Agregar en el formulario, DESPUÉS de los campos de fecha:
+
+    <!-- Tipo de evento -->
+    <div class="card">
+      <h3>Tipo de evento</h3>
+      <div class="toggle-row">
+        <button type="button"
+                :class="form.tipo_evento === 'encuentro_negocios' ? 'active' : ''"
+                @click="form.tipo_evento = 'encuentro_negocios'">
+          Encuentro de negocios
+          <span class="badge-green">Con citas</span>
+        </button>
+        <button type="button"
+                :class="form.tipo_evento === 'bazar_exposicion' ? 'active' : ''"
+                @click="form.tipo_evento = 'bazar_exposicion'">
+          Exposición / Bazar
+          <span class="badge-red">Sin citas</span>
+        </button>
+      </div>
+
+      <!-- Campo max_espacios: solo visible cuando es bazar -->
+      <div v-if="form.tipo_evento === 'bazar_exposicion'" class="mt-4">
+        <label class="form-label">Número máximo de espacios (N)</label>
+        <input v-model.number="form.max_espacios"
+               type="number" min="1" max="9999"
+               placeholder="Ej: 12"
+               class="form-input w-40" />
+        <p class="form-hint">
+          Solo se podrán seleccionar hasta este número de participantes
+          como ganadores del evento.
+        </p>
+      </div>
+    </div>
+
+    <!-- Criterios de evaluación -->
+    <div class="card">
+      <div class="flex items-center justify-between mb-3">
+        <h3>Criterios de evaluación</h3>
+        <label class="toggle-switch">
+          <input type="checkbox" v-model="form.con_criterios_evaluacion">
+          <span>Habilitar criterios</span>
+        </label>
+      </div>
+
+      <div v-if="form.con_criterios_evaluacion">
+        <div v-for="(c, i) in form.criterios" :key="i" class="criteria-row">
+          <input v-model="c.nombre" placeholder="Nombre del criterio" class="form-input flex-1" />
+          <input v-model.number="c.porcentaje" type="number" min="1" max="100"
+                 placeholder="%" class="form-input w-20 text-center" />
+          <span class="text-gray-500 text-sm">%</span>
+          <button type="button" @click="form.criterios.splice(i,1)"
+                  class="btn-icon-danger">✕</button>
+        </div>
+
+        <button type="button" @click="form.criterios.push({nombre:'',porcentaje:0})"
+                class="btn-add-criterio">
+          + Agregar criterio
+        </button>
+
+        <!-- Validador de suma -->
+        <div class="total-bar" :class="totalPorcentaje === 100 ? 'ok' : 'error'">
+          <span>Total: {{ totalPorcentaje }}%</span>
+          <span v-if="totalPorcentaje === 100">✓ Completo</span>
+          <span v-else>⚠ Debe sumar 100%</span>
+        </div>
+      </div>
+    </div>
+
+En el script setup, agregar al objeto form:
+    tipo_evento:              props.evento?.tipo_evento ?? 'encuentro_negocios',
+    max_espacios:             props.evento?.max_espacios ?? null,
+    con_criterios_evaluacion: props.evento?.con_criterios_evaluacion ?? false,
+    criterios:                props.criterios ?? [],
+
+Computed:
+    const totalPorcentaje = computed(() =>
+        form.criterios.reduce((s, c) => s + (Number(c.porcentaje) || 0), 0)
+    )
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 9 — VUE: Página de evaluación de bazar (Admin)
+════════════════════════════════════════════════════════════════════════════════
+
+Crear: resources/js/Pages/Admin/Eventos/BazarEvaluacion.vue
+
+PROPS:
+    evento, criterios, participantes, kpis
+
+DISEÑO (dark mode, guinda #8B1028):
+
+1. HEADER con nombre del evento y botones:
+   - "Enviar aprobaciones" (guinda) — solo activo si hay seleccionados
+   - "Enviar rechazos" (rojo) — solo activo si hay no-seleccionados
+
+2. KPI CARDS (5 tarjetas):
+   - Total solicitudes | Aprobados (pre-selección) | Evaluados |
+     Seleccionados (N/{max_espacios}) | Espacios disponibles
+
+3. TABLA DE PARTICIPANTES ordenada por puntaje_total DESC:
+   Columnas:
+   - Checkbox de selección (solo si correo_aprobacion_enviado=false)
+   - Nombre + email
+   - Puntaje total (barra de color: verde ≥70, ámbar ≥50, rojo <50)
+   - Una columna por criterio (puntaje individual)
+   - Estado: "Sin evaluar" | "Evaluado"
+   - Botón "Evaluar" (abre modal lateral)
+   - Chip: "Aprobación enviada" | "Rechazo enviado" (si ya se envió)
+
+4. SELECCIÓN CON LÍMITE:
+   - Checkbox en cada fila para marcar como "seleccionado"
+   - Counter visible: "Seleccionados: 3 / 12"
+   - Al intentar seleccionar más de max_espacios: toast de error
+   - Checkbox deshabilitado si correo_aprobacion_enviado = true
+   - Al hacer click en checkbox: router.post(route('admin.bazar.toggle-seleccion', ...))
+
+5. MODAL EVALUAR (slide-over lateral):
+   Al hacer click en "Evaluar" de una fila, abrir un panel lateral con:
+   - Nombre del participante
+   - Por cada criterio: slider o input numérico (0-100)
+   - Muestra el puntaje ponderado en tiempo real: (puntaje/100)*porcentaje
+   - Total acumulado en tiempo real
+   - Botón "Guardar evaluación" → router.post(route('admin.bazar.evaluar', ...))
+
+Lógica de selección en script setup:
+
+    const seleccionando = ref(false)
+
+    const toggleSeleccion = (participante, valor) => {
+        router.post(route('admin.bazar.toggle-seleccion', evento.id), {
+            user_id: participante.user_id,
+            seleccionado: valor,
+        }, { preserveScroll: true })
+    }
+
+    const enviarAprobacion = () => {
+        if (!seleccionados.value.length) return
+        router.post(route('admin.bazar.enviar-aprobacion', evento.id), {}, {
+            preserveScroll: true,
+        })
+    }
+
+    const enviarRechazo = () => {
+        router.post(route('admin.bazar.enviar-rechazo', evento.id), {}, {
+            preserveScroll: true,
+        })
+    }
+
+    const seleccionados = computed(() =>
+        participantes.filter(p => p.seleccionado)
+    )
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 10 — VUE: Página pública de evaluación (rechazados)
+════════════════════════════════════════════════════════════════════════════════
+
+Crear: resources/js/Pages/Bazar/EvaluacionPublica.vue
+
+Esta página es pública (sin autenticación requerida). Muestra al participante
+rechazado cómo fue evaluado. Diseño limpio, con branding Impulsate.
+
+PROPS:
+    nombre_usuario, nombre_evento, puntaje_total, criterios
+
+DISEÑO:
+- Logo Impulsate en header
+- Título: "Evaluación de participación"
+- Subtítulo: "{{nombre_evento}}"
+- Mensaje motivacional breve
+
+Por cada criterio, una fila mostrando:
+  ┌──────────────────────────────────────────────────────────────────┐
+  │ Grado de innovación (30%)          Tu calificación: 80 / 100    │
+  │ ████████████████████░░░░           Puntaje ponderado: 24 / 30   │
+  └──────────────────────────────────────────────────────────────────┘
+
+Al final: "Puntaje total: 61.5 / 100"
+Mensaje: "Te invitamos a participar en próximas ediciones..."
+
+NOTA: Esta página NO muestra el motivo textual del rechazo (no lo hay en el
+modelo), solo los puntajes objetivos. Si en el futuro se quiere agregar un
+campo de observaciones, se puede extender el modelo evento_usuario con
+`notas_evaluacion TEXT`.
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 11 — PLANTILLAS DE CORREO: hacerlas editables desde el admin
+════════════════════════════════════════════════════════════════════════════════
+
+Las plantillas de correo ya tienen un módulo de gestión. Verificar que en
+la vista de Plantillas de Correo del admin (/admin/plantillas-correo):
+
+1. Las 3 plantillas del bazar aparezcan listadas:
+   - "Bazar — Solicitud recibida"
+   - "Bazar — Participación aprobada"
+   - "Bazar — Participación no seleccionada"
+
+2. El editor de plantillas debe mostrar los PLACEHOLDERS disponibles
+   para que el admin sepa qué variables puede usar. Agregar en la vista
+   del editor un panel informativo con los placeholders por clave:
+
+   Para plantillas de bazar:
+     {{nombre_usuario}}  → Nombre del participante
+     {{nombre_evento}}   → Nombre del evento
+     {{url_evaluacion}}  → Link a la página de resultados (solo en rechazo)
+
+3. Si el editor de plantillas ya tiene un campo `contenido` editable con
+   HTML, el botón del correo de rechazo (url_evaluacion) ya funcionará
+   automáticamente al renderizarse con reemplazar().
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 12 — ACCESO DESDE LA LISTA DE EVENTOS
+════════════════════════════════════════════════════════════════════════════════
+
+En la vista Admin/Eventos/Index.vue, en la fila de cada evento tipo bazar,
+agregar un botón adicional junto a "Ver" y "Editar":
+
+    <Link v-if="evento.tipo_evento === 'bazar_exposicion'"
+          :href="route('admin.bazar.evaluacion', evento.id)"
+          class="btn-guinda-sm">
+      <i class="ti ti-chart-bar"></i> Evaluación
+    </Link>
+
+Así el admin llega directamente a la pantalla de evaluación sin pasos intermedios.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Crear evento tipo "Exposición / Bazar" con max_espacios=12 y criterios que
+   sumen 100% → debe guardarse correctamente
+
+2. Un usuario solicita el evento → recibe correo "bazar_solicitud_recibida"
+
+3. Admin va a /admin/eventos/{id}/bazar/evaluacion → ve tabla de participantes
+
+4. Admin hace click en "Evaluar" → ingresa puntajes → guarda → puntaje_total
+   se actualiza en la tabla
+
+5. Admin selecciona 12 participantes con el checkbox → counter muestra "12/12"
+   → al intentar seleccionar el 13, aparece error "Ya alcanzaste el límite"
+
+6. Admin hace click en "Enviar aprobaciones" → solo los 12 seleccionados
+   reciben el correo de aprobación → aparece chip "Aprobación enviada"
+
+7. Admin hace click en "Enviar rechazos" → los no seleccionados reciben
+   correo con botón "Ver mi evaluación" → al hacer click en el botón ven
+   la página pública con sus puntajes por criterio
+
+8. Ir a /admin/plantillas-correo → ver y editar las 3 plantillas del bazar
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY A PRODUCCIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+    ssh -p 65002 u489236361@195.35.38.222
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    git pull origin main
+    composer dump-autoload --optimize
+    php artisan migrate
+    php artisan db:seed --class=PlantillasBazarSeeder
+    npm run build
+    php artisan optimize
+    php artisan view:clear
+
+================================================================================
+FIN DEL PROMPT — Módulo Bazar/Exposición completo
+================================================================================

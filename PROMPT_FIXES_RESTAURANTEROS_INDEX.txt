@@ -1,0 +1,139 @@
+CONTEXTO
+========
+Proyecto: IMPULSATE — Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Archivo a modificar: resources/js/Pages/Restauranteros/Index.vue
+
+El archivo tiene en su <script setup>:
+
+  const props = defineProps({
+      restauranteros: Object,
+      filters: Object,
+      categorias: Array,
+      sin_evento: { type: Boolean, default: false },
+      proveedoresPlataforma: Object,
+  });
+
+  const page = usePage();
+  const eventoActivo = computed(() => page.props.eventoActivo);
+
+  const tituloPagina = computed(() =>
+      eventoActivo.value
+          ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
+          : 'Todos los Proveedores'
+  );
+
+Y en el template, el filtro de categorías:
+
+  <div v-if="categorias && categorias.length > 0" class="flex flex-wrap gap-2 mb-8">
+      <button
+          @click="seleccionarCategoria('')"
+          :class="categoriaActiva === ''
+              ? 'bg-guinda-800 text-white border-guinda-800'
+              : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-guinda-400 dark:hover:border-guinda-600'"
+          class="px-4 py-1.5 rounded-full text-sm font-medium border transition-all duration-200"
+      >
+          Todos
+      </button>
+      <button
+          v-for="cat in categorias"
+          :key="cat"
+          @click="seleccionarCategoria(cat)"
+          :class="categoriaActiva === cat
+              ? 'bg-guinda-800 text-white border-guinda-800'
+              : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-guinda-400 dark:hover:border-guinda-600'"
+          class="px-4 py-1.5 rounded-full text-sm font-medium border transition-all duration-200"
+      >
+          {{ cat }}
+      </button>
+  </div>
+
+
+PROBLEMA
+========
+1. `eventoActivo` viene del middleware HandleInertiaRequests y SIEMPRE tiene datos
+   aunque la ruta sea /proveedores sin evento (sin_evento=true). Por eso tituloPagina
+   siempre muestra "Proveedores del Evento: X", incluso cuando se está mostrando
+   la plataforma completa en modo bazar.
+
+2. Los botones de chip para categorías ocupan mucho espacio en iPhone cuando hay
+   muchas categorías, apilándose en varias filas.
+
+
+CAMBIO 1 — Corregir el título de la página
+===========================================
+Archivo: resources/js/Pages/Restauranteros/Index.vue
+
+Reemplaza el computed tituloPagina actual:
+
+  const tituloPagina = computed(() =>
+      eventoActivo.value
+          ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
+          : 'Todos los Proveedores'
+  );
+
+Por:
+
+  const tituloPagina = computed(() => {
+      if (props.sin_evento) return 'Proveedores de la plataforma Impulsate';
+      if (eventoActivo.value) return `Proveedores del Evento: ${eventoActivo.value.nombre}`;
+      return 'Todos los Proveedores';
+  });
+
+NOTA: La lógica es: si el controlador pasó sin_evento=true (caso bazar o sin evento
+activo forzado), mostramos el título genérico de plataforma. Si hay evento activo
+normal (encuentro de negocios), mostramos el nombre del evento. Si no hay ninguno,
+el fallback genérico.
+
+El subtítulo en el template ya está correcto porque usa `sin_evento` directamente:
+  {{ sin_evento
+      ? 'Conoce a todos los proveedores registrados en la plataforma Impulsate.'
+      : 'Explora y agenda citas con los proveedores participantes en este evento.' }}
+No es necesario modificarlo.
+
+
+CAMBIO 2 — Categorías como <select> en vez de chips
+=====================================================
+Archivo: resources/js/Pages/Restauranteros/Index.vue
+
+En la función seleccionarCategoria, el parámetro ya acepta un valor directo:
+
+  const seleccionarCategoria = (cat) => {
+      categoriaActiva.value = categoriaActiva.value === cat ? '' : cat;
+      aplicarFiltros();
+  };
+
+Para el select, cuando cambie la selección queremos asignar directamente sin el
+toggle (un select ya no puede "deseleccionar" la misma opción). Agrega esta función
+junto a seleccionarCategoria:
+
+  const cambiarCategoria = (event) => {
+      categoriaActiva.value = event.target.value;
+      aplicarFiltros();
+  };
+
+Luego en el template, reemplaza TODO el bloque de chips:
+
+  <div v-if="categorias && categorias.length > 0" class="flex flex-wrap gap-2 mb-8">
+      <button ...>Todos</button>
+      <button v-for="cat in categorias" ...>{{ cat }}</button>
+  </div>
+
+Por este bloque con <select>:
+
+  <div v-if="categorias && categorias.length > 0" class="mb-8">
+      <select
+          :value="categoriaActiva"
+          @change="cambiarCategoria"
+          class="w-full sm:w-64 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors shadow-sm dark:shadow-none"
+      >
+          <option value="">Todas las categorías</option>
+          <option v-for="cat in categorias" :key="cat" :value="cat">{{ cat }}</option>
+      </select>
+  </div>
+
+NOTAS:
+- Se usa :value en lugar de v-model para evitar el doble-bind con el router.
+- w-full sm:w-64 hace que en móvil ocupe todo el ancho y en desktop sea compacto.
+- Los colores/borde/focus son consistentes con el input de búsqueda que ya existe
+  en la página.
+- La opción vacía "Todas las categorías" actúa como el botón "Todos" anterior.

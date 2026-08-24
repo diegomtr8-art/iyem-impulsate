@@ -973,6 +973,7 @@ function scrollToEncuentros() {
                             <li v-if="canRegister"><Link :href="route('register')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Registrarse gratis</Link></li>
                             <li v-if="canLogin"><Link :href="route('login')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Iniciar sesión</Link></li>
                             <li><Link :href="route('aviso.privacidad')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Aviso de Privacidad</Link></li>
+                            <li><Link :href="route('terminos.condiciones')" class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Términos y Condiciones</Link></li>
                         </ul>
                     </div>
 
@@ -1037,6 +1038,8 @@ function scrollToEncuentros() {
                         <span>Desarrollado por <span class="font-semibold text-guinda-700 dark:text-guinda-400">Diego Martínez</span></span>
                         <span>·</span>
                         <Link :href="route('aviso.privacidad')" class="hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Aviso de Privacidad</Link>
+                        <span>·</span>
+                        <Link :href="route('terminos.condiciones')" class="hover:text-guinda-600 dark:hover:text-guinda-400 transition-colors">Términos y Condiciones</Link>
                     </div>
                 </div>
             </div>

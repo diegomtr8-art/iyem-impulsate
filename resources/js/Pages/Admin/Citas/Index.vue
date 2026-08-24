@@ -41,10 +41,20 @@ const nuevaCitaForm = useForm({
     restaurantero_id: '',
     fecha: '',
     hora: '',
+    duracion: 30,
     notas: '',
 });
 
-const horasDisponibles = ['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30'];
+const duracionesRapidas = [15, 20, 30, 45, 60, 90];
+
+const calcularHoraFin = (horaInicio, duracionMinutos) => {
+    if (!horaInicio || !duracionMinutos) return '';
+    const [h, m] = horaInicio.split(':').map(Number);
+    const totalMinutos = h * 60 + m + Number(duracionMinutos);
+    const hFin = Math.floor(totalMinutos / 60) % 24;
+    const mFin = totalMinutos % 60;
+    return `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`;
+};
 
 const crearCita = () => {
     nuevaCitaForm.post(route('admin.citas.store'), {
@@ -124,13 +134,40 @@ const cerrarModalNuevaCita = () => {
                                     <p v-if="nuevaCitaForm.errors.fecha" class="text-red-500 text-xs mt-1">{{ nuevaCitaForm.errors.fecha }}</p>
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Hora *</label>
-                                    <select v-model="nuevaCitaForm.hora"
-                                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 transition-colors">
-                                        <option value="">Seleccionar...</option>
-                                        <option v-for="h in horasDisponibles" :key="h" :value="h">{{ h }}</option>
-                                    </select>
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Hora de inicio *</label>
+                                    <input v-model="nuevaCitaForm.hora" type="time"
+                                        class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 transition-colors" />
                                     <p v-if="nuevaCitaForm.errors.hora" class="text-red-500 text-xs mt-1">{{ nuevaCitaForm.errors.hora }}</p>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Duración (minutos) *</label>
+                                <input v-model.number="nuevaCitaForm.duracion" type="number" min="5" max="480" step="5"
+                                    placeholder="Minutos"
+                                    class="w-full bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 transition-colors" />
+                                <p v-if="nuevaCitaForm.errors.duracion" class="text-red-500 text-xs mt-1">{{ nuevaCitaForm.errors.duracion }}</p>
+
+                                <div class="flex gap-2 flex-wrap mt-2">
+                                    <span class="text-xs text-gray-500 dark:text-gray-400 self-center">Duración rápida:</span>
+                                    <button v-for="min in duracionesRapidas" :key="min" type="button"
+                                        @click="nuevaCitaForm.duracion = min"
+                                        :class="[
+                                            'px-2.5 py-1 text-xs font-bold rounded-lg border transition-colors',
+                                            nuevaCitaForm.duracion === min
+                                                ? 'bg-guinda-800 text-white border-guinda-800'
+                                                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-guinda-50 hover:text-guinda-700 hover:border-guinda-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
+                                        ]">
+                                        {{ min }} min
+                                    </button>
+                                </div>
+
+                                <div v-if="nuevaCitaForm.hora && nuevaCitaForm.duracion > 0"
+                                    class="flex items-center gap-2 bg-guinda-50 dark:bg-guinda-900/20 border border-guinda-100 dark:border-guinda-800 rounded-xl px-3 py-2 mt-2">
+                                    <span class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold">🕐 Hora de fin:</span>
+                                    <span class="text-sm font-black text-guinda-800 dark:text-guinda-300">
+                                        {{ calcularHoraFin(nuevaCitaForm.hora, nuevaCitaForm.duracion) }}
+                                    </span>
                                 </div>
                             </div>
 

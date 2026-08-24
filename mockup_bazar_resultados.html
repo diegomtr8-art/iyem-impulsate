@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resultados de tu evaluación — Bazar Impulsate</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #3d0512 0%, #6f0c20 35%, #8b1028 60%, #1a4a2a 100%);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px 60px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 640px;
+    background: rgba(255,255,255,0.97);
+    border-radius: 28px;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.35);
+    overflow: hidden;
+  }
+
+  /* Header */
+  .card-header {
+    background: linear-gradient(135deg, #8b1028, #5c0a1b);
+    padding: 32px 40px 28px;
+    text-align: center;
+    position: relative;
+  }
+  .logo {
+    font-size: 22px;
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: 2px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.5); }
+  .header-title {
+    font-size: 14px;
+    color: rgba(255,255,255,0.75);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .header-event {
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  /* Puntaje hero */
+  .score-hero {
+    background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+    border-bottom: 1px solid #bbf7d0;
+    padding: 36px 40px 32px;
+    text-align: center;
+  }
+  .score-hero-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 2px; color: #15803d; margin-bottom: 8px; }
+  .score-hero-num {
+    font-size: 80px;
+    font-weight: 900;
+    color: #15803d;
+    line-height: 1;
+    letter-spacing: -3px;
+  }
+  .score-hero-denom { font-size: 30px; color: #86efac; }
+  .score-nivel {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 6px 20px;
+    background: #dcfce7;
+    border: 1.5px solid #86efac;
+    border-radius: 9999px;
+    font-size: 14px;
+    font-weight: 800;
+    color: #15803d;
+  }
+  .score-hero p {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #166534;
+    max-width: 380px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Score hero variant: bajo */
+  .score-hero.bajo { background: linear-gradient(135deg, #fffbeb, #fef3c7); border-bottom-color: #fde68a; }
+  .score-hero.bajo .score-hero-label { color: #b45309; }
+  .score-hero.bajo .score-hero-num { color: #b45309; }
+  .score-hero.bajo .score-hero-denom { color: #fcd34d; }
+  .score-hero.bajo .score-nivel { background: #fef3c7; border-color: #fcd34d; color: #b45309; }
+  .score-hero.bajo p { color: #92400e; }
+
+  /* Body */
+  .card-body { padding: 32px 40px; }
+
+  /* Section */
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #9ca3af;
+    margin-bottom: 14px;
+  }
+
+  /* Criterios */
+  .criterios { margin-bottom: 28px; }
+  .criterio { margin-bottom: 14px; }
+  .criterio-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .criterio-name { font-size: 14px; font-weight: 600; color: #374151; }
+  .criterio-score { font-size: 14px; font-weight: 800; }
+  .criterio-score.verde { color: #15803d; }
+  .criterio-score.amarillo { color: #b45309; }
+  .criterio-score.rojo { color: #dc2626; }
+  .criterio-sub { font-size: 11px; color: #9ca3af; }
+  .bar-bg { height: 8px; background: #f3f4f6; border-radius: 9999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 9999px; transition: width 0.8s ease; }
+  .bar-fill.verde { background: linear-gradient(90deg, #22c55e, #16a34a); }
+  .bar-fill.amarillo { background: linear-gradient(90deg, #f59e0b, #d97706); }
+  .bar-fill.rojo { background: linear-gradient(90deg, #f87171, #dc2626); }
+
+  /* Retroalimentación box */
+  .retroalimentacion {
+    background: #fffbeb;
+    border: 1.5px solid #fde68a;
+    border-radius: 16px;
+    padding: 20px 22px;
+    margin-bottom: 24px;
+  }
+  .retroalimentacion-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .retro-icon {
+    width: 32px; height: 32px;
+    background: #fef3c7;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .retroalimentacion-header h3 { font-size: 14px; font-weight: 700; color: #92400e; }
+  .retroalimentacion-header p { font-size: 11px; color: #b45309; }
+  .retroalimentacion p.texto { font-size: 14px; color: #78350f; line-height: 1.65; }
+
+  /* Encouragement section */
+  .encouragement {
+    background: linear-gradient(135deg, #8b1028, #5c0a1b);
+    border-radius: 20px;
+    padding: 28px 28px 26px;
+    text-align: center;
+    margin-bottom: 24px;
+    color: #fff;
+  }
+  .encourage-icon { font-size: 36px; margin-bottom: 10px; }
+  .encourage-title { font-size: 20px; font-weight: 900; margin-bottom: 8px; }
+  .encourage-text { font-size: 13px; color: rgba(255,255,255,0.8); line-height: 1.6; max-width: 440px; margin: 0 auto; }
+  .encourage-steps {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+  .step-chip {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    padding: 6px 14px;
+    border-radius: 9999px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  /* Footer */
+  .card-footer {
+    background: #f9fafb;
+    border-top: 1px solid #e5e7eb;
+    padding: 20px 40px;
+    text-align: center;
+  }
+  .card-footer p { font-size: 12px; color: #9ca3af; line-height: 1.5; }
+  .card-footer a { color: #8b1028; text-decoration: none; font-weight: 600; }
+
+  /* Participant name */
+  .participant {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .participant-avatar {
+    width: 42px; height: 42px;
+    background: #8b1028;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; font-weight: 800; color: #fff;
+    flex-shrink: 0;
+  }
+  .participant-name { font-size: 15px; font-weight: 700; color: #111827; }
+  .participant-empresa { font-size: 13px; color: #6b7280; }
+
+  /* Divider */
+  .divider { height: 1px; background: #f3f4f6; margin: 24px 0; }
+
+  @media (max-width: 600px) {
+    .card-header, .score-hero, .card-body, .card-footer { padding-left: 24px; padding-right: 24px; }
+    .score-hero-num { font-size: 60px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+
+  <!-- Header -->
+  <div class="card-header">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      IMPULSATE
+      <div class="logo-dot"></div>
+    </div>
+    <div class="header-title">Evaluación de participación</div>
+    <div class="header-event">Bazar Navideño Impulsate 2025</div>
+  </div>
+
+  <!-- Score Hero — versión: puntaje alto (seleccionado) -->
+  <!--
+    NOTA PARA DESARROLLADOR:
+    Usa class="score-hero" para puntajes ≥ 70 (verde)
+    Usa class="score-hero bajo" para puntajes < 70 (ámbar)
+  -->
+  <div class="score-hero bajo">
+    <div class="score-hero-label">Tu puntaje final</div>
+    <div class="score-hero-num">62<span class="score-hero-denom">.40</span></div>
+    <div class="score-nivel">En desarrollo</div>
+    <p>Gracias por participar en esta convocatoria. Tu perfil fue revisado con atención.</p>
+  </div>
+
+  <!-- Body -->
+  <div class="card-body">
+
+    <!-- Participante -->
+    <div class="participant">
+      <div class="participant-avatar">J</div>
+      <div>
+        <div class="participant-name">Jorge Castillo Vega</div>
+        <div class="participant-empresa">Muebles Artesanales Castillo</div>
+      </div>
+    </div>
+
+    <!-- Criterios -->
+    <div class="criterios">
+      <div class="section-title">Desglose por criterio</div>
+
+      <div class="criterio">
+        <div class="criterio-header">
+          <div>
+            <div class="criterio-name">Presentación del producto</div>
+            <div class="criterio-sub">Ponderación 25% · Calificación: 68 / 100</div>
+          </div>
+          <span class="criterio-score amarillo">17.00 <span style="font-weight:400;font-size:11px;color:#9ca3af;">/ 25</span></span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill amarillo" style="width:68%;"></div></div>
+      </div>
+
+      <div class="criterio">
+        <div class="criterio-header">
+          <div>
+            <div class="criterio-name">Originalidad del producto</div>
+            <div class="criterio-sub">Ponderación 20% · Calificación: 75 / 100</div>
+          </div>
+          <span class="criterio-score verde">15.00 <span style="font-weight:400;font-size:11px;color:#9ca3af;">/ 20</span></span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill verde" style="width:75%;"></div></div>
+      </div>
+
+      <div class="criterio">
+        <div class="criterio-header">
+          <div>
+            <div class="criterio-name">Documentación completa y vigente</div>
+            <div class="criterio-sub">Ponderación 20% · Calificación: 55 / 100</div>
+          </div>
+          <span class="criterio-score rojo">11.00 <span style="font-weight:400;font-size:11px;color:#9ca3af;">/ 20</span></span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill rojo" style="width:55%;"></div></div>
+      </div>
+
+      <div class="criterio">
+        <div class="criterio-header">
+          <div>
+            <div class="criterio-name">Viabilidad comercial</div>
+            <div class="criterio-sub">Ponderación 35% · Calificación: 55 / 100</div>
+          </div>
+          <span class="criterio-score rojo">19.25 <span style="font-weight:400;font-size:11px;color:#9ca3af;">/ 35</span></span>
+        </div>
+        <div class="bar-bg"><div class="bar-fill rojo" style="width:55%;"></div></div>
+      </div>
+
+    </div>
+
+    <!-- Retroalimentación del equipo -->
+    <div class="retroalimentacion">
+      <div class="retroalimentacion-header">
+        <div class="retro-icon">💬</div>
+        <div>
+          <h3>Retroalimentación del equipo Impulsate</h3>
+          <p>Notas de nuestro comité evaluador</p>
+        </div>
+      </div>
+      <p class="texto">El portafolio presentado no refleja suficiente variedad de productos para un espacio de exposición en bazar. Adicionalmente, la CSF presentada tenía más de 3 meses de antigüedad. Te recomendamos ampliar tu catálogo, mantener tu documentación actualizada y postularte con más tiempo para la próxima edición.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Encouragement -->
+    <div class="encouragement">
+      <div class="encourage-icon">🚀</div>
+      <div class="encourage-title">¡Sigue adelante, no te rindas!</div>
+      <div class="encourage-text">
+        Tu participación es valiosa y forma parte del crecimiento de nuestro ecosistema. Cada convocatoria es una nueva oportunidad para brillar. Aquí tienes algunos pasos para tu próxima postulación:
+      </div>
+      <div class="encourage-steps">
+        <span class="step-chip">📄 Actualiza tu CSF</span>
+        <span class="step-chip">🛍 Amplía tu catálogo</span>
+        <span class="step-chip">📸 Mejora tus fotos</span>
+        <span class="step-chip">📅 Postúlate antes</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Footer -->
+  <div class="card-footer">
+    <p>
+      ¿Tienes dudas sobre tu evaluación? Escríbenos a
+      <a href="mailto:contacto@impulsate.mx">contacto@impulsate.mx</a><br>
+      © 2025 IMPULSATE · Todos los derechos reservados
+    </p>
+  </div>
+
+</div>
+
+</body>
+</html>

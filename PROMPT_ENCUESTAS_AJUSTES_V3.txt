@@ -1,0 +1,624 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Ajustes Encuestas: Recordatorio prueba + Borrar + Popup + Canirac
+Archivo: PROMPT_ENCUESTAS_AJUSTES_V3.txt
+================================================================================
+
+CONTEXTO DEL SISTEMA:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (dark mode, guinda #8B1028)
+  Módulo: Admin/Encuestas (EncuestaAdminController, Index.vue, Graficas.vue)
+  Campo Canirac: users.camara_asociacion = 'CANIRAC'
+  Nunca usar azul/índigo — solo guinda #8B1028.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — ENVIAR CORREO DE PRUEBA DEL RECORDATORIO
+════════════════════════════════════════════════════════════════════════════════
+
+OBJETIVO: Poder ver cómo se ve el correo de recordatorio antes de enviarlo
+masivamente, igual que ya existe "Enviar prueba" para la encuesta.
+
+─ 1A. Nueva ruta en routes/web.php ─────────────────────────────────────────
+
+    Route::post('/encuestas/enviar-recordatorio-prueba',
+        [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarRecordatorioPrueba'])
+        ->name('encuestas.enviar-recordatorio-prueba');
+
+─ 1B. Nuevo método en EncuestaAdminController ───────────────────────────────
+
+    public function enviarRecordatorioPrueba(Request $request)
+    {
+        $request->validate([
+            'email'        => 'required|email',
+            'plantilla_id' => 'nullable|exists:encuesta_plantillas,id',
+        ]);
+
+        $plantilla = $request->plantilla_id
+            ? EncuestaPlantilla::find($request->plantilla_id)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        // Crear encuesta fantasma de prueba (es_prueba = true)
+        $encuesta = EncuestaSatisfaccion::create([
+            'evento_id'             => null,
+            'user_id'               => null,
+            'tipo'                  => 'proveedor',
+            'token'                 => \Illuminate\Support\Str::random(40),
+            'encuesta_plantilla_id' => $plantilla?->id,
+            'es_prueba'             => true,
+            'email_prueba'          => $request->email,
+        ]);
+
+        \Illuminate\Support\Facades\Mail::to($request->email)
+            ->send(new \App\Mail\EncuestaRecordatorioMail($encuesta->load('plantilla')));
+
+        return back()->with('success', "Correo de recordatorio de prueba enviado a {$request->email}.");
+    }
+
+─ 1C. Agregar sección en Index.vue ──────────────────────────────────────────
+
+En el área de "Enviar prueba" existente, agregar un bloque paralelo para
+el recordatorio de prueba. El diseño debe ser idéntico al bloque de prueba
+normal pero con color ámbar para diferenciarlo:
+
+    <!-- Recordatorio de prueba -->
+    <div class="bg-amber-900/10 border border-amber-500/20 rounded-xl p-4">
+      <h3 class="text-amber-400 font-semibold text-sm mb-3">
+        ⏰ Prueba de Recordatorio
+      </h3>
+      <p class="text-gray-400 text-xs mb-3">
+        Envíate el correo de recordatorio para ver cómo se ve antes de mandarlo a los pendientes.
+      </p>
+      <div class="flex gap-2">
+        <input v-model="emailRecordatorioPrueba"
+               type="email"
+               placeholder="tu@correo.com"
+               class="flex-1 bg-gray-800 border border-white/20 text-white rounded-lg
+                      px-3 py-2 text-sm placeholder-gray-500 focus:outline-none
+                      focus:border-amber-500" />
+        <button @click="enviarRecordatorioPrueba"
+                :disabled="!emailRecordatorioPrueba"
+                class="px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40
+                       text-white rounded-lg text-sm font-medium transition whitespace-nowrap">
+          Enviar prueba
+        </button>
+      </div>
+    </div>
+
+En el script setup, agregar:
+
+    const emailRecordatorioPrueba = ref('')
+    const plantillaRecordatorioPruebaId = ref('')
+
+    const enviarRecordatorioPrueba = () => {
+        if (!emailRecordatorioPrueba.value) return
+        router.post(route('admin.encuestas.enviar-recordatorio-prueba'), {
+            email:        emailRecordatorioPrueba.value,
+            plantilla_id: plantillaRecordatorioPruebaId.value || undefined,
+        }, {
+            preserveScroll: true,
+            onSuccess: () => { emailRecordatorioPrueba.value = '' },
+        })
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — ELIMINAR TODAS LAS RESPUESTAS DE UNA PERSONA
+════════════════════════════════════════════════════════════════════════════════
+
+OBJETIVO: En la lista de encuestas completadas (Admin/Encuestas/Index.vue) y en
+la vista de detalle (VerRespuesta.vue), poder borrar completamente los registros
+de una persona: sus encuesta_respuestas + su encuestas_satisfaccion.
+Esto permite que pueda volver a recibir la encuesta si es necesario.
+
+─ 2A. Nueva ruta ────────────────────────────────────────────────────────────
+
+    Route::delete('/encuestas/{encuesta}/eliminar-respuestas',
+        [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'eliminarRespuestas'])
+        ->name('encuestas.eliminar-respuestas');
+
+─ 2B. Nuevo método en EncuestaAdminController ───────────────────────────────
+
+    public function eliminarRespuestas(EncuestaSatisfaccion $encuesta)
+    {
+        $nombre = $encuesta->user?->name ?? $encuesta->email_prueba ?? "ID {$encuesta->id}";
+
+        // Borrar respuestas individuales primero (FK)
+        $encuesta->respuestas()->delete();
+
+        // Borrar el registro de encuesta (permite reenvío futuro)
+        $encuesta->delete();
+
+        return back()->with('success', "Respuestas de {$nombre} eliminadas. Puede volver a recibir la encuesta.");
+    }
+
+─ 2C. Botón en Admin/Encuestas/VerRespuesta.vue ─────────────────────────────
+
+Agregar junto al botón "← Volver", un botón de borrar con confirmación modal:
+
+En script setup:
+
+    import { router } from '@inertiajs/vue3'
+    const confirmarBorrar = ref(false)
+
+    const eliminarRespuestas = () => {
+        router.delete(route('admin.encuestas.eliminar-respuestas', encuesta.id), {
+            onSuccess: () => router.visit(route('admin.encuestas.index'))
+        })
+    }
+
+En template, agregar al encabezado:
+
+    <button @click="confirmarBorrar = true"
+            class="px-4 py-2 bg-red-900/30 hover:bg-red-800/50 border border-red-500/30
+                   text-red-400 hover:text-red-300 rounded-lg text-sm transition">
+      🗑 Eliminar respuestas
+    </button>
+
+    <!-- Modal de confirmación -->
+    <Teleport to="body">
+      <div v-if="confirmarBorrar"
+           class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-gray-900 border border-red-500/30 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+          <p class="text-2xl mb-2 text-center">🗑</p>
+          <h3 class="text-white font-bold text-lg text-center mb-2">¿Eliminar respuestas?</h3>
+          <p class="text-gray-400 text-sm text-center mb-6">
+            Se borrarán todas las respuestas de
+            <strong class="text-white">{{ encuesta.usuario?.name ?? 'esta persona' }}</strong>.
+            Esta acción no se puede deshacer.<br/>
+            <span class="text-amber-400 text-xs mt-1 block">
+              La persona podrá volver a recibir la encuesta.
+            </span>
+          </p>
+          <div class="flex gap-3">
+            <button @click="confirmarBorrar = false"
+                    class="flex-1 px-4 py-2 bg-white/10 hover:bg-white/20 text-white
+                           rounded-lg text-sm transition">
+              Cancelar
+            </button>
+            <button @click="eliminarRespuestas"
+                    class="flex-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white
+                           rounded-lg text-sm font-semibold transition">
+              Sí, eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+─ 2D. Botón también en la tabla del Index.vue ───────────────────────────────
+
+En la tabla de encuestas (ultimasRespondidas o encuestas.data), junto al
+botón "👁 Ver", agregar:
+
+    <button @click="confirmarEliminar(enc.id, enc.usuario?.name)"
+            class="text-xs px-3 py-1 bg-red-900/20 hover:bg-red-800/40 text-red-400
+                   rounded-lg transition border border-red-500/20">
+      🗑 Borrar
+    </button>
+
+En el script setup del Index.vue:
+
+    const eliminarId    = ref(null)
+    const eliminarNombre = ref('')
+    const modalEliminar = ref(false)
+
+    const confirmarEliminar = (id, nombre) => {
+        eliminarId.value    = id
+        eliminarNombre.value = nombre ?? 'esta persona'
+        modalEliminar.value  = true
+    }
+
+    const ejecutarEliminar = () => {
+        router.delete(route('admin.encuestas.eliminar-respuestas', eliminarId.value), {
+            preserveScroll: true,
+            onSuccess: () => { modalEliminar.value = false }
+        })
+    }
+
+Y el modal de confirmación al final del template del Index.vue:
+
+    <Teleport to="body">
+      <div v-if="modalEliminar"
+           class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="bg-gray-900 border border-red-500/30 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+          <p class="text-2xl mb-2 text-center">🗑</p>
+          <h3 class="text-white font-bold text-lg text-center mb-2">¿Eliminar respuestas?</h3>
+          <p class="text-gray-400 text-sm text-center mb-6">
+            Se borrarán todas las respuestas de
+            <strong class="text-white">{{ eliminarNombre }}</strong>.
+          </p>
+          <div class="flex gap-3">
+            <button @click="modalEliminar = false"
+                    class="flex-1 px-4 py-2 bg-white/10 text-white rounded-lg text-sm transition">
+              Cancelar
+            </button>
+            <button @click="ejecutarEliminar"
+                    class="flex-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition">
+              Sí, eliminar
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 3 — POPUP CON CONTEO DE RECORDATORIOS ENVIADOS EXITOSAMENTE
+════════════════════════════════════════════════════════════════════════════════
+
+OBJETIVO: Cuando el admin hace clic en "⏰ Recordatorio a pendientes", en lugar
+de solo un flash message, mostrar un popup/modal con el resultado detallado:
+cuántos se enviaron, a quiénes, y cuántos ya habían contestado.
+
+─ 3A. Modificar enviarRecordatorio en EncuestaAdminController ───────────────
+
+REEMPLAZAR el método enviarRecordatorio existente por esta versión que
+devuelve datos detallados mediante sesión flash:
+
+    public function enviarRecordatorio(Request $request)
+    {
+        $request->validate([
+            'evento_id' => 'required|exists:eventos,id',
+        ]);
+
+        $pendientes = EncuestaSatisfaccion::with('user')
+            ->where('evento_id', $request->evento_id)
+            ->where('es_prueba', false)
+            ->whereNull('completada_at')
+            ->get();
+
+        $yaContestaron = EncuestaSatisfaccion::where('evento_id', $request->evento_id)
+            ->where('es_prueba', false)
+            ->whereNotNull('completada_at')
+            ->count();
+
+        if ($pendientes->isEmpty()) {
+            return back()->with('recordatorio_resultado', [
+                'enviados'       => 0,
+                'ya_contestaron' => $yaContestaron,
+                'personas'       => [],
+                'mensaje'        => '¡Todos han contestado!',
+            ]);
+        }
+
+        $enviados = 0;
+        $personas = [];
+
+        foreach ($pendientes as $encuesta) {
+            \App\Jobs\SendRecordatorioJob::dispatch($encuesta->id)
+                ->onQueue('encuestas');
+            $enviados++;
+            $personas[] = [
+                'nombre' => $encuesta->user?->name ?? $encuesta->email_prueba ?? '—',
+                'email'  => $encuesta->user?->email ?? $encuesta->email_prueba ?? '—',
+                'tipo'   => $encuesta->tipo,
+            ];
+        }
+
+        return back()->with('recordatorio_resultado', [
+            'enviados'       => $enviados,
+            'ya_contestaron' => $yaContestaron,
+            'personas'       => $personas,
+            'mensaje'        => "Recordatorio enviado a {$enviados} persona(s) pendiente(s).",
+        ]);
+    }
+
+─ 3B. Pasar el flash al Index.vue desde el controller index() ───────────────
+
+En el método index() de EncuestaAdminController, agregar al return de Inertia:
+
+    'recordatorioResultado' => session('recordatorio_resultado'),
+
+─ 3C. Modal de resultado en Index.vue ───────────────────────────────────────
+
+En defineProps, agregar:
+    recordatorioResultado: { type: Object, default: null },
+
+En script setup:
+    import { watch } from 'vue'
+
+    const modalRecordatorio = ref(false)
+
+    // Abrir automáticamente cuando llegan datos del recordatorio
+    watch(() => props.recordatorioResultado, (val) => {
+        if (val) modalRecordatorio.value = true
+    }, { immediate: true })
+
+Modal en el template (agregar al final, junto a otros modales):
+
+    <Teleport to="body">
+      <div v-if="modalRecordatorio && recordatorioResultado"
+           class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div class="bg-gray-900 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+
+          <!-- Header -->
+          <div class="p-6 border-b border-white/10">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <span class="text-3xl">
+                  {{ recordatorioResultado.enviados === 0 ? '🎉' : '⏰' }}
+                </span>
+                <div>
+                  <h3 class="text-white font-bold text-lg">Recordatorio enviado</h3>
+                  <p class="text-gray-400 text-sm">{{ recordatorioResultado.mensaje }}</p>
+                </div>
+              </div>
+              <button @click="modalRecordatorio = false"
+                      class="text-gray-400 hover:text-white text-2xl leading-none">✕</button>
+            </div>
+          </div>
+
+          <!-- KPIs -->
+          <div class="grid grid-cols-2 gap-4 p-6 border-b border-white/10">
+            <div class="bg-amber-900/20 border border-amber-500/20 rounded-xl p-4 text-center">
+              <p class="text-3xl font-bold text-amber-400">
+                {{ recordatorioResultado.enviados }}
+              </p>
+              <p class="text-gray-400 text-sm mt-1">Recordatorios enviados</p>
+            </div>
+            <div class="bg-emerald-900/20 border border-emerald-500/20 rounded-xl p-4 text-center">
+              <p class="text-3xl font-bold text-emerald-400">
+                {{ recordatorioResultado.ya_contestaron }}
+              </p>
+              <p class="text-gray-400 text-sm mt-1">Ya habían contestado</p>
+            </div>
+          </div>
+
+          <!-- Lista de personas a quienes se envió -->
+          <div v-if="recordatorioResultado.personas?.length > 0" class="p-6">
+            <p class="text-gray-400 text-xs uppercase tracking-wider mb-3">
+              Se envió recordatorio a:
+            </p>
+            <div class="max-h-48 overflow-y-auto space-y-2
+                        scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+              <div v-for="p in recordatorioResultado.personas" :key="p.email"
+                   class="flex items-center gap-3 bg-white/5 rounded-lg px-3 py-2">
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                      :class="p.tipo === 'proveedor'
+                        ? 'bg-[#8B1028]/30 text-[#c2435d]'
+                        : 'bg-emerald-900/30 text-emerald-400'">
+                  {{ p.tipo === 'proveedor' ? '🏭' : '🛒' }}
+                </span>
+                <div class="min-w-0">
+                  <p class="text-white text-sm truncate">{{ p.nombre }}</p>
+                  <p class="text-gray-400 text-xs truncate">{{ p.email }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="px-6 pb-6">
+            <button @click="modalRecordatorio = false"
+                    class="w-full py-2.5 bg-[#8B1028] hover:bg-[#a01230] text-white
+                           rounded-lg font-medium transition">
+              Entendido
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </Teleport>
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 4 — FILTRO Y COLUMNA CANIRAC EN EXCEL Y GRAFICAS
+════════════════════════════════════════════════════════════════════════════════
+
+CONTEXTO: El campo users.camara_asociacion = 'CANIRAC' identifica a miembros
+de la Canirac. Se quiere poder filtrar y ver esta información tanto en las
+gráficas como en la descarga Excel.
+
+─ 4A. Agregar filtro Canirac al método graficas() del controller ────────────
+
+En el método graficas(Request $request), agregar la variable:
+
+    $canirac = $request->get('canirac'); // 'si' | 'no' | null
+
+En la query base $base, agregar:
+
+    ->when($canirac === 'si', fn($q) =>
+        $q->whereHas('user', fn($u) => $u->where('camara_asociacion', 'CANIRAC'))
+    )
+    ->when($canirac === 'no', fn($q) =>
+        $q->whereHas('user', fn($u) =>
+            $u->where(fn($u2) =>
+                $u2->whereNull('camara_asociacion')
+                   ->orWhere('camara_asociacion', '!=', 'CANIRAC')
+            )
+        )
+    )
+
+Agregar también a los KPIs:
+
+    'canirac' => (clone $base)->whereHas('user',
+        fn($q) => $q->where('camara_asociacion', 'CANIRAC')
+    )->count(),
+
+Y en los filtros del return:
+
+    'filtros' => compact('eventoId', 'plantillaId', 'segmento', 'desde', 'hasta', 'canirac'),
+
+─ 4B. Agregar selector Canirac en Graficas.vue ──────────────────────────────
+
+En el objeto filtros ref(), agregar:
+    canirac: props.filtros.canirac ?? '',
+
+En la función aplicarFiltros(), ya se incluye automáticamente al hacer
+Object.entries(filtros.value).filter(([, v]) => v !== '').
+
+En el formulario de filtros, agregar un nuevo select junto a los existentes:
+
+    <select v-model="filtros.canirac"
+            class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+      <option value="">Canirac: Todos</option>
+      <option value="si">✅ Solo Canirac</option>
+      <option value="no">❌ No Canirac</option>
+    </select>
+
+En los KPIs, agregar una tarjeta nueva:
+
+    <div class="bg-white/5 backdrop-blur border border-white/10 rounded-xl p-5 text-center">
+      <p class="text-4xl font-bold text-orange-400">{{ kpis.canirac }}</p>
+      <p class="text-gray-400 text-sm mt-1">Canirac</p>
+    </div>
+
+─ 4C. Agregar columna Canirac en EncuestasDetalleSheet.php ─────────────────
+
+En el método collection() de EncuestasDetalleSheet, en la definición de $row,
+agregar la columna Canirac DESPUÉS de 'Tipo':
+
+    $row = [
+        'Participante'    => $enc->user?->name ?? '—',
+        'Email'           => $enc->user?->email ?? '—',
+        'Tipo'            => ucfirst($enc->tipo),
+        'Canirac'         => ($enc->user?->camara_asociacion === 'CANIRAC') ? 'Sí' : 'No',
+        'Fecha respuesta' => $enc->completada_at?->format('d/m/Y H:i'),
+    ];
+
+En el método headings():
+
+    $base = ['Participante', 'Email', 'Tipo', 'Canirac', 'Fecha respuesta'];
+
+─ 4D. Agregar columna Canirac en EncuestasResumenSheet.php ─────────────────
+
+Agregar al resumen general (después de los KPIs de totales), nuevas filas
+de conteo Canirac. En el método array(), ANTES de la fila vacía que separa
+los KPIs de las preguntas:
+
+    ['Miembros Canirac respondidos:', \App\Models\EncuestaSatisfaccion::whereIn('id', $encuestaIds->toArray())
+        ->whereHas('user', fn($q) => $q->where('camara_asociacion', 'CANIRAC'))
+        ->count(), '', ''],
+    ['No Canirac respondidos:', \App\Models\EncuestaSatisfaccion::whereIn('id', $encuestaIds->toArray())
+        ->whereHas('user', fn($q) => $q->where(fn($q2) =>
+            $q2->whereNull('camara_asociacion')->orWhere('camara_asociacion', '!=', 'CANIRAC')
+        ))
+        ->count(), '', ''],
+
+─ 4E. Filtro Canirac en la descarga Excel ──────────────────────────────────
+
+En el controlador, agregar parámetro $canirac al método reporteExcel():
+
+    public function reporteExcel(Request $request)
+    {
+        $eventoId    = $request->get('evento_id');
+        $plantillaId = $request->get('plantilla_id');
+        $canirac     = $request->get('canirac'); // 'si' | 'no' | null
+
+        $plantilla = $plantillaId
+            ? EncuestaPlantilla::find($plantillaId)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        $filename = 'encuestas-' . now()->format('Y-m-d') . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\EncuestasReporteExport($eventoId, $plantilla, $canirac),
+            $filename
+        );
+    }
+
+Actualizar el constructor de EncuestasReporteExport para recibir $canirac
+y pasarlo a cada Sheet:
+
+    public function __construct(
+        private ?int $eventoId,
+        private ?EncuestaPlantilla $plantilla,
+        private ?string $canirac = null
+    ) {}
+
+    public function sheets(): array
+    {
+        return [
+            new EncuestasResumenSheet($this->eventoId, $this->plantilla, $this->canirac),
+            new EncuestasDetalleSheet($this->eventoId, $this->plantilla, null, $this->canirac),
+            new EncuestasDetalleSheet($this->eventoId, $this->plantilla, 'comprador', $this->canirac),
+            new EncuestasDetalleSheet($this->eventoId, $this->plantilla, 'proveedor', $this->canirac),
+        ];
+    }
+
+Actualizar el constructor de EncuestasDetalleSheet y EncuestasResumenSheet
+para recibir y aplicar el filtro $canirac:
+
+    public function __construct(
+        private ?int $eventoId,
+        private ?EncuestaPlantilla $plantilla,
+        private ?string $tipo,
+        private ?string $canirac = null   // ← nuevo
+    ) {}
+
+    // En el query de collection() / encuestaIds, agregar:
+    ->when($this->canirac === 'si', fn($q) =>
+        $q->whereHas('user', fn($u) => $u->where('camara_asociacion', 'CANIRAC'))
+    )
+    ->when($this->canirac === 'no', fn($q) =>
+        $q->whereHas('user', fn($u) =>
+            $u->where(fn($u2) =>
+                $u2->whereNull('camara_asociacion')
+                   ->orWhere('camara_asociacion', '!=', 'CANIRAC')
+            )
+        )
+    )
+
+Actualizar urlExcel en Graficas.vue para incluir el filtro canirac:
+
+    const urlExcel = computed(() => {
+        const params = new URLSearchParams()
+        if (filtros.value.evento_id)    params.set('evento_id', filtros.value.evento_id)
+        if (filtros.value.plantilla_id) params.set('plantilla_id', filtros.value.plantilla_id)
+        if (filtros.value.canirac)      params.set('canirac', filtros.value.canirac)
+        return route('admin.encuestas.reporte-excel') + '?' + params.toString()
+    })
+
+    // Igualmente urlReporte para el PDF:
+    const urlReporte = computed(() => {
+        const params = new URLSearchParams()
+        if (filtros.value.evento_id)    params.set('evento_id', filtros.value.evento_id)
+        if (filtros.value.plantilla_id) params.set('plantilla_id', filtros.value.plantilla_id)
+        if (filtros.value.canirac)      params.set('canirac', filtros.value.canirac)
+        return route('admin.encuestas.reporte-pdf') + '?' + params.toString()
+    })
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+CAMBIO 1 — Recordatorio de prueba:
+  a) Admin → Encuestas → sección "⏰ Prueba de Recordatorio"
+  b) Ingresar correo → clic "Enviar prueba"
+  c) Verificar que llega el correo de recordatorio (diferente al de encuesta)
+
+CAMBIO 2 — Eliminar respuestas:
+  a) Ir a detalle de una respuesta (👁 Ver) → clic "🗑 Eliminar respuestas"
+  b) Confirmar en el modal → debe redirigir al listado con mensaje de éxito
+  c) Verificar que esa persona ya no aparece en la lista de respondidas
+  d) Verificar que puede volver a recibir la encuesta (no existe en encuestas_satisfaccion)
+  e) También desde la tabla principal: botón "🗑 Borrar" junto a "👁 Ver"
+
+CAMBIO 3 — Popup de recordatorio:
+  a) Seleccionar evento con pendientes → clic "⏰ Recordatorio a pendientes"
+  b) Debe aparecer modal con: número enviados, número ya contestaron, lista de personas
+  c) Si todos contestaron: modal con 🎉 y 0 enviados
+  d) Clic "Entendido" cierra el modal
+
+CAMBIO 4 — Canirac:
+  a) /admin/encuestas/graficas → nuevo select "Canirac: Todos / Solo Canirac / No Canirac"
+  b) Filtrar por "Solo Canirac" → KPIs, gráficas y lista "Por Persona" reflejan solo Canirac
+  c) Descargar Excel con filtro "Solo Canirac" → columna Canirac = "Sí" en todas las filas
+  d) Descargar Excel sin filtro → columna Canirac muestra "Sí" o "No" por persona
+  e) Hoja Resumen del Excel → muestra conteo Canirac vs No Canirac
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY A PRODUCCIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+    ssh -p 65002 u489236361@195.35.38.222
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    git pull origin main
+
+    composer dump-autoload --optimize
+
+    npm run build
+
+    php artisan optimize
+    php artisan view:clear
+
+================================================================================
+FIN DEL PROMPT — Encuestas: Recordatorio prueba + Borrar respuestas + Popup + Canirac
+================================================================================

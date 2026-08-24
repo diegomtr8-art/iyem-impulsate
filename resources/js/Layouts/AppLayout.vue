@@ -108,7 +108,7 @@ const switchRole = () => {
                                 </button>
                                 <div v-if="showingMenu" @click.outside="showingMenu = false"
                                     class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl shadow-black/10 dark:shadow-black/40 py-1 z-50">
-                                    <Link :href="route('profile.show')"
+                                    <Link :href="route('user.perfil')"
                                         class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-guinda-800 dark:hover:text-white hover:bg-guinda-50 dark:hover:bg-gray-800 transition-colors">
                                         Mi Perfil
                                     </Link>
@@ -172,7 +172,7 @@ const switchRole = () => {
                             </svg>
                             Cambiar a {{ activeRole === 'comprador' ? 'Proveedor' : 'Comprador' }}
                         </button>
-                        <Link :href="route('profile.show')" @click="showingMenu=false"
+                        <Link :href="route('user.perfil')" @click="showingMenu=false"
                             class="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-guinda-50 dark:hover:bg-gray-800 rounded-xl">
                             Mi Perfil
                         </Link>
@@ -237,6 +237,8 @@ const switchRole = () => {
                                 <li v-if="$page.props.auth?.user"><Link :href="route('user.dashboard')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Mis Citas</Link></li>
                                 <li v-if="!$page.props.auth?.user"><Link :href="route('register')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Agendar Cita</Link></li>
                                 <li v-if="!$page.props.auth?.user"><Link :href="route('login')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Iniciar sesión</Link></li>
+                                <li><Link :href="route('aviso.privacidad')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Aviso de Privacidad</Link></li>
+                                <li><Link :href="route('terminos.condiciones')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Términos y Condiciones</Link></li>
                             </ul>
                         </div>
 

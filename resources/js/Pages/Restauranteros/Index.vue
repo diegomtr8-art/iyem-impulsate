@@ -26,11 +26,11 @@ const panelRoute = computed(() => {
     }
     return route('user.dashboard');
 });
-const tituloPagina = computed(() =>
-    eventoActivo.value
-        ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
-        : 'Proveedores'
-);
+const tituloPagina = computed(() => {
+    if (props.sin_evento) return 'Proveedores de la plataforma Impulsate';
+    if (eventoActivo.value) return `Proveedores del Evento: ${eventoActivo.value.nombre}`;
+    return 'Todos los Proveedores';
+});
 
 const search = ref(props.filters?.search || '');
 const categoriaActiva = ref(props.filters?.categoria || '');
@@ -53,6 +53,11 @@ watch(search, () => {
 
 const seleccionarCategoria = (cat) => {
     categoriaActiva.value = categoriaActiva.value === cat ? '' : cat;
+    aplicarFiltros();
+};
+
+const cambiarCategoria = (event) => {
+    categoriaActiva.value = event.target.value;
     aplicarFiltros();
 };
 </script>
@@ -95,7 +100,11 @@ const seleccionarCategoria = (cat) => {
             <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-10">
                 <div>
                     <h1 class="text-3xl font-black text-gray-900 dark:text-white">{{ tituloPagina }}</h1>
-                    <p class="text-gray-500 dark:text-gray-400 mt-1">Explora y agenda citas con los mejores proveedores del sector.</p>
+                    <p class="text-gray-500 dark:text-gray-400 mt-1">
+                        {{ sin_evento
+                            ? 'Conoce a todos los proveedores registrados en la plataforma Impulsate.'
+                            : 'Explora y agenda citas con los proveedores participantes en este evento.' }}
+                    </p>
                 </div>
                 <div class="w-full sm:w-72">
                     <div class="relative">
@@ -108,44 +117,20 @@ const seleccionarCategoria = (cat) => {
                 </div>
             </div>
 
-            <!-- Banner sin evento activo -->
-            <div v-if="sin_evento"
-                class="mb-10 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-10 text-center">
-                <svg class="w-16 h-16 mx-auto text-gray-300 dark:text-gray-700 mb-4" fill="none" stroke="currentColor" stroke-width="1.2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 9v7.5" />
-                </svg>
-                <h2 class="text-lg font-bold text-gray-700 dark:text-gray-300 mb-2">No hay un evento activo en este momento</h2>
-                <p class="text-gray-500 dark:text-gray-400 text-sm max-w-sm mx-auto">
-                    Vuelve pronto para conocer a los proveedores participantes en el próximo evento de Impulsate.
-                </p>
-            </div>
-
             <!-- Filtro por categoría -->
-            <div v-if="!sin_evento && categorias && categorias.length > 0" class="flex flex-wrap gap-2 mb-8">
-                <button
-                    @click="seleccionarCategoria('')"
-                    :class="categoriaActiva === ''
-                        ? 'bg-guinda-800 text-white border-guinda-800'
-                        : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-guinda-400 dark:hover:border-guinda-600'"
-                    class="px-4 py-1.5 rounded-full text-sm font-medium border transition-all duration-200"
+            <div v-if="categorias && categorias.length > 0" class="mb-8">
+                <select
+                    :value="categoriaActiva"
+                    @change="cambiarCategoria"
+                    class="w-full sm:w-64 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500 transition-colors shadow-sm dark:shadow-none"
                 >
-                    Todos
-                </button>
-                <button
-                    v-for="cat in categorias"
-                    :key="cat"
-                    @click="seleccionarCategoria(cat)"
-                    :class="categoriaActiva === cat
-                        ? 'bg-guinda-800 text-white border-guinda-800'
-                        : 'bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border-gray-300 dark:border-gray-700 hover:border-guinda-400 dark:hover:border-guinda-600'"
-                    class="px-4 py-1.5 rounded-full text-sm font-medium border transition-all duration-200"
-                >
-                    {{ cat }}
-                </button>
+                    <option value="">Todas las categorías</option>
+                    <option v-for="cat in categorias" :key="cat" :value="cat">{{ cat }}</option>
+                </select>
             </div>
 
             <!-- Lista móvil compacta (< 640px) -->
-            <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0"
+            <div v-if="restauranteros.data && restauranteros.data.length > 0"
                 class="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm mb-6">
                 <Link v-for="r in restauranteros.data" :key="'m-' + r.id"
                     :href="route('proveedores.show', r.id)"
@@ -174,7 +159,7 @@ const seleccionarCategoria = (cat) => {
             </div>
 
             <!-- Grid -->
-            <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0" class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div v-if="restauranteros.data && restauranteros.data.length > 0" class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 <Link v-for="r in restauranteros.data" :key="r.id"
                     :href="route('proveedores.show', r.id)"
                     class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">

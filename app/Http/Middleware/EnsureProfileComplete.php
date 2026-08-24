@@ -43,6 +43,8 @@ class EnsureProfileComplete
             'perfil.completar',
             'perfil.completar.store',
             'perfil.necesidades',
+            'user.perfil',
+            'perfil.documentos.subir',
             // El formulario de completar perfil vive dentro del panel del proveedor
             // (Restaurantero/Panel.vue), junto con el resto de sus rutas (calendario,
             // citas). Exentar todo el grupo evita un loop de redirección hacia

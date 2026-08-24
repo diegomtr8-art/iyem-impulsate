@@ -1,0 +1,604 @@
+PROMPT: IMPULSATE — Términos y Condiciones + Nav Sidebar Bazar + Login Aviso
+
+Proyecto: Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS
+Color guinda: #8B1028
+Producción: impulsate.iyemyucatan.com
+
+────────────────────────────────────────────────────────────────
+CAMBIO 1: Agregar tipo_evento al eventosSidebar en middleware
+────────────────────────────────────────────────────────────────
+
+Archivo: app/Http/Middleware/HandleInertiaRequests.php
+
+En la clave 'eventosSidebar', dentro del ->map(), agrega 'tipo_evento' al array
+de campos del ->only([]):
+
+ANTES:
+    'eventosSidebar' => fn () => Evento::orderByDesc('activa')
+        ->orderByDesc('fecha_hora_inicio')
+        ->limit(6)
+        ->get()
+        ->map(fn ($e) => array_merge(
+            $e->only([
+                'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
+                'fecha_hora_inicio', 'fecha_hora_fin',
+            ]),
+            ['imagen_url' => $e->imagen_url]
+        )),
+
+DESPUÉS:
+    'eventosSidebar' => fn () => Evento::orderByDesc('activa')
+        ->orderByDesc('fecha_hora_inicio')
+        ->limit(6)
+        ->get()
+        ->map(fn ($e) => array_merge(
+            $e->only([
+                'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
+                'fecha_hora_inicio', 'fecha_hora_fin', 'tipo_evento',
+            ]),
+            ['imagen_url' => $e->imagen_url]
+        )),
+
+
+────────────────────────────────────────────────────────────────
+CAMBIO 2: EventosSidebar.vue — mostrar "Regístrate" en bazares
+────────────────────────────────────────────────────────────────
+
+Archivo: resources/js/Components/EventosSidebar.vue
+
+El componente recibe un array `eventos` donde cada evento ahora incluye `tipo_evento`
+('encuentro_negocios' | 'bazar_exposicion').
+
+Hay tres lugares donde aparece "Ver Proveedores" / "Ver proveedores →":
+
+A) Línea ~127 — link pequeño "Ver proveedores →" cuando ya está registrado (activo):
+ANTES:
+    <Link :href="route('proveedores.index')"
+        class="text-xs text-guinda-600 dark:text-guinda-400 hover:text-guinda-800 dark:hover:text-guinda-300 font-bold transition-colors">
+        Ver proveedores →
+    </Link>
+
+DESPUÉS:
+    <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
+        :href="route('proveedores.index')"
+        class="text-xs text-guinda-600 dark:text-guinda-400 hover:text-guinda-800 dark:hover:text-guinda-300 font-bold transition-colors">
+        Ver proveedores →
+    </Link>
+    <!-- Para bazar: ya está registrado, no mostrar nada extra aquí -->
+
+B) Línea ~131-136 — botón grande "Ver Proveedores" cuando NO está registrado (activo, desktop):
+ANTES:
+    <Link v-else :href="route('proveedores.index')"
+        class="block text-center text-sm font-bold py-2.5 rounded-xl
+               bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+               text-white transition-colors shadow-sm">
+        Ver Proveedores
+    </Link>
+
+DESPUÉS:
+    <!-- Encuentro de negocios: ver proveedores -->
+    <Link v-else-if="evento.tipo_evento !== 'bazar_exposicion'"
+        :href="route('proveedores.index')"
+        class="block text-center text-sm font-bold py-2.5 rounded-xl
+               bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+               text-white transition-colors shadow-sm">
+        Ver Proveedores
+    </Link>
+    <!-- Bazar: registrarse al evento -->
+    <Link v-else
+        :href="route('eventos.registro.bazar', { evento: evento.id })"
+        class="block text-center text-sm font-bold py-2.5 rounded-xl
+               bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+               text-white transition-colors shadow-sm">
+        Regístrate
+    </Link>
+
+C) Línea ~214-219 — botón "Ver Proveedores" en carrusel móvil:
+ANTES:
+    <Link v-if="evento.activa"
+        :href="route('proveedores.index')"
+        class="block text-center text-xs font-bold py-1.5 rounded-lg
+               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+        Ver Proveedores
+    </Link>
+
+DESPUÉS:
+    <!-- Encuentro de negocios -->
+    <Link v-if="evento.activa && evento.tipo_evento !== 'bazar_exposicion'"
+        :href="route('proveedores.index')"
+        class="block text-center text-xs font-bold py-1.5 rounded-lg
+               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+        Ver Proveedores
+    </Link>
+    <!-- Bazar -->
+    <Link v-else-if="evento.activa && evento.tipo_evento === 'bazar_exposicion'"
+        :href="route('eventos.registro.bazar', { evento: evento.id })"
+        class="block text-center text-xs font-bold py-1.5 rounded-lg
+               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+        Regístrate
+    </Link>
+
+NOTA: La ruta `eventos.registro.bazar` es la ruta existente para el registro al
+bazar (GET /eventos/{evento}/bazar/registro o similar). Verifica el nombre exacto
+en routes/web.php con: php artisan route:list --name=bazar
+Si se llama diferente, ajusta el nombre de ruta aquí.
+
+
+────────────────────────────────────────────────────────────────
+CAMBIO 3: Login.vue — agregar link a Términos y Condiciones
+────────────────────────────────────────────────────────────────
+
+Archivo: resources/js/Pages/Auth/Login.vue
+
+Busca el bloque del aviso de privacidad (alrededor de línea 173):
+
+ANTES:
+    <p class="text-xs text-center text-gray-400 dark:text-gray-600 mt-1">
+        Al ingresar, aceptas nuestro
+        <Link :href="route('aviso.privacidad')" target="_blank"
+            class="text-guinda-600 dark:text-guinda-400 underline hover:text-guinda-700">
+            Aviso de Privacidad
+        </Link>.
+    </p>
+
+DESPUÉS:
+    <p class="text-xs text-center text-gray-400 dark:text-gray-600 mt-1">
+        Al ingresar, aceptas nuestro
+        <Link :href="route('aviso.privacidad')" target="_blank"
+            class="text-guinda-600 dark:text-guinda-400 underline hover:text-guinda-700">
+            Aviso de Privacidad
+        </Link>
+        y los
+        <Link :href="route('terminos.condiciones')" target="_blank"
+            class="text-guinda-600 dark:text-guinda-400 underline hover:text-guinda-700">
+            Términos y Condiciones
+        </Link>.
+    </p>
+
+
+────────────────────────────────────────────────────────────────
+CAMBIO 4: Ruta para la página de Términos y Condiciones
+────────────────────────────────────────────────────────────────
+
+Archivo: routes/web.php
+
+Busca la ruta del aviso de privacidad:
+    Route::get('/aviso-de-privacidad', [AvisoPrivacidadController::class, 'index'])->name('aviso.privacidad');
+
+Agrega inmediatamente después:
+    Route::get('/terminos-y-condiciones', [TerminosCondicionesController::class, 'index'])->name('terminos.condiciones');
+
+También agrega el use statement al inicio del archivo (junto a los demás controllers):
+    use App\Http\Controllers\TerminosCondicionesController;
+
+
+────────────────────────────────────────────────────────────────
+CAMBIO 5: Controlador TerminosCondicionesController
+────────────────────────────────────────────────────────────────
+
+Crear archivo: app/Http/Controllers/TerminosCondicionesController.php
+
+<?php
+
+namespace App\Http\Controllers;
+
+use Inertia\Inertia;
+
+class TerminosCondicionesController extends Controller
+{
+    public function index()
+    {
+        return Inertia::render('TerminosCondiciones');
+    }
+}
+
+
+────────────────────────────────────────────────────────────────
+CAMBIO 6: Página Vue de Términos y Condiciones
+────────────────────────────────────────────────────────────────
+
+Crear archivo: resources/js/Pages/TerminosCondiciones.vue
+
+Página pública (sin requerir autenticación) que renderiza el contenido completo
+de los Términos y Condiciones de la Plataforma Impulsate, respetando el diseño
+del sitio (guinda #8B1028, dark mode, tipografía del proyecto).
+
+Usa el componente de layout público. Dado que AvisoPrivacidad.vue usa AppLayout
+sin autenticación (o un layout público), haz lo mismo. Si existe un GuestLayout
+o PublicLayout, úsalo; si no, usa AppLayout igual que la página de aviso de
+privacidad.
+
+CONTENIDO COMPLETO A RENDERIZAR (extraído del PDF oficial):
+
+La página debe tener:
+- Encabezado con logo/título y nombre del documento
+- Índice clicable (anchors a cada sección)
+- 28 secciones numeradas en romano con su contenido
+
+---
+
+ESTRUCTURA DE LA PÁGINA:
+
+<script setup>
+import AppLayout from '@/Layouts/AppLayout.vue';
+import { Link } from '@inertiajs/vue3';
+</script>
+
+<template>
+    <AppLayout title="Términos y Condiciones">
+        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+
+            <!-- Encabezado -->
+            <div class="mb-10 text-center">
+                <div class="inline-flex items-center justify-center w-14 h-14 bg-guinda-100 dark:bg-guinda-900/30 rounded-2xl mb-4">
+                    <svg class="w-7 h-7 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                </div>
+                <h1 class="text-3xl font-black text-gray-900 dark:text-white mb-2">Términos y Condiciones</h1>
+                <p class="text-sm text-gray-500 dark:text-gray-400">Plataforma Digital Impulsate — Instituto Yucateco de Emprendedores (IYEM)</p>
+                <p class="text-xs text-gray-400 dark:text-gray-500 mt-1">Gobierno del Estado de Yucatán</p>
+            </div>
+
+            <!-- Índice -->
+            <div class="bg-guinda-50 dark:bg-guinda-950/40 border border-guinda-200 dark:border-guinda-800/50 rounded-2xl p-6 mb-10">
+                <h2 class="text-sm font-bold text-guinda-800 dark:text-guinda-300 uppercase tracking-widest mb-4">Índice</h2>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <!-- Un <a> por cada sección -->
+                    <a href="#seccion-i"   class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">I. Disposiciones Generales</a>
+                    <a href="#seccion-ii"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">II. Definiciones</a>
+                    <a href="#seccion-iii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">III. Objeto de la Plataforma</a>
+                    <a href="#seccion-iv"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">IV. Alcance de los Servicios</a>
+                    <a href="#seccion-v"   class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">V. Aceptación</a>
+                    <a href="#seccion-vi"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">VI. Registro</a>
+                    <a href="#seccion-vii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">VII. Obligaciones de las Personas Usuarias</a>
+                    <a href="#seccion-viii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">VIII. Conductas Prohibidas</a>
+                    <a href="#seccion-ix"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">IX. Publicación de Contenido</a>
+                    <a href="#seccion-x"   class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">X. Vinculación Comercial</a>
+                    <a href="#seccion-xi"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XI. Exclusión y Limitación de Responsabilidad</a>
+                    <a href="#seccion-xii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XII. Indemnización</a>
+                    <a href="#seccion-xiii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XIII. Propiedad Intelectual</a>
+                    <a href="#seccion-xiv"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XIV. Uso de la Imagen Institucional</a>
+                    <a href="#seccion-xv"   class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XV. Protección de Datos Personales</a>
+                    <a href="#seccion-xvi"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XVI. Suspensión, Restricción y Cancelación</a>
+                    <a href="#seccion-xvii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XVII. Retiro de Contenido</a>
+                    <a href="#seccion-xviii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XVIII. Disponibilidad y Funcionamiento</a>
+                    <a href="#seccion-xix"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XIX. Modificaciones</a>
+                    <a href="#seccion-xx"   class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XX. Comunicaciones y Notificaciones</a>
+                    <a href="#seccion-xxi"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXI. Inexistencia de Relación Jurídica</a>
+                    <a href="#seccion-xxii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXII. Caso Fortuito y Fuerza Mayor</a>
+                    <a href="#seccion-xxiii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXIII. Legislación Aplicable y Jurisdicción</a>
+                    <a href="#seccion-xxiv"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXIV. Nulidad Parcial</a>
+                    <a href="#seccion-xxv"   class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXV. No Renuncia de Derechos</a>
+                    <a href="#seccion-xxvi"  class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXVI. Integridad</a>
+                    <a href="#seccion-xxvii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXVII. Contacto</a>
+                    <a href="#seccion-xxviii" class="text-xs text-guinda-700 dark:text-guinda-400 hover:text-guinda-900 dark:hover:text-guinda-200 transition-colors">XXVIII. Vigencia</a>
+                </div>
+            </div>
+
+            <!-- Contenido de secciones -->
+            <div class="prose prose-gray dark:prose-invert max-w-none space-y-10">
+                <!-- Cada sección tiene id="seccion-{número en minúsculas}" -->
+                <!-- Clase para títulos de sección: text-lg font-bold text-guinda-800 dark:text-guinda-300 border-b border-guinda-200 dark:border-guinda-800 pb-2 mb-4 -->
+                <!-- Clase para párrafos: text-sm text-gray-700 dark:text-gray-300 leading-relaxed -->
+                <!-- Clase para listas: text-sm text-gray-700 dark:text-gray-300 leading-relaxed list-disc pl-5 space-y-1 -->
+            </div>
+        </div>
+    </AppLayout>
+</template>
+
+---
+
+CONTENIDO DE CADA SECCIÓN (copiar textualmente del PDF):
+
+SECCIÓN I — DISPOSICIONES GENERALES (id="seccion-i")
+La Plataforma Digital denominada "Impulsate" (en adelante, "la Plataforma") es un espacio digital administrado por el Instituto Yucateco de Emprendedores (en adelante, "IYEM"), órgano desconcentrado del Gobierno del Estado de Yucatán.
+
+El acceso y uso de la Plataforma implica la aceptación plena, expresa e irrestricta de los presentes Términos y Condiciones, así como del Aviso de Privacidad correspondiente, los cuales tienen carácter de contrato electrónico de adhesión.
+
+Toda persona que acceda o utilice la Plataforma declara haber leído, comprendido y aceptado los presentes términos. En caso de no estar de acuerdo con alguna de las condiciones aquí establecidas, deberá abstenerse de utilizar la Plataforma.
+
+SECCIÓN II — DEFINICIONES (id="seccion-ii")
+Para efectos de los presentes Términos y Condiciones, se entenderá por:
+
+- IYEM: Instituto Yucateco de Emprendedores, órgano desconcentrado del Gobierno del Estado de Yucatán responsable de administrar la Plataforma.
+- Plataforma: El espacio digital "Impulsate", accesible a través de medios electrónicos, mediante el cual el IYEM facilita la conexión entre personas emprendedoras y/o empresarias.
+- Persona Usuaria: Toda persona física o moral que acceda, se registre o haga uso de los servicios ofrecidos en la Plataforma.
+- Cuenta: El perfil digital personalizado que cada Persona Usuaria crea al registrarse en la Plataforma.
+- Contenido: Toda información, dato, texto, imagen, logotipo, descripción de productos o servicios y cualquier otro material que la Persona Usuaria publique o cargue en la Plataforma.
+- Productos y Servicios: Los bienes, servicios o propuestas de valor que las Personas Usuarias ofrecen a través de la Plataforma.
+- Vinculación Comercial: El proceso de conexión y contacto entre Personas Usuarias con fines de exploración de oportunidades de negocio.
+
+SECCIÓN III — OBJETO DE LA PLATAFORMA (id="seccion-iii")
+La Plataforma tiene como objeto ser un espacio digital para la promoción y vinculación de emprendedores y empresarios del Estado de Yucatán, facilitando su visibilidad y acceso a oportunidades de negocio.
+
+La Plataforma tiene un carácter exclusivamente informativo y de vinculación, por lo que no constituye un portal de comercio electrónico ni garantiza la concreción de transacciones comerciales entre sus usuarios.
+
+SECCIÓN IV — ALCANCE DE LOS SERVICIOS (id="seccion-iv")
+A través de la Plataforma, el IYEM ofrece los siguientes servicios:
+
+1. Registro y creación de perfil empresarial o emprendedor.
+2. Publicación de información sobre productos y servicios ofrecidos.
+3. Acceso a herramientas de búsqueda y filtrado de potenciales socios o clientes.
+4. Participación en convocatorias, eventos y programas impulsados por el IYEM.
+5. Agendamiento de citas de vinculación entre Personas Usuarias.
+6. Difusión de contenido relacionado con el ecosistema emprendedor yucateco.
+7. Acceso a recursos, guías y materiales de apoyo al emprendimiento.
+
+El IYEM se reserva el derecho de ampliar, modificar o eliminar cualquiera de los servicios descritos, con o sin previo aviso, según lo estime conveniente para el cumplimiento de sus objetivos institucionales.
+
+SECCIÓN V — ACEPTACIÓN (id="seccion-v")
+La Persona Usuaria acepta los presentes Términos y Condiciones mediante los mecanismos electrónicos habilitados en la Plataforma, incluyendo, de manera enunciativa mas no limitativa, el acto de registro, inicio de sesión o cualquier acción que implique el uso activo de la misma.
+
+Dicha aceptación tiene plenos efectos jurídicos conforme a la legislación vigente en materia de comercio electrónico y firma electrónica en los Estados Unidos Mexicanos.
+
+SECCIÓN VI — REGISTRO (id="seccion-vi")
+El registro en la Plataforma es de carácter personal e intransferible. Para llevar a cabo el registro, la Persona Usuaria deberá proporcionar información verídica, actualizada y completa.
+
+El IYEM se reserva el derecho de denegar, suspender o cancelar el registro de cualquier Persona Usuaria en los siguientes supuestos:
+
+a) Cuando se detecte que la información proporcionada es falsa, incompleta o engañosa.
+b) Cuando la Persona Usuaria haya incumplido previamente los presentes Términos y Condiciones.
+c) Cuando existan indicios de uso fraudulento o malintencionado de la Plataforma.
+d) Cuando así lo requieran disposiciones legales o autoridades competentes.
+e) Cuando, a juicio del IYEM, el registro no sea compatible con los objetivos de la Plataforma.
+
+SECCIÓN VII — OBLIGACIONES DE LAS PERSONAS USUARIAS (id="seccion-vii")
+Al utilizar la Plataforma, la Persona Usuaria se obliga a:
+
+1. Proporcionar información veraz, precisa y actualizada en su perfil y en cualquier interacción dentro de la Plataforma.
+2. Mantener la confidencialidad de sus credenciales de acceso y notificar de inmediato al IYEM ante cualquier uso no autorizado de su cuenta.
+3. Hacer un uso lícito, ético y responsable de la Plataforma y de los servicios que en ella se ofrecen.
+4. No utilizar la Plataforma para fines distintos a los establecidos en los presentes Términos y Condiciones.
+5. Respetar los derechos de propiedad intelectual del IYEM y de otros usuarios.
+6. Abstenerse de realizar conductas que puedan dañar la imagen, reputación o funcionamiento de la Plataforma.
+7. Tratar a las demás Personas Usuarias con respeto y cordialidad.
+8. Cumplir con la normatividad vigente aplicable en materia fiscal, comercial, laboral y cualquier otra que resulte aplicable.
+9. Informar al IYEM sobre cualquier falla, irregularidad o uso indebido que detecte en la Plataforma.
+10. Actualizar periódicamente la información de su perfil para mantenerla vigente y precisa.
+
+SECCIÓN VIII — CONDUCTAS PROHIBIDAS (id="seccion-viii")
+Queda estrictamente prohibido a las Personas Usuarias:
+
+a) Proporcionar información falsa, engañosa o que induzca a error a otros usuarios o al IYEM.
+b) Suplantar la identidad de otra persona, empresa o entidad.
+c) Publicar contenido ilegal, ofensivo, discriminatorio, difamatorio, obsceno o que incite a la violencia.
+d) Utilizar la Plataforma para actividades ilícitas, incluyendo lavado de dinero, fraude o evasión fiscal.
+e) Realizar actividades de spam, phishing, o envío masivo de comunicaciones no solicitadas a otros usuarios.
+f) Intentar acceder de manera no autorizada a sistemas, datos o cuentas de otros usuarios.
+g) Introducir virus informáticos, malware o cualquier código malicioso en la Plataforma.
+h) Reproducir, distribuir, modificar o explotar comercialmente los contenidos de la Plataforma sin autorización expresa del IYEM.
+i) Utilizar robots, scrapers, crawlers u otros medios automatizados para extraer información de la Plataforma.
+j) Interferir con el funcionamiento técnico de la Plataforma o de los servidores e infraestructura que la soportan.
+k) Publicar contenido que viole derechos de terceros, incluyendo derechos de autor, marcas registradas, patentes o datos personales.
+l) Realizar actos de competencia desleal o prácticas comerciales engañosas.
+m) Cualquier otra conducta que contravenga las leyes mexicanas aplicables o los presentes Términos y Condiciones.
+
+SECCIÓN IX — PUBLICACIÓN DE CONTENIDO (id="seccion-ix")
+La Persona Usuaria es la única responsable del contenido que publique en la Plataforma, incluyendo su veracidad, licitud y pertinencia.
+
+Al publicar contenido en la Plataforma, la Persona Usuaria otorga al IYEM una licencia no exclusiva, gratuita y revocable para usar, reproducir y mostrar dicho contenido con fines de operación y difusión de la Plataforma.
+
+El IYEM se reserva el derecho de eliminar, sin previo aviso, cualquier contenido que, a su juicio, incumpla los presentes Términos y Condiciones, sea contrario a la ley, o resulte inapropiado para los fines de la Plataforma.
+
+SECCIÓN X — VINCULACIÓN COMERCIAL (id="seccion-x")
+El IYEM actúa exclusivamente como facilitador del contacto entre Personas Usuarias, sin ser parte de las negociaciones, acuerdos o transacciones comerciales que pudieran derivarse del uso de la Plataforma.
+
+En consecuencia, el IYEM no asume responsabilidad alguna por:
+
+a) La calidad, seguridad o legalidad de los productos y servicios ofrecidos por las Personas Usuarias.
+b) La veracidad de la información publicada en los perfiles de las Personas Usuarias.
+c) La capacidad legal de las Personas Usuarias para celebrar contratos o acuerdos comerciales.
+d) El incumplimiento de compromisos adquiridos entre Personas Usuarias a través de la Plataforma.
+e) Cualquier daño o perjuicio derivado de las relaciones comerciales establecidas a través de la Plataforma.
+
+SECCIÓN XI — EXCLUSIÓN Y LIMITACIÓN DE RESPONSABILIDAD (id="seccion-xi")
+El IYEM no será responsable, en ningún caso, por:
+
+a) Daños directos, indirectos, incidentales, especiales o consecuentes derivados del uso o imposibilidad de uso de la Plataforma.
+b) Errores, omisiones o inexactitudes en el contenido publicado por las Personas Usuarias.
+c) Pérdida de datos, información o contenido de la Persona Usuaria.
+d) Fallas técnicas, interrupciones del servicio o ataques cibernéticos que afecten la disponibilidad de la Plataforma.
+e) Actos u omisiones de terceros que afecten el funcionamiento de la Plataforma o los intereses de las Personas Usuarias.
+f) Pérdidas económicas o daños al negocio derivados del uso o no uso de la Plataforma.
+g) Decisiones comerciales o de negocio que la Persona Usuaria tome con base en la información disponible en la Plataforma.
+h) Cualquier situación fuera del control razonable del IYEM.
+
+SECCIÓN XII — INDEMNIZACIÓN (id="seccion-xii")
+La Persona Usuaria se obliga a indemnizar y mantener indemne al IYEM, sus funcionarios, empleados y colaboradores, frente a cualquier reclamación, demanda, pérdida, daño, responsabilidad, costo o gasto (incluyendo honorarios legales razonables) que se deriven de:
+
+a) El incumplimiento de los presentes Términos y Condiciones.
+b) El uso indebido de la Plataforma.
+c) La violación de derechos de terceros.
+d) La publicación de contenido ilegal o inapropiado.
+e) Actos fraudulentos o dolosos realizados a través de la Plataforma.
+f) Cualquier reclamación de terceros relacionada con las actividades de la Persona Usuaria en la Plataforma.
+
+SECCIÓN XIII — PROPIEDAD INTELECTUAL (id="seccion-xiii")
+Todos los derechos de propiedad intelectual sobre la Plataforma, incluyendo su diseño, código fuente, logotipos, marcas, textos y demás elementos, son propiedad del IYEM o de sus licenciantes, y están protegidos por las leyes mexicanas e internacionales aplicables.
+
+Queda prohibido a las Personas Usuarias:
+
+a) Reproducir, distribuir o comunicar públicamente cualquier elemento de la Plataforma sin autorización expresa y escrita del IYEM.
+b) Modificar, adaptar o crear obras derivadas basadas en los contenidos de la Plataforma.
+c) Utilizar las marcas, logotipos o nombres del IYEM con fines comerciales o de cualquier otra índole sin autorización previa.
+
+La Persona Usuaria conserva la titularidad de los derechos de propiedad intelectual sobre el contenido que publique en la Plataforma, otorgando únicamente la licencia descrita en la Sección IX.
+
+SECCIÓN XIV — USO DE LA IMAGEN INSTITUCIONAL (id="seccion-xiv")
+El registro o uso de la Plataforma no otorga a la Persona Usuaria ningún derecho para utilizar el nombre, logotipo, escudo o cualquier otro elemento de identidad gráfica del IYEM o del Gobierno del Estado de Yucatán.
+
+Cualquier uso no autorizado de la imagen institucional podrá dar lugar a las acciones legales correspondientes.
+
+SECCIÓN XV — PROTECCIÓN DE DATOS PERSONALES (id="seccion-xv")
+El tratamiento de los datos personales de las Personas Usuarias se realizará conforme a la legislación mexicana vigente en materia de protección de datos personales y en apego al Aviso de Privacidad disponible en la Plataforma.
+
+La Persona Usuaria podrá ejercer sus derechos de Acceso, Rectificación, Cancelación u Oposición (derechos ARCO) a través de los canales de contacto institucionales del IYEM.
+
+SECCIÓN XVI — SUSPENSIÓN, RESTRICCIÓN Y CANCELACIÓN DE CUENTAS (id="seccion-xvi")
+El IYEM podrá suspender, restringir o cancelar la cuenta de una Persona Usuaria, de manera temporal o definitiva, en los siguientes casos:
+
+1. Incumplimiento de los presentes Términos y Condiciones.
+2. Proporcionar información falsa o engañosa.
+3. Realizar conductas prohibidas conforme a la Sección VIII.
+4. Uso fraudulento de la Plataforma.
+5. Solicitud expresa de la Persona Usuaria.
+6. Disposición legal o requerimiento de autoridad competente.
+7. Inactividad prolongada de la cuenta, conforme a los criterios definidos por el IYEM.
+8. Detección de vulneraciones a la seguridad de la Plataforma atribuibles a la cuenta.
+9. Publicación de contenido que viole derechos de terceros.
+10. Realización de actividades ilícitas a través de la Plataforma.
+11. Daño a la imagen o reputación del IYEM o del Gobierno del Estado de Yucatán.
+12. Uso de la cuenta por persona distinta al titular registrado.
+13. Cualquier otra causa que, a juicio del IYEM, justifique la medida.
+
+SECCIÓN XVII — RETIRO DE CONTENIDO (id="seccion-xvii")
+El IYEM podrá retirar o dar de baja el contenido publicado por una Persona Usuaria cuando:
+
+1. Contravenga los presentes Términos y Condiciones.
+2. Sea contrario a la legislación aplicable.
+3. Vulnere derechos de propiedad intelectual de terceros.
+4. Contenga información falsa, engañosa o que induzca a error.
+5. Sea de naturaleza ofensiva, discriminatoria o inapropiada.
+6. Implique riesgos para la seguridad o integridad de otros usuarios.
+7. Exista una orden de autoridad competente en tal sentido.
+8. El IYEM lo estime necesario para el correcto funcionamiento de la Plataforma.
+
+SECCIÓN XVIII — DISPONIBILIDAD Y FUNCIONAMIENTO (id="seccion-xviii")
+El IYEM no garantiza la disponibilidad ininterrumpida de la Plataforma, y podrá suspender temporal o definitivamente el acceso a la misma por causas que incluyen, de manera enunciativa:
+
+1. Mantenimiento preventivo o correctivo.
+2. Actualizaciones tecnológicas.
+3. Fallas en los sistemas de telecomunicaciones.
+4. Ataques cibernéticos o vulneraciones de seguridad.
+5. Desastres naturales o emergencias.
+6. Disposiciones legales o administrativas.
+7. Fuerza mayor o caso fortuito.
+8. Cualquier otra causa ajena a la voluntad del IYEM.
+
+SECCIÓN XIX — MODIFICACIONES (id="seccion-xix")
+El IYEM se reserva el derecho de modificar, actualizar o sustituir los presentes Términos y Condiciones en cualquier momento, con o sin previo aviso.
+
+Las modificaciones entrarán en vigor a partir de su publicación en la Plataforma. El uso continuado de la Plataforma después de la publicación de cualquier cambio se considerará como aceptación de los nuevos Términos y Condiciones.
+
+SECCIÓN XX — COMUNICACIONES Y NOTIFICACIONES (id="seccion-xx")
+Todas las comunicaciones y notificaciones entre el IYEM y la Persona Usuaria se realizarán a través del correo electrónico registrado al momento del alta en la Plataforma.
+
+La Persona Usuaria es responsable de mantener actualizado su correo electrónico de contacto y de revisar periódicamente su bandeja de entrada, incluyendo la carpeta de correos no deseados o spam.
+
+SECCIÓN XXI — INEXISTENCIA DE RELACIÓN JURÍDICA (id="seccion-xxi")
+El registro y uso de la Plataforma no implica la existencia de ninguna relación jurídica entre la Persona Usuaria y el IYEM, más allá del acceso y uso del servicio digital en los términos aquí establecidos.
+
+En ningún caso podrá interpretarse que existe entre las partes una relación laboral, societaria, de mandato, agencia comercial o cualquier otra forma de asociación o representación.
+
+SECCIÓN XXII — CASO FORTUITO Y FUERZA MAYOR (id="seccion-xxii")
+El IYEM no será responsable por incumplimientos o retrasos en la prestación de los servicios que sean consecuencia de eventos de caso fortuito o fuerza mayor, incluyendo pero no limitado a: desastres naturales, pandemias, actos de autoridad, conflictos armados, huelgas, fallas generalizadas de telecomunicaciones o cualquier otra circunstancia ajena a su control.
+
+SECCIÓN XXIII — LEGISLACIÓN APLICABLE Y JURISDICCIÓN (id="seccion-xxiii")
+Los presentes Términos y Condiciones se regirán e interpretarán conforme a las leyes vigentes de los Estados Unidos Mexicanos y, en particular, del Estado de Yucatán.
+
+Para cualquier controversia derivada de la interpretación, cumplimiento o incumplimiento de los presentes Términos y Condiciones, las partes se someten expresamente a la jurisdicción y competencia de los tribunales competentes de la Ciudad de Mérida, Yucatán, renunciando a cualquier otro fuero que pudiera corresponderles en razón de sus domicilios presentes o futuros.
+
+SECCIÓN XXIV — NULIDAD PARCIAL (id="seccion-xxiv")
+Si alguna disposición de los presentes Términos y Condiciones fuera declarada nula, inválida o inaplicable por autoridad competente, dicha nulidad no afectará la validez y vigencia de las demás disposiciones, las cuales continuarán en plena vigencia.
+
+SECCIÓN XXV — NO RENUNCIA DE DERECHOS (id="seccion-xxv")
+El hecho de que el IYEM no exija el cumplimiento de alguna disposición de los presentes Términos y Condiciones, o no ejercite algún derecho previsto en los mismos, no constituirá una renuncia a dichas disposiciones o derechos, los cuales permanecerán vigentes.
+
+SECCIÓN XXVI — INTEGRIDAD (id="seccion-xxvi")
+Los presentes Términos y Condiciones, conjuntamente con el Aviso de Privacidad de la Plataforma, constituyen el acuerdo íntegro entre el IYEM y la Persona Usuaria respecto al uso de la Plataforma, sustituyendo cualquier acuerdo, declaración o entendimiento previo, verbal o escrito, relacionado con el mismo objeto.
+
+SECCIÓN XXVII — CONTACTO (id="seccion-xxvii")
+Para cualquier consulta, aclaración o comunicación relacionada con los presentes Términos y Condiciones, la Persona Usuaria podrá dirigirse al IYEM a través de los canales de contacto institucionales disponibles en el sitio web oficial del Gobierno del Estado de Yucatán.
+
+SECCIÓN XXVIII — VIGENCIA (id="seccion-xxviii")
+Los presentes Términos y Condiciones entran en vigor a partir de su publicación en la Plataforma y permanecerán vigentes hasta que sean modificados o sustituidos conforme a lo establecido en la Sección XIX.
+
+---
+
+DISEÑO DE CADA SECCIÓN en el template (aplicar a todas las 28):
+
+<section id="seccion-{n}" class="scroll-mt-20">
+    <h2 class="text-base font-bold text-guinda-800 dark:text-guinda-300 border-b border-guinda-200 dark:border-guinda-800 pb-2 mb-3">
+        {NÚMERO EN ROMANO}. {TÍTULO DE LA SECCIÓN}
+    </h2>
+    <div class="space-y-3">
+        <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+            {Párrafo de contenido}
+        </p>
+        <!-- Para listas ordenadas o con incisos (a, b, c / 1, 2, 3): -->
+        <ol class="list-[lower-alpha] pl-5 space-y-1.5 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+            <li>{inciso a}</li>
+            <li>{inciso b}</li>
+        </ol>
+        <!-- Para listas numéricas: -->
+        <ol class="list-decimal pl-5 space-y-1.5 text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+            <li>{ítem 1}</li>
+        </ol>
+    </div>
+</section>
+
+
+────────────────────────────────────────────────────────────────
+CAMBIO 7: Footer en AppLayout.vue — agregar link a Términos y Condiciones
+────────────────────────────────────────────────────────────────
+
+Archivo: resources/js/Layouts/AppLayout.vue
+
+En la columna 2 del footer ("Navegación"), agrega el link a T&C junto al de
+Aviso de Privacidad. Busca la <ul> del footer con los links de navegación:
+
+ANTES:
+    <!-- Columna 2: Navegación -->
+    <div>
+        <h4 class="text-xs font-bold uppercase tracking-widest text-guinda-700 dark:text-guinda-400 mb-4">Navegación</h4>
+        <ul class="space-y-2.5">
+            <li><Link :href="route('home')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Inicio</Link></li>
+            <li><Link :href="route('proveedores.index')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Proveedores</Link></li>
+            <li v-if="$page.props.auth?.user"><Link :href="route('user.dashboard')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Mis Citas</Link></li>
+            <li v-if="!$page.props.auth?.user"><Link :href="route('register')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Agendar Cita</Link></li>
+            <li v-if="!$page.props.auth?.user"><Link :href="route('login')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Iniciar sesión</Link></li>
+        </ul>
+    </div>
+
+DESPUÉS:
+    <!-- Columna 2: Navegación -->
+    <div>
+        <h4 class="text-xs font-bold uppercase tracking-widest text-guinda-700 dark:text-guinda-400 mb-4">Navegación</h4>
+        <ul class="space-y-2.5">
+            <li><Link :href="route('home')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Inicio</Link></li>
+            <li><Link :href="route('proveedores.index')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Proveedores</Link></li>
+            <li v-if="$page.props.auth?.user"><Link :href="route('user.dashboard')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Mis Citas</Link></li>
+            <li v-if="!$page.props.auth?.user"><Link :href="route('register')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Agendar Cita</Link></li>
+            <li v-if="!$page.props.auth?.user"><Link :href="route('login')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Iniciar sesión</Link></li>
+            <li><Link :href="route('aviso.privacidad')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Aviso de Privacidad</Link></li>
+            <li><Link :href="route('terminos.condiciones')" class="text-sm text-gray-600 dark:text-gray-400 hover:text-guinda-800 dark:hover:text-white transition-colors">Términos y Condiciones</Link></li>
+        </ul>
+    </div>
+
+
+────────────────────────────────────────────────────────────────
+RESUMEN DE ARCHIVOS MODIFICADOS / CREADOS
+────────────────────────────────────────────────────────────────
+
+MODIFICADOS:
+1. app/Http/Middleware/HandleInertiaRequests.php — agregar 'tipo_evento' al map eventosSidebar
+2. resources/js/Components/EventosSidebar.vue — condicionar "Ver Proveedores" vs "Regístrate" según tipo_evento
+3. resources/js/Pages/Auth/Login.vue — agregar link a Términos y Condiciones en el aviso
+4. routes/web.php — agregar ruta GET /terminos-y-condiciones
+5. resources/js/Layouts/AppLayout.vue — agregar links en footer (Aviso de Privacidad + Términos)
+
+CREADOS:
+6. app/Http/Controllers/TerminosCondicionesController.php
+7. resources/js/Pages/TerminosCondiciones.vue
+
+────────────────────────────────────────────────────────────────
+COMANDOS POST-IMPLEMENTACIÓN
+────────────────────────────────────────────────────────────────
+
+    php artisan route:list --name=terminos   # verificar que la ruta existe
+    npm run build                             # compilar assets
+    # En producción:
+    php artisan config:cache
+    php artisan route:cache
+    npm run build && ssh deploy              # subir al servidor

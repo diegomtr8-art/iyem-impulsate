@@ -1,0 +1,203 @@
+PROBLEMA
+========
+En EventosSidebar.vue la tarjeta del evento activo muestra "✓ Registrado"
+incluso para usuarios de bazar que solo tienen una solicitud pendiente de revisión.
+
+La raíz: el computed `estaRegistrado` solo mira `registradoEnEvento.comprador`
+o `.proveedor` con estado='aprobado'. Para bazares, el usuario se registra como
+'expositor', tipo que el middleware no incluye en `registradoEnEvento`.
+Resultado: el sidebar muestra "Regístrate" (si expositor no detectado) o
+"Registrado" (si el usuario también tiene un registro comprador de un evento
+anterior) — ambos son incorrectos cuando la solicitud está pendiente.
+
+La solución: añadir `expositor` al prop `registradoEnEvento` en el middleware,
+y en el sidebar mostrar el estado real del bazar en lugar de texto genérico.
+
+
+CAMBIO 1 — app/Http/Middleware/HandleInertiaRequests.php
+=========================================================
+
+En el closure de `registradoEnEvento`, agregar la clave 'expositor' al array
+que se retorna (junto a 'comprador' y 'proveedor').
+
+Encuentra el bloque:
+
+        'registradoEnEvento' => function () use ($request) {
+            $evento = Evento::activo();
+            if (!$evento || !$request->user()) {
+                return ['comprador' => null, 'proveedor' => null];
+            }
+            $registros = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $request->user()->id)
+                ->get()
+                ->keyBy('tipo');
+
+            return [
+                'comprador' => $registros->has('comprador') ? [
+                    'estado'         => $registros['comprador']->estado,
+                    'motivo_rechazo' => $registros['comprador']->motivo_rechazo,
+                ] : null,
+                'proveedor' => $registros->has('proveedor') ? [
+                    'estado'         => $registros['proveedor']->estado,
+                    'motivo_rechazo' => $registros['proveedor']->motivo_rechazo,
+                ] : null,
+            ];
+        },
+
+Reemplázalo por:
+
+        'registradoEnEvento' => function () use ($request) {
+            $evento = Evento::activo();
+            if (!$evento || !$request->user()) {
+                return ['comprador' => null, 'proveedor' => null, 'expositor' => null];
+            }
+            $registros = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $request->user()->id)
+                ->get()
+                ->keyBy('tipo');
+
+            return [
+                'comprador' => $registros->has('comprador') ? [
+                    'estado'         => $registros['comprador']->estado,
+                    'motivo_rechazo' => $registros['comprador']->motivo_rechazo,
+                ] : null,
+                'proveedor' => $registros->has('proveedor') ? [
+                    'estado'         => $registros['proveedor']->estado,
+                    'motivo_rechazo' => $registros['proveedor']->motivo_rechazo,
+                ] : null,
+                'expositor' => $registros->has('expositor') ? [
+                    'estado'           => $registros['expositor']->estado,
+                    'seleccionado'     => (bool) $registros['expositor']->seleccionado,
+                    'motivo_rechazo'   => $registros['expositor']->motivo_rechazo,
+                ] : null,
+            ];
+        },
+
+
+CAMBIO 2 — resources/js/Components/EventosSidebar.vue
+======================================================
+
+--- Parte 1: Agregar computed para el expositor ---
+
+En el bloque <script setup>, justo después de la línea:
+
+const estaRegistrado = computed(() => {
+    const tipo = activeRole.value === 'proveedor' ? 'proveedor' : 'comprador';
+    return registradoEnEvento.value?.[tipo]?.estado === 'aprobado';
+});
+
+Agrega:
+
+const expositorRegistro = computed(() => registradoEnEvento.value?.expositor ?? null);
+
+--- Parte 2: Actualizar el bloque de Acciones en la tarjeta activa ---
+
+Encuentra este bloque en el template (dentro de la tarjeta activa del evento):
+
+                            <!-- Acciones -->
+                            <div v-if="estaRegistrado" class="flex items-center justify-between pt-0.5">
+                                <span class="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Registrado
+                                </span>
+                                <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
+                                    :href="route('proveedores.index')"
+                                    class="text-xs text-guinda-600 dark:text-guinda-400 hover:text-guinda-800 dark:hover:text-guinda-300 font-bold transition-colors">
+                                    Ver proveedores →
+                                </Link>
+                                <!-- Bazar: ya está registrado, no mostrar nada extra aquí -->
+                            </div>
+
+                            <!-- Encuentro de negocios: ver proveedores -->
+                            <Link v-else-if="evento.tipo_evento !== 'bazar_exposicion'" :href="route('proveedores.index')"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                       text-white transition-colors shadow-sm">
+                                Ver Proveedores
+                            </Link>
+                            <!-- Bazar: registrarse al evento -->
+                            <Link v-else :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                       text-white transition-colors shadow-sm">
+                                Regístrate
+                            </Link>
+
+Reemplázalo por:
+
+                            <!-- Acciones -->
+                            <!-- BAZAR: estado del expositor -->
+                            <template v-if="evento.tipo_evento === 'bazar_exposicion'">
+                                <!-- Solicitud pendiente -->
+                                <div v-if="expositorRegistro?.estado === 'pendiente'"
+                                    class="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-semibold pt-0.5">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    Solicitud en Revisión
+                                </div>
+                                <!-- Aprobado y seleccionado -->
+                                <div v-else-if="expositorRegistro?.estado === 'aprobado' && expositorRegistro?.seleccionado"
+                                    class="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold pt-0.5">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                    Seleccionado
+                                </div>
+                                <!-- Aprobado pero aún en evaluación -->
+                                <div v-else-if="expositorRegistro?.estado === 'aprobado'"
+                                    class="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-semibold pt-0.5">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                    En Evaluación
+                                </div>
+                                <!-- Sin registro: botón para ir a solicitar -->
+                                <Link v-else :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                                    class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                           bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                           text-white transition-colors shadow-sm">
+                                    Regístrate
+                                </Link>
+                            </template>
+
+                            <!-- ENCUENTRO DE NEGOCIOS: lógica anterior -->
+                            <template v-else>
+                                <div v-if="estaRegistrado" class="flex items-center justify-between pt-0.5">
+                                    <span class="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                        Registrado
+                                    </span>
+                                    <Link :href="route('proveedores.index')"
+                                        class="text-xs text-guinda-600 dark:text-guinda-400 hover:text-guinda-800 dark:hover:text-guinda-300 font-bold transition-colors">
+                                        Ver proveedores →
+                                    </Link>
+                                </div>
+                                <Link v-else :href="route('proveedores.index')"
+                                    class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                           bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                           text-white transition-colors shadow-sm">
+                                    Ver Proveedores
+                                </Link>
+                            </template>
+
+
+ESTADOS QUE MUESTRA AHORA (para bazar)
+========================================
+- Sin solicitud            → botón "Regístrate" (guinda)
+- expositor.estado=pendiente → "🕐 Solicitud en Revisión" (ámbar)
+- expositor.estado=aprobado, seleccionado=false → "✓ En Evaluación" (azul)
+- expositor.estado=aprobado, seleccionado=true  → "✓ Seleccionado" (verde)
+
+DEPLOY
+======
+npm run build   ← solo frontend, no requiere migrate
+php artisan config:clear && php artisan cache:clear

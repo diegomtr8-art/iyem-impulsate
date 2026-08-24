@@ -48,6 +48,7 @@ class HandleInertiaRequests extends Middleware
                         'active_role', 'rol_seleccionado', 'necesidades',
                         'perfil_completo', 'es_restaurantero', 'email_verified_at', 'profile_photo_url',
                         'acepta_aviso_at', 'camara_asociacion', 'nombre_establecimiento',
+                        'ine_path', 'csf_path', 'csf_fecha',
                     ]),
                     [
                         'roles'           => $request->user()->getRoleNames(),
@@ -83,7 +84,7 @@ class HandleInertiaRequests extends Middleware
                 ->map(fn ($e) => array_merge(
                     $e->only([
                         'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
-                        'fecha_hora_inicio', 'fecha_hora_fin',
+                        'fecha_hora_inicio', 'fecha_hora_fin', 'tipo_evento',
                     ]),
                     ['imagen_url' => $e->imagen_url]
                 )),

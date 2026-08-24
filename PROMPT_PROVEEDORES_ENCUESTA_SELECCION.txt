@@ -1,0 +1,535 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — 2 Cambios: Proveedores sin evento + Encuesta por usuario
+Archivo: PROMPT_PROVEEDORES_ENCUESTA_SELECCION.txt
+================================================================================
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — Página /proveedores: mostrar todos cuando no hay evento activo
+════════════════════════════════════════════════════════════════════════════════
+
+CONTEXTO:
+  Actualmente, cuando no hay evento activo, /proveedores muestra un banner
+  "No hay evento activo" y oculta el grid de proveedores. La sección inferior
+  "proveedoresPlataforma" solo aparece como sección secundaria debajo del evento.
+
+  NUEVO COMPORTAMIENTO:
+  - Sin evento activo → mostrar TODOS los proveedores de la plataforma como
+    contenido principal, con buscador y filtro por categoría funcionando.
+  - Con evento activo → comportamiento actual (proveedores del evento primero,
+    luego "Explora todos" abajo). Sin cambios.
+
+── PASO 1A: Modificar RestauranteroPublicoController.php ────────────────────
+
+Archivo: app/Http/Controllers/RestauranteroPublicoController.php
+
+En el método index(), reemplazar el bloque `if (!$evento)` completo:
+
+ANTES:
+    if (!$evento) {
+        return Inertia::render('Restauranteros/Index', [
+            'restauranteros'        => [],
+            'sin_evento'            => true,
+            'filters'               => $request->only(['search', 'categoria']),
+            'categorias'            => [],
+            'proveedoresPlataforma' => $proveedoresPlataforma,
+        ]);
+    }
+
+DESPUÉS (reemplazar por):
+    if (!$evento) {
+        // Sin evento: mostrar todos los proveedores como contenido principal
+        $queryTodos = Restaurantero::query()
+            ->where('activo', true)
+            ->where('aprobado', true)
+            ->where('perfil_completo', true)
+            ->withCount('citas')
+            ->orderByDesc('created_at');
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $queryTodos->where(function ($q) use ($s) {
+                $q->where('nombre_restaurante', 'like', "%{$s}%")
+                  ->orWhere('direccion', 'like', "%{$s}%")
+                  ->orWhere('descripcion', 'like', "%{$s}%")
+                  ->orWhere('municipio', 'like', "%{$s}%");
+            });
+        }
+
+        if ($request->filled('categoria')) {
+            $queryTodos->where('categoria', $request->categoria);
+        }
+
+        $categoriasTodos = Restaurantero::where('activo', true)
+            ->where('aprobado', true)
+            ->where('perfil_completo', true)
+            ->whereNotNull('categoria')
+            ->distinct()
+            ->orderBy('categoria')
+            ->pluck('categoria');
+
+        return Inertia::render('Restauranteros/Index', [
+            'restauranteros'        => $queryTodos->paginate(12)->withQueryString(),
+            'sin_evento'            => true,
+            'filters'               => $request->only(['search', 'categoria']),
+            'categorias'            => $categoriasTodos,
+            'proveedoresPlataforma' => null, // no se necesita sección secundaria
+        ]);
+    }
+
+── PASO 1B: Modificar resources/js/Pages/Restauranteros/Index.vue ───────────
+
+Hacer 3 cambios en el componente Vue:
+
+CAMBIO A — Eliminar el banner "No hay evento activo":
+
+Busca este bloque y ELIMINARLO completamente:
+    <!-- Banner sin evento activo -->
+    <div v-if="sin_evento"
+        class="mb-10 bg-gray-50 dark:bg-gray-900 ...">
+        ...No hay un evento activo en este momento...
+    </div>
+
+CAMBIO B — Mostrar filtro de categorías TAMBIÉN cuando sin_evento:
+
+Busca:
+    <div v-if="!sin_evento && categorias && categorias.length > 0"
+
+Cambiar a:
+    <div v-if="categorias && categorias.length > 0"
+
+CAMBIO C — Mostrar el grid principal TAMBIÉN cuando sin_evento:
+
+Busca:
+    <!-- Lista móvil compacta (< 640px) -->
+    <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0"
+
+Cambiar a:
+    <div v-if="restauranteros.data && restauranteros.data.length > 0"
+
+Busca:
+    <!-- Grid -->
+    <div v-if="!sin_evento && restauranteros.data && restauranteros.data.length > 0"
+
+Cambiar a:
+    <div v-if="restauranteros.data && restauranteros.data.length > 0"
+
+CAMBIO D — Mostrar paginación siempre (no solo con evento):
+
+Busca:
+    <div v-if="restauranteros.links && restauranteros.last_page > 1"
+
+(La primera ocurrencia, la paginación del grid principal)
+Dejar tal cual — ya no tiene condición `!sin_evento` después de los cambios anteriores.
+
+CAMBIO E — Ajustar título de página:
+
+En el computed `tituloPagina`:
+
+ANTES:
+    const tituloPagina = computed(() =>
+        eventoActivo.value
+            ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
+            : 'Proveedores'
+    );
+
+DESPUÉS:
+    const tituloPagina = computed(() =>
+        eventoActivo.value
+            ? `Proveedores del Evento: ${eventoActivo.value.nombre}`
+            : 'Todos los Proveedores'
+    );
+
+CAMBIO F — Subtítulo descriptivo por contexto (opcional, pero recomendado):
+
+En el template, busca:
+    <p class="text-gray-500 dark:text-gray-400 mt-1">Explora y agenda citas con los mejores proveedores del sector.</p>
+
+Cambiar a:
+    <p class="text-gray-500 dark:text-gray-400 mt-1">
+        {{ sin_evento
+            ? 'Conoce a todos los proveedores registrados en la plataforma Impulsate.'
+            : 'Explora y agenda citas con los proveedores participantes en este evento.' }}
+    </p>
+
+RESULTADO esperado:
+  - Sin evento: página muestra grid completo de proveedores, buscador activo,
+    filtros de categoría activos, paginación activa. Sin banner de "sin evento".
+  - Con evento: comportamiento idéntico al actual. Sin cambios.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — Encuestas: envío a participantes seleccionados individualmente
+════════════════════════════════════════════════════════════════════════════════
+
+CONTEXTO:
+  Actualmente Admin → Encuestas permite enviar a "Todos / Solo Proveedores /
+  Solo Compradores". El admin quiere poder ver la lista completa de participantes
+  de un evento y elegir exactamente a quién mandar la encuesta (checkbox por persona).
+
+── PASO 2A: Nueva ruta en routes/web.php ─────────────────────────────────────
+
+Dentro del grupo admin, después de las rutas de encuestas existentes, agregar:
+
+    Route::get('/encuestas/participantes',         [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'participantes'])->name('encuestas.participantes');
+    Route::post('/encuestas/enviar-seleccion',     [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarSeleccion'])->name('encuestas.enviar-seleccion');
+
+── PASO 2B: Nuevos métodos en EncuestaAdminController ────────────────────────
+
+Agregar al final de la clase EncuestaAdminController:
+
+    /**
+     * Retorna la lista de participantes de un evento para mostrar en el selector.
+     * Llamado por AJAX / Inertia desde el front.
+     */
+    public function participantes(Request $request)
+    {
+        $request->validate(['evento_id' => 'required|exists:eventos,id']);
+
+        $participantes = \DB::table('evento_usuario')
+            ->join('users', 'users.id', '=', 'evento_usuario.user_id')
+            ->leftJoin('restauranteros', 'restauranteros.user_id', '=', 'users.id')
+            ->where('evento_usuario.evento_id', $request->evento_id)
+            ->where('evento_usuario.estado', 'aprobado')
+            ->select([
+                'users.id',
+                'users.name',
+                'users.email',
+                'evento_usuario.tipo',
+                \DB::raw("COALESCE(restauranteros.nombre_restaurante, users.name) as nombre_negocio"),
+            ])
+            ->orderBy('evento_usuario.tipo')
+            ->orderBy('users.name')
+            ->get()
+            ->map(fn($p) => [
+                'user_id'       => $p->id,
+                'name'          => $p->name,
+                'email'         => $p->email,
+                'tipo'          => $p->tipo,   // 'proveedor' | 'comprador'
+                'nombre_negocio'=> $p->nombre_negocio,
+                // Indica si ya recibió encuesta para este evento
+                'ya_enviada'    => EncuestaSatisfaccion::where('evento_id', $request->evento_id)
+                                    ->where('user_id', $p->id)
+                                    ->exists(),
+            ]);
+
+        return response()->json($participantes);
+    }
+
+    /**
+     * Envía la encuesta a la lista específica de user_ids seleccionados.
+     */
+    public function enviarSeleccion(Request $request)
+    {
+        $request->validate([
+            'evento_id'    => 'required|exists:eventos,id',
+            'plantilla_id' => 'nullable|exists:encuesta_plantillas,id',
+            'user_ids'     => 'required|array|min:1',
+            'user_ids.*'   => 'exists:users,id',
+        ]);
+
+        $evento    = Evento::findOrFail($request->evento_id);
+        $plantilla = $request->plantilla_id
+            ? EncuestaPlantilla::find($request->plantilla_id)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        if (!$plantilla) {
+            return back()->withErrors(['error' => 'No hay plantilla activa. Activa una primero.']);
+        }
+
+        // Obtener tipo de cada user_id desde evento_usuario
+        $participantes = \DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('estado', 'aprobado')
+            ->whereIn('user_id', $request->user_ids)
+            ->get(['user_id', 'tipo']);
+
+        $enviados = 0;
+        foreach ($participantes as $p) {
+            $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
+                ->where('user_id', $p->user_id)
+                ->where('tipo', $p->tipo)
+                ->exists();
+
+            if (!$existe) {
+                $encuesta = EncuestaSatisfaccion::create([
+                    'evento_id'             => $evento->id,
+                    'user_id'               => $p->user_id,
+                    'tipo'                  => $p->tipo,
+                    'segmento'              => $p->tipo . 's',
+                    'token'                 => \Illuminate\Support\Str::random(40),
+                    'encuesta_plantilla_id' => $plantilla->id,
+                ]);
+
+                $user = \App\Models\User::find($p->user_id);
+                if ($user?->email) {
+                    \Illuminate\Support\Facades\Mail::to($user->email)
+                        ->send(new \App\Mail\EncuestaSatisfaccionMail(
+                            $encuesta->load(['evento', 'user', 'plantilla'])
+                        ));
+                    $enviados++;
+                }
+            }
+        }
+
+        return back()->with('success', "Encuesta enviada a {$enviados} participante(s) seleccionado(s).");
+    }
+
+── PASO 2C: Agregar panel de "Envío Personalizado" en Index.vue ─────────────
+
+Archivo: resources/js/Pages/Admin/Encuestas/Index.vue
+
+SECCIÓN NUEVA a agregar dentro del script setup:
+
+    // ── Envío personalizado ──────────────────────────────────────────────
+    import axios from 'axios'
+
+    const modalPersonalizado      = ref(false)
+    const eventoSelPersonalizado  = ref('')
+    const plantillaPersonalizada  = ref('')
+    const participantes           = ref([])
+    const cargandoPart            = ref(false)
+    const filtroTipo              = ref('')     // '' | 'proveedor' | 'comprador'
+    const busquedaPart            = ref('')
+    const seleccionados           = ref([])    // array de user_ids
+
+    const participantesFiltrados = computed(() => {
+        let lista = participantes.value
+        if (filtroTipo.value) lista = lista.filter(p => p.tipo === filtroTipo.value)
+        if (busquedaPart.value) {
+            const q = busquedaPart.value.toLowerCase()
+            lista = lista.filter(p =>
+                p.name.toLowerCase().includes(q) ||
+                p.nombre_negocio.toLowerCase().includes(q) ||
+                p.email.toLowerCase().includes(q)
+            )
+        }
+        return lista
+    })
+
+    const todosSeleccionados = computed(() =>
+        participantesFiltrados.value.length > 0 &&
+        participantesFiltrados.value.every(p => seleccionados.value.includes(p.user_id))
+    )
+
+    async function cargarParticipantes() {
+        if (!eventoSelPersonalizado.value) return
+        cargandoPart.value = true
+        seleccionados.value = []
+        try {
+            const { data } = await axios.get(route('admin.encuestas.participantes'), {
+                params: { evento_id: eventoSelPersonalizado.value }
+            })
+            participantes.value = data
+        } finally {
+            cargandoPart.value = false
+        }
+    }
+
+    function toggleTodos() {
+        const ids = participantesFiltrados.value.map(p => p.user_id)
+        if (todosSeleccionados.value) {
+            seleccionados.value = seleccionados.value.filter(id => !ids.includes(id))
+        } else {
+            seleccionados.value = [...new Set([...seleccionados.value, ...ids])]
+        }
+    }
+
+    function enviarPersonalizado() {
+        if (seleccionados.value.length === 0) return
+        router.post(route('admin.encuestas.enviar-seleccion'), {
+            evento_id:    eventoSelPersonalizado.value,
+            plantilla_id: plantillaPersonalizada.value || undefined,
+            user_ids:     seleccionados.value,
+        }, {
+            onSuccess: () => {
+                modalPersonalizado.value = false
+                seleccionados.value = []
+            }
+        })
+    }
+
+BOTÓN a agregar en el encabezado de la página (junto al botón "📊 Ver Gráficas"):
+
+    <button @click="modalPersonalizado = true"
+            class="px-5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg
+                   font-medium text-sm transition flex items-center gap-2 border border-white/20">
+        🎯 Envío personalizado
+    </button>
+
+MODAL completo a agregar al final del template (antes de </div> del wrapper principal):
+
+    <!-- Modal Envío Personalizado -->
+    <Teleport to="body">
+      <div v-if="modalPersonalizado"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div class="bg-gray-900 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh]
+                    flex flex-col shadow-2xl">
+
+          <!-- Header -->
+          <div class="flex items-center justify-between p-6 border-b border-white/10 flex-shrink-0">
+            <div>
+              <h2 class="text-xl font-bold text-white">🎯 Envío Personalizado</h2>
+              <p class="text-gray-400 text-sm mt-0.5">Selecciona exactamente a quién enviar la encuesta</p>
+            </div>
+            <button @click="modalPersonalizado = false"
+                    class="text-gray-400 hover:text-white text-2xl leading-none transition">✕</button>
+          </div>
+
+          <!-- Filtros de carga -->
+          <div class="p-6 border-b border-white/10 flex-shrink-0 space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label class="text-gray-400 text-xs mb-1 block">Evento *</label>
+                <select v-model="eventoSelPersonalizado"
+                        @change="cargarParticipantes"
+                        class="w-full bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+                  <option value="">Selecciona un evento</option>
+                  <option v-for="e in eventos" :key="e.id" :value="e.id">{{ e.nombre }}</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-gray-400 text-xs mb-1 block">Plantilla</label>
+                <select v-model="plantillaPersonalizada"
+                        class="w-full bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+                  <option value="">Usar plantilla activa</option>
+                  <option v-for="p in plantillas" :key="p.id" :value="p.id">
+                    {{ p.nombre }}{{ p.activa ? ' ✓' : '' }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Filtros de lista -->
+            <div v-if="participantes.length > 0" class="flex gap-3">
+              <input v-model="busquedaPart" type="text" placeholder="Buscar por nombre o correo..."
+                     class="flex-1 bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm
+                            placeholder-gray-500 focus:outline-none focus:border-[#8B1028]" />
+              <select v-model="filtroTipo"
+                      class="bg-gray-800 border border-white/20 text-white rounded-lg px-3 py-2 text-sm">
+                <option value="">Todos</option>
+                <option value="proveedor">Proveedores</option>
+                <option value="comprador">Compradores</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Lista de participantes -->
+          <div class="flex-1 overflow-y-auto">
+            <!-- Cargando -->
+            <div v-if="cargandoPart" class="flex items-center justify-center py-16">
+              <div class="w-8 h-8 border-2 border-[#8B1028] border-t-transparent rounded-full animate-spin"></div>
+            </div>
+
+            <!-- Sin evento seleccionado -->
+            <div v-else-if="!eventoSelPersonalizado"
+                 class="text-center py-16 text-gray-500">
+              Selecciona un evento para ver los participantes
+            </div>
+
+            <!-- Sin resultados -->
+            <div v-else-if="participantesFiltrados.length === 0"
+                 class="text-center py-16 text-gray-500">
+              No hay participantes con los filtros seleccionados
+            </div>
+
+            <!-- Lista -->
+            <div v-else>
+              <!-- Encabezado con seleccionar todos -->
+              <div class="sticky top-0 bg-gray-900/95 backdrop-blur px-6 py-3 border-b border-white/5
+                          flex items-center justify-between">
+                <label class="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" :checked="todosSeleccionados" @change="toggleTodos"
+                         class="w-4 h-4 accent-[#8B1028] rounded" />
+                  <span class="text-gray-300 text-sm">
+                    Seleccionar todos ({{ participantesFiltrados.length }})
+                  </span>
+                </label>
+                <span class="text-[#c2435d] text-sm font-medium">
+                  {{ seleccionados.length }} seleccionado(s)
+                </span>
+              </div>
+
+              <!-- Filas -->
+              <div class="divide-y divide-white/5">
+                <label v-for="p in participantesFiltrados" :key="p.user_id"
+                       class="flex items-center gap-4 px-6 py-3 hover:bg-white/5 cursor-pointer transition"
+                       :class="p.ya_enviada ? 'opacity-50' : ''">
+                  <input type="checkbox"
+                         :value="p.user_id"
+                         v-model="seleccionados"
+                         :disabled="p.ya_enviada"
+                         class="w-4 h-4 accent-[#8B1028] rounded flex-shrink-0" />
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="text-white text-sm font-medium truncate">{{ p.nombre_negocio }}</span>
+                      <span v-if="p.ya_enviada"
+                            class="text-[10px] px-2 py-0.5 bg-emerald-900/40 text-emerald-400 rounded-full flex-shrink-0">
+                        ya enviada
+                      </span>
+                    </div>
+                    <p class="text-gray-400 text-xs truncate">{{ p.email }}</p>
+                  </div>
+                  <span class="flex-shrink-0 text-xs px-2 py-0.5 rounded-full font-medium"
+                        :class="p.tipo === 'proveedor'
+                            ? 'bg-[#8B1028]/20 text-[#c2435d]'
+                            : 'bg-emerald-900/30 text-emerald-400'">
+                    {{ p.tipo === 'proveedor' ? '🏭 Proveedor' : '🛒 Comprador' }}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer con acción -->
+          <div class="p-6 border-t border-white/10 flex-shrink-0 flex items-center justify-between gap-4">
+            <p class="text-gray-400 text-sm">
+              Los participantes con "ya enviada" no volverán a recibir la encuesta.
+            </p>
+            <button @click="enviarPersonalizado"
+                    :disabled="seleccionados.length === 0"
+                    class="px-6 py-2 bg-[#8B1028] hover:bg-[#a01230] disabled:opacity-40 disabled:cursor-not-allowed
+                           text-white rounded-lg font-medium text-sm transition flex items-center gap-2">
+              Enviar a {{ seleccionados.length }} persona(s)
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </Teleport>
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+CAMBIO 1:
+  a) Con evento activo: /proveedores muestra los del evento. Sin cambios.
+  b) Desactivar el evento desde admin.
+  c) Visitar /proveedores → debe mostrar TODOS los proveedores en el grid.
+  d) Escribir en el buscador → la lista debe filtrarse en tiempo real.
+  e) Hacer clic en una categoría → debe filtrar correctamente.
+  f) Reactivar el evento → vuelve al comportamiento original.
+
+CAMBIO 2:
+  a) Admin → Encuestas → botón "🎯 Envío personalizado".
+  b) Seleccionar un evento con participantes aprobados.
+  c) Ver la lista con proveedor/comprador diferenciados.
+  d) Filtrar por "Solo Proveedores" → solo aparecen proveedores.
+  e) Buscar por nombre → filtra la lista.
+  f) Seleccionar 2-3 personas y hacer clic en "Enviar".
+  g) Verificar que recibieron el correo solo las personas seleccionadas.
+  h) Al abrir el modal de nuevo, los enviados aparecen con badge "ya enviada"
+     y checkbox deshabilitado.
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    npm run build
+    php artisan optimize
+
+    # Sin migraciones
+
+================================================================================
+FIN DEL PROMPT
+================================================================================

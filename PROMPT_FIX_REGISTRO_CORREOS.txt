@@ -1,0 +1,204 @@
+RESUMEN DE CAMBIOS
+==================
+1. Quitar el badge "Registrado" del sidebar de eventos
+2. Corregir el Error 500 al registrarse (SMTP lanzaba excepción)
+3. Corregir posibles errores 419 en el formulario de registro
+4. Hacer robusto el envío de correos (try/catch) para que nunca causen 500
+5. Verificar que el flujo de verificación de correo no rompa nada
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 1 — resources/js/Components/EventosSidebar.vue
+─────────────────────────────────────────────────────────────
+
+Quitar el bloque "Registrado" y simplificar la lógica de acciones.
+Para encuentro de negocios siempre mostrar "Ver Proveedores".
+Para bazar siempre mostrar "Regístrate" (sin estado de registro).
+
+En <script setup>, ELIMINA estas líneas:
+
+    const estaRegistrado = computed(() => {
+        const tipo = activeRole.value === 'proveedor' ? 'proveedor' : 'comprador';
+        return registradoEnEvento.value?.[tipo]?.estado === 'aprobado';
+    });
+
+También ELIMINA la línea:
+    const registradoEnEvento = computed(() => page.props.registradoEnEvento ?? {});
+
+Y ELIMINA la línea:
+    const activeRole = computed(() => page.props.auth?.user?.active_role ?? 'comprador');
+
+(Solo si estas variables no se usan en ningún otro lugar del componente.
+Si se usan más abajo, déjalas y solo elimina estaRegistrado.)
+
+En el template, reemplaza TODO el bloque de "Acciones":
+
+            <!-- Acciones -->
+            <div v-if="estaRegistrado" class="flex items-center justify-between pt-0.5">
+                <span class="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Registrado
+                </span>
+                <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
+                    :href="route('proveedores.index')"
+                    class="text-xs text-guinda-600 dark:text-guinda-400 hover:text-guinda-800 dark:hover:text-guinda-300 font-bold transition-colors">
+                    Ver proveedores →
+                </Link>
+                <!-- Bazar: ya está registrado, no mostrar nada extra aquí -->
+            </div>
+
+            <!-- Encuentro de negocios: ver proveedores -->
+            <Link v-else-if="evento.tipo_evento !== 'bazar_exposicion'" :href="route('proveedores.index')"
+                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                       text-white transition-colors shadow-sm">
+                Ver Proveedores
+            </Link>
+            <!-- Bazar: registrarse al evento -->
+            <Link v-else :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                       text-white transition-colors shadow-sm">
+                Regístrate
+            </Link>
+
+Por esto (sin badge "Registrado", siempre muestra el botón correspondiente):
+
+            <!-- Acciones -->
+            <!-- Encuentro de negocios: ir a proveedores -->
+            <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
+                :href="route('proveedores.index')"
+                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                       text-white transition-colors shadow-sm">
+                Ver Proveedores
+            </Link>
+            <!-- Bazar: ir a solicitar participación -->
+            <Link v-else
+                :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                       text-white transition-colors shadow-sm">
+                Regístrate
+            </Link>
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 2 — app/Actions/Fortify/CreateNewUser.php
+─────────────────────────────────────────────────────────────
+
+CAUSA DEL 500: Fortify dispara el evento `Registered` tras crear al usuario.
+El listener `SendEmailVerificationNotification` llama a SMTP en producción.
+Si SMTP falla → excepción sin catch → HTTP 500.
+
+LA FIX: agregar `'email_verified_at' => now()` al User::create(). Esto hace
+que `$user->hasVerifiedEmail()` retorne true, y el listener omite el envío
+del correo de verificación. Sin llamada SMTP → sin posibilidad de 500.
+
+Es consistente con el flujo de Google OAuth (SocialAuthController.php línea 46
+ya hace exactamente esto).
+
+En el método create(), localiza el bloque User::create([...]) y agrega la línea:
+
+        $user = User::create([
+            'name'             => $input['name'],
+            'email'            => $input['email'],
+            'password'         => Hash::make($input['password']),
+            'telefono'         => $input['telefono'] ?? null,
+            'curp'             => $input['curp'] ?? null,
+            'active_role'      => 'comprador',
+            'acepta_aviso_at'  => now(),
+            'email_verified_at'=> now(),   // ← NUEVO: auto-verifica igual que Google OAuth
+        ]);
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 3 — app/Models/User.php
+─────────────────────────────────────────────────────────────
+
+Agregar este método al modelo para que el botón "Reenviar correo de
+verificación" en VerifyEmail.vue nunca cause un 500 aunque SMTP falle.
+Fortify llama a este método tanto en el registro como en el reenvío manual.
+
+Dentro de la clase User, justo antes del cierre de la clase, agrega:
+
+    /**
+     * Envuelve el envío del correo de verificación en try/catch.
+     * Si SMTP falla, registra el error pero no lanza excepción al usuario.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        try {
+            parent::sendEmailVerificationNotification();
+        } catch (\Exception $e) {
+            \Log::error('Error al enviar correo de verificación a ' . $this->email . ': ' . $e->getMessage());
+        }
+    }
+
+NOTA: con el CAMBIO 2 activo, los usuarios nuevos ya tienen email_verified_at
+establecido, por lo que el listener nunca llamará a este método en el registro.
+Este override es solo una red de seguridad para el botón de reenvío manual.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 4 — Error 419 (CSRF / sesión expirada)
+─────────────────────────────────────────────────────────────
+
+El error 419 en el formulario /register ocurre cuando:
+a) El usuario dejó la página abierta mucho tiempo y la sesión expiró.
+b) La variable APP_URL en .env de producción no coincide con la URL real
+   (ej: APP_URL=http://... pero el sitio corre en https://...).
+
+Inertia v2 (que usa este proyecto) ya maneja el 419 automáticamente:
+recarga la página y reintenta la acción. No se necesita código extra.
+
+VERIFICAR EN .env DE PRODUCCIÓN (en el servidor):
+
+    APP_URL=https://impulsate.iyemyucatan.com   ← debe ser https si el sitio es https
+    SESSION_SECURE_COOKIE=true                  ← activar si el sitio es https
+    SESSION_DOMAIN=impulsate.iyemyucatan.com    ← sin punto inicial para un solo dominio
+
+Si SESSION_SECURE_COOKIE era false y el sitio corre en https, la cookie XSRF
+no se envía y cada request da 419. Cambiar a true soluciona el problema.
+
+Después de editar .env:
+    php artisan config:clear
+    php artisan cache:clear
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 5 — Flujo de verificación de correo (VerifyEmail.vue)
+─────────────────────────────────────────────────────────────
+
+Con el CAMBIO 2, los usuarios que se registran por el formulario ya tienen
+`email_verified_at` establecido. Nunca verán la pantalla VerifyEmail.vue.
+La página permanece disponible para usuarios creados antes de este fix
+(con email_verified_at null) que quieran reenviar el correo.
+
+El CAMBIO 3 garantiza que si hacen clic en "Reenviar correo de verificación"
+y el SMTP falla, no ven un error 500 — ven la página normalmente.
+
+No se necesita modificar VerifyEmail.vue.
+
+
+─────────────────────────────────────────────────────────────
+DEPLOY (producción)
+─────────────────────────────────────────────────────────────
+
+git pull origin main
+composer install --no-dev --optimize-autoloader
+npm ci && npm run build
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+php artisan view:clear
+php artisan queue:restart
+# No se requiere php artisan migrate (sin migraciones nuevas)
+
+Usuarios existentes con email_verified_at = null:
+Si hay usuarios atrapados en la pantalla de verificación, puedes
+liberarlos con este comando en el servidor:
+    php artisan tinker
+    >>> App\Models\User::whereNull('email_verified_at')->update(['email_verified_at' => now()])

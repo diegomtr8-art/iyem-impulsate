@@ -115,23 +115,25 @@ class ProveedoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
             ->orderBy('nombre_restaurante')
             ->get()
             ->map(fn($r) => [
-                'Empresa'            => $r->nombre_restaurante,
-                'Categoría'          => $r->categoria ?? '—',
-                'Municipio'          => $r->municipio ?? '—',
-                'RFC'                => $r->rfc ?? '—',
-                'Teléfono'           => $r->telefono ?? '—',
-                'Email'              => $r->user?->email ?? '—',
-                'Total Citas'        => $r->total_citas,
-                'Citas Aceptadas'    => $r->citas_aceptadas,
-                'Citas Pendientes'   => $r->citas_pendientes,
-                'Estado en Evento'   => 'Aprobado',
-                'Registro'           => $r->created_at->format('d/m/Y'),
+                'Empresa'             => $r->nombre_restaurante,
+                'Razón Social'        => $r->razon_social ?? '—',
+                'Nombre Propietario'  => $r->user?->name ?? '—',
+                'Categoría'           => $r->categoria ?? '—',
+                'Municipio'           => $r->municipio ?? '—',
+                'RFC'                 => $r->rfc ?? '—',
+                'Teléfono'            => $r->telefono ?? '—',
+                'Email'               => $r->user?->email ?? '—',
+                'Total Citas'         => $r->total_citas,
+                'Citas Aceptadas'     => $r->citas_aceptadas,
+                'Citas Pendientes'    => $r->citas_pendientes,
+                'Estado en Evento'    => 'Aprobado',
+                'Registro'            => $r->created_at->format('d/m/Y'),
             ]);
     }
 
     public function headings(): array
     {
-        return ['Empresa', 'Categoría', 'Municipio', 'RFC', 'Teléfono', 'Email', 'Total Citas', 'Citas Aceptadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
+        return ['Empresa', 'Razón Social', 'Nombre Propietario', 'Categoría', 'Municipio', 'RFC', 'Teléfono', 'Email', 'Total Citas', 'Citas Aceptadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
     }
 
     public function styles(Worksheet $sheet): array
@@ -170,6 +172,7 @@ class CompradoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
                 'Nombre'             => $u->name,
                 'Email'              => $u->email,
                 'Teléfono'           => $u->telefono ?? '—',
+                'Municipio'          => $u->municipio ?? '—',
                 'CURP'               => $u->curp ?? '—',
                 'Total Citas'        => $u->total_citas,
                 'Citas Confirmadas'  => $u->confirmadas,
@@ -181,7 +184,7 @@ class CompradoresEventoSheet implements FromCollection, WithHeadings, WithTitle,
 
     public function headings(): array
     {
-        return ['Nombre', 'Email', 'Teléfono', 'CURP', 'Total Citas', 'Citas Confirmadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
+        return ['Nombre', 'Email', 'Teléfono', 'Municipio', 'CURP', 'Total Citas', 'Citas Confirmadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
     }
 
     public function styles(Worksheet $sheet): array

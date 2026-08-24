@@ -56,6 +56,9 @@ class EventoSolicitudesController extends Controller
                 'nombre_establecimiento' => $users[$reg->user_id]->nombre_establecimiento ?? null,
                 'created_at'        => $users[$reg->user_id]->created_at,
                 'citas_historico'   => $citasHistoricoPorUser[$reg->user_id] ?? 0,
+                'ine_path'  => $users[$reg->user_id]->ine_path ?? null,
+                'csf_path'  => $users[$reg->user_id]->csf_path ?? null,
+                'csf_fecha' => $users[$reg->user_id]->csf_fecha ?? null,
             ] : null,
             'restaurantero'  => ($reg->tipo === 'proveedor' && isset($users[$reg->user_id]))
                 ? (function () use ($users, $reg) {
@@ -128,7 +131,7 @@ class EventoSolicitudesController extends Controller
             ->get(['id', 'name', 'nombre_empresa']);
 
         return Inertia::render('Admin/Eventos/Solicitudes', [
-            'evento'           => $evento->only(['id', 'nombre', 'activa']),
+            'evento'           => $evento->only(['id', 'nombre', 'activa', 'tipo_evento']),
             'pendientes'       => $pendientes,
             'aprobados'        => $aprobados,
             'rechazados'       => $rechazados,
@@ -140,7 +143,7 @@ class EventoSolicitudesController extends Controller
     public function aprobar(Evento $evento, User $user, Request $request)
     {
         $request->validate([
-            'tipo' => 'required|in:proveedor,comprador',
+            'tipo' => 'required|in:proveedor,comprador,expositor',
         ]);
 
         $tipo = $request->tipo;
@@ -168,6 +171,8 @@ class EventoSolicitudesController extends Controller
                 $restaurantero->update(['edicion_id' => $evento->id]);
             }
             $mensaje = '¡Fuiste aprobado como proveedor en el evento "' . $evento->nombre . '"! Ya apareces en el listado de proveedores.';
+        } elseif ($tipo === 'expositor') {
+            $mensaje = '¡Fuiste aprobado como expositor en el bazar "' . $evento->nombre . '"! Recibirás más información sobre tu espacio.';
         } else {
             $mensaje = '¡Fuiste aprobado en el evento "' . $evento->nombre . '"! Ya puedes agendar citas con los proveedores.';
         }
@@ -188,7 +193,7 @@ class EventoSolicitudesController extends Controller
     public function rechazar(Evento $evento, User $user, Request $request)
     {
         $request->validate([
-            'tipo'           => 'required|in:proveedor,comprador',
+            'tipo'           => 'required|in:proveedor,comprador,expositor',
             'motivo_rechazo' => 'required|string|max:500',
         ]);
 
@@ -240,7 +245,7 @@ class EventoSolicitudesController extends Controller
 
     public function aprobarTodos(Evento $evento, Request $request)
     {
-        $request->validate(['tipo' => 'required|in:comprador,proveedor']);
+        $request->validate(['tipo' => 'required|in:comprador,proveedor,expositor']);
 
         $pendientes = DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
@@ -292,7 +297,7 @@ class EventoSolicitudesController extends Controller
     public function revertirPendiente(Evento $evento, User $user, Request $request)
     {
         $request->validate([
-            'tipo' => 'required|in:proveedor,comprador',
+            'tipo' => 'required|in:proveedor,comprador,expositor',
         ]);
 
         DB::table('evento_usuario')
@@ -394,7 +399,7 @@ class EventoSolicitudesController extends Controller
     public function eliminar(Evento $evento, User $user, Request $request)
     {
         $request->validate([
-            'tipo'               => 'required|in:proveedor,comprador',
+            'tipo'               => 'required|in:proveedor,comprador,expositor',
             'motivo_eliminacion' => 'required|string|max:500',
         ]);
 

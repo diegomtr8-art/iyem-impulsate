@@ -1,0 +1,250 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Admin Citas: Hora manual + Duración manual
+Archivo: PROMPT_CITAS_HORA_DURACION_MANUAL.txt
+================================================================================
+
+CONTEXTO:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode: 'class')
+  Color corporativo: guinda #8B1028 — NUNCA azul/indigo
+  Vista afectada: el modal/formulario "Agendar cita para cliente" en /admin/citas
+
+PROBLEMA ACTUAL:
+  El campo "Hora" es un select (dropdown) con opciones predefinidas.
+  No hay campo de duración.
+
+OBJETIVO:
+  1. Cambiar "Hora" de dropdown a input de tiempo libre (type="time")
+     para que el admin escriba la hora exacta manualmente
+  2. Agregar campo "Duración" donde el admin escribe los minutos
+     (ej: 30, 45, 60) o usa botones rápidos de duración común
+  3. Mostrar automáticamente la hora de fin calculada (inicio + duración)
+  4. Guardar hora_inicio y hora_fin (o inicio y fin) en la BD
+
+LEE TODOS LOS ARCHIVOS ANTES DE MODIFICAR.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 0 — LEE PRIMERO
+════════════════════════════════════════════════════════════════════════════════
+
+  1. Busca la vista del formulario/modal de citas:
+     find resources/js -name "*.vue" | xargs grep -l "Agendar cita\|agendar.*cita\|admin.*cita" 2>/dev/null
+
+  2. Lee el controller de citas admin:
+     grep -r "citas\|CitasController\|CitaController" app/Http/Controllers --include="*.php" -l
+
+  3. Lee el modelo Cita:
+     cat app/Models/Cita.php
+
+  4. Verifica cómo se guardan los campos de tiempo en la tabla citas:
+     grep -r "hora_inicio\|hora_fin\|inicio\|fin\|hora\|time\|datetime" database/migrations --include="*.php" | grep -i "cita"
+
+  Con esta información sabrás si los campos se llaman:
+    - hora_inicio / hora_fin
+    - inicio / fin  
+    - hora / duracion
+  Usa los nombres EXACTOS que existen en tu tabla.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — Vista Vue: reemplazar el campo Hora + agregar Duración
+════════════════════════════════════════════════════════════════════════════════
+
+En la vista del formulario de citas, busca el bloque del campo "Hora"
+(actualmente un <select>) y reemplázalo por este bloque completo:
+
+    <!-- Hora inicio y Duración -->
+    <div class="grid grid-cols-2 gap-3">
+
+        <!-- Hora de inicio (input libre) -->
+        <div>
+            <label class="block text-sm font-semibold text-gray-700
+                          dark:text-gray-300 mb-1">
+                Hora de inicio <span class="text-red-500">*</span>
+            </label>
+            <input
+                v-model="form.hora_inicio"
+                type="time"
+                required
+                class="w-full border border-gray-300 dark:border-gray-600 rounded-xl
+                       px-3 py-2 text-sm bg-white dark:bg-gray-700
+                       text-gray-900 dark:text-white
+                       focus:outline-none focus:ring-2 focus:ring-guinda-500
+                       transition"
+            />
+            <p v-if="form.errors.hora_inicio" class="text-xs text-red-600 mt-1">
+                {{ form.errors.hora_inicio }}
+            </p>
+        </div>
+
+        <!-- Duración en minutos -->
+        <div>
+            <label class="block text-sm font-semibold text-gray-700
+                          dark:text-gray-300 mb-1">
+                Duración <span class="text-red-500">*</span>
+            </label>
+            <input
+                v-model.number="form.duracion"
+                type="number"
+                min="5"
+                max="480"
+                step="5"
+                placeholder="Minutos"
+                required
+                class="w-full border border-gray-300 dark:border-gray-600 rounded-xl
+                       px-3 py-2 text-sm bg-white dark:bg-gray-700
+                       text-gray-900 dark:text-white
+                       focus:outline-none focus:ring-2 focus:ring-guinda-500
+                       transition"
+            />
+            <p v-if="form.errors.duracion" class="text-xs text-red-600 mt-1">
+                {{ form.errors.duracion }}
+            </p>
+        </div>
+
+    </div>
+
+    <!-- Botones rápidos de duración -->
+    <div class="flex gap-2 flex-wrap mt-2">
+        <span class="text-xs text-gray-500 dark:text-gray-400 self-center">
+            Duración rápida:
+        </span>
+        <button
+            v-for="min in [15, 20, 30, 45, 60, 90]"
+            :key="min"
+            type="button"
+            @click="form.duracion = min"
+            :class="[
+                'px-2.5 py-1 text-xs font-bold rounded-lg border transition-colors',
+                form.duracion === min
+                    ? 'bg-guinda-800 text-white border-guinda-800'
+                    : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-guinda-50 hover:text-guinda-700 hover:border-guinda-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600'
+            ]"
+        >
+            {{ min }} min
+        </button>
+    </div>
+
+    <!-- Hora de fin calculada automáticamente -->
+    <div v-if="form.hora_inicio && form.duracion > 0"
+        class="flex items-center gap-2 bg-guinda-50 dark:bg-guinda-900/20
+               border border-guinda-100 dark:border-guinda-800
+               rounded-xl px-3 py-2 mt-1">
+        <span class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold">
+            🕐 Hora de fin:
+        </span>
+        <span class="text-sm font-black text-guinda-800 dark:text-guinda-300">
+            {{ calcularHoraFin(form.hora_inicio, form.duracion) }}
+        </span>
+    </div>
+
+Agrega en el <script setup> la función calcularHoraFin y los campos en el form:
+
+    // En useForm, agrega/reemplaza los campos de hora:
+    const form = useForm({
+        // ... campos existentes (cliente_id, restaurantero_id, fecha, notas) ...
+        hora_inicio: '',
+        duracion:    30,  // default 30 minutos
+    });
+
+    // Función para calcular hora de fin
+    const calcularHoraFin = (horaInicio, duracionMinutos) => {
+        if (!horaInicio || !duracionMinutos) return '';
+        const [h, m] = horaInicio.split(':').map(Number);
+        const totalMinutos = h * 60 + m + Number(duracionMinutos);
+        const hFin = Math.floor(totalMinutos / 60) % 24;
+        const mFin = totalMinutos % 60;
+        return `${String(hFin).padStart(2, '0')}:${String(mFin).padStart(2, '0')}`;
+    };
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — Controller: validar y guardar hora_inicio + hora_fin
+════════════════════════════════════════════════════════════════════════════════
+
+En el método store() del controller de citas admin, reemplaza la validación
+y creación para incluir hora_inicio, duracion y hora_fin calculada:
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'cliente_id'       => 'required|exists:users,id',
+            'restaurantero_id' => 'required|exists:restauranteros,id',
+            'fecha'            => 'required|date',
+            'hora_inicio'      => 'required|date_format:H:i',
+            'duracion'         => 'required|integer|min:5|max:480',
+            'notas'            => 'nullable|string|max:1000',
+        ]);
+
+        // Calcular hora de fin
+        [$h, $m]   = explode(':', $validated['hora_inicio']);
+        $totalMins = (int)$h * 60 + (int)$m + (int)$validated['duracion'];
+        $hFin      = str_pad(floor($totalMins / 60) % 24, 2, '0', STR_PAD_LEFT);
+        $mFin      = str_pad($totalMins % 60, 2, '0', STR_PAD_LEFT);
+        $hora_fin  = "{$hFin}:{$mFin}";
+
+        // Construir los campos de inicio y fin según tu modelo.
+        // Verifica el modelo Cita: puede ser datetime completo (fecha + hora juntos)
+        // o campos separados. Ajusta según el esquema real.
+
+        // OPCIÓN A — Si la tabla tiene campos 'inicio' y 'fin' como datetime:
+        $inicio = $validated['fecha'] . ' ' . $validated['hora_inicio'] . ':00';
+        $fin    = $validated['fecha'] . ' ' . $hora_fin . ':00';
+
+        \App\Models\Cita::create([
+            'cliente_id'       => $validated['cliente_id'],
+            'restaurantero_id' => $validated['restaurantero_id'],
+            'inicio'           => $inicio,
+            'fin'              => $fin,
+            'notas'            => $validated['notas'] ?? null,
+            'estado'           => 'confirmada',
+            // agrega evento_id si lo tienes en el formulario
+        ]);
+
+        // OPCIÓN B — Si la tabla tiene campos separados hora_inicio / hora_fin / fecha:
+        // \App\Models\Cita::create([
+        //     'cliente_id'       => $validated['cliente_id'],
+        //     'restaurantero_id' => $validated['restaurantero_id'],
+        //     'fecha'            => $validated['fecha'],
+        //     'hora_inicio'      => $validated['hora_inicio'],
+        //     'hora_fin'         => $hora_fin,
+        //     'notas'            => $validated['notas'] ?? null,
+        //     'estado'           => 'confirmada',
+        // ]);
+
+        return back()->with('success', 'Cita agendada correctamente.');
+        // O si usa redirect:
+        // return redirect()->route('admin.citas.index')->with('success', 'Cita agendada.');
+    }
+
+USA la opción que corresponda al esquema real de tu tabla `citas`.
+Lee la migración de citas antes de decidir cuál usar.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Ve a /admin/citas
+2. Abre el formulario "Agendar cita para cliente"
+3. Verifica:
+   a) El campo "Hora" ahora es un input de tiempo libre (no dropdown)
+   b) Aparece el campo "Duración" con placeholder "Minutos"
+   c) Los botones rápidos: 15, 20, 30, 45, 60, 90 min
+   d) Al seleccionar un botón rápido, el campo Duración se actualiza
+   e) Al escribir hora_inicio y duración, aparece la hora de fin calculada
+      Ejemplo: inicio 09:00 + 45 min → "🕐 Hora de fin: 09:45"
+4. Crea una cita completa y guarda
+5. Verifica en BD que se guardaron correctamente inicio y fin (o hora_inicio y hora_fin)
+6. La cita debe aparecer en la lista con el horario correcto
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    npm run build
+    php artisan optimize
+
+    # NO hay migraciones — solo cambios en controller y vista
+
+================================================================================
+FIN DEL PROMPT — Admin Citas: Hora manual + Duración manual
+================================================================================

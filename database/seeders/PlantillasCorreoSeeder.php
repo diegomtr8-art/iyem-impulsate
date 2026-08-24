@@ -114,6 +114,30 @@ class PlantillasCorreoSeeder extends Seeder
                 'es_sistema'         => true,
                 'contenido'          => $this->tplAgendaPropuesta(),
             ],
+            [
+                'clave'              => 'bazar_solicitud_recibida',
+                'nombre'             => 'Bazar — Solicitud recibida',
+                'asunto'             => 'Recibimos tu solicitud para {{nombre_evento}} — Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplBazarSolicitudRecibida(),
+            ],
+            [
+                'clave'              => 'bazar_seleccionado',
+                'nombre'             => 'Bazar — Participación aprobada',
+                'asunto'             => '🎉 ¡Fuiste seleccionado para {{nombre_evento}}! — Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplBazarSeleccionado(),
+            ],
+            [
+                'clave'              => 'bazar_rechazado',
+                'nombre'             => 'Bazar — Participación no seleccionada',
+                'asunto'             => 'Resultado de tu solicitud — {{nombre_evento}} · Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplBazarRechazado(),
+            ],
         ];
 
         foreach ($plantillas as $data) {
@@ -346,5 +370,66 @@ HTML;
 <p style="margin:0;font-size:13px;color:#9ca3af;">Este enlace es de un solo uso. Si tienes dudas, escríbenos a impulsate@iyemyucatan.com</p>
 HTML;
         return $this->wrap('Propuesta de Agenda', '📅 Nueva propuesta de agenda', $cuerpo);
+    }
+
+    private function tplBazarSolicitudRecibida(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">Hemos recibido tu solicitud para participar como expositor en <strong>{{nombre_evento}}</strong>. Estamos revisando tu documentación e información.</p>
+<div style="background:#fff7f7;border:1px solid #fbc4cd;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">¿Qué sigue?</p>
+  <ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">
+    <li>Revisaremos tu solicitud y documentos en los próximos días</li>
+    <li>Recibirás un correo con el resultado de tu participación</li>
+    <li>Puedes actualizar tus documentos en tu perfil si es necesario</li>
+  </ul>
+</div>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="https://impulsate.iyemyucatan.com" style="display:inline-block;background:linear-gradient(135deg,#8b1028,#45060f);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi perfil
+  </a>
+</div>
+HTML;
+        return $this->wrap('Solicitud Recibida', '📋 Tu solicitud fue registrada', $cuerpo);
+    }
+
+    private function tplBazarSeleccionado(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">¡Excelentes noticias! Fuiste <strong style="color:#16a34a;">seleccionado(a)</strong> para participar como expositor en <strong>{{nombre_evento}}</strong>.</p>
+<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#16a34a;">¿Qué sigue?</p>
+  <ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">
+    <li>Pronto recibirás más detalles sobre el evento, horarios y ubicación</li>
+    <li>Prepara tu exposición y materiales de presentación</li>
+    <li>Llega puntual el día del bazar</li>
+  </ul>
+</div>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="https://impulsate.iyemyucatan.com" style="display:inline-block;background:linear-gradient(135deg,#16a34a,#15803d);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi panel
+  </a>
+</div>
+HTML;
+        return $this->wrap('¡Seleccionado!', '🎉 ¡Felicidades, fuiste seleccionado!', $cuerpo);
+    }
+
+    private function tplBazarRechazado(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">Gracias por tu interés en participar en <strong>{{nombre_evento}}</strong>. Después de revisar todas las solicitudes, en esta ocasión tu participación no fue seleccionada.</p>
+<p style="margin:0 0 20px;font-size:14px;color:#6b7280;">Sabemos que puede ser difícil recibir esta noticia, pero queremos que sepas que tu esfuerzo y dedicación son valiosos. Te invitamos a consultar el detalle de tu evaluación para que puedas seguir mejorando.</p>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="{{url_evaluacion}}" style="display:inline-block;background:linear-gradient(135deg,#8b1028,#45060f);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi evaluación detallada
+  </a>
+</div>
+<p style="margin:0 0 16px;font-size:13px;color:#9ca3af;text-align:center;">Este enlace es personal e intransferible. Accede para conocer tu retroalimentación.</p>
+<p style="margin:0;font-size:14px;color:#374151;">Te animamos a participar en futuras ediciones de los eventos de Impulsate. Seguiremos trabajando juntos por el ecosistema emprendedor de Yucatán.</p>
+HTML;
+        return $this->wrap('Resultado de tu Solicitud', '📋 Resultado de tu solicitud', $cuerpo);
     }
 }

@@ -133,6 +133,7 @@ class CompletarPerfilController extends Controller
             'curp'                  => ['nullable', 'string', 'max:18'],
             'rfc'                   => ['nullable', 'string', 'max:13'],
             'municipio'             => ['nullable', 'string', 'max:100'],
+            'genero'                => ['nullable', 'in:hombre,mujer'],
             'nombre_empresa'        => ['required', 'string', 'max:200'],
             'sitio_web'             => ['nullable', 'url', 'max:200'],
             'necesidades'           => ['nullable', 'string', 'max:2000'],
@@ -153,6 +154,7 @@ class CompletarPerfilController extends Controller
             'curp'                   => $request->curp ? strtoupper($request->curp) : null,
             'rfc'                    => $request->rfc ? strtoupper($request->rfc) : null,
             'municipio'              => $request->municipio,
+            'genero'                 => $request->genero ?: null,
             'nombre_empresa'         => $request->nombre_empresa,
             'sitio_web'              => $request->sitio_web,
             'necesidades'            => $request->necesidades,
@@ -276,5 +278,47 @@ class CompletarPerfilController extends Controller
         }
 
         return back()->with('success', 'Rol agregado correctamente. ¡Bienvenido!');
+    }
+
+    public function subirDocumentos(Request $request)
+    {
+        $request->validate([
+            'ine'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'csf'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'csf_fecha'=> 'nullable|date|before_or_equal:today',
+        ], [
+            'ine.max'       => 'El INE no debe pesar más de 5 MB.',
+            'csf.max'       => 'La CSF no debe pesar más de 5 MB.',
+            'csf_fecha.before_or_equal' => 'La fecha de la CSF no puede ser futura.',
+        ]);
+
+        $user = $request->user();
+        $datos = [];
+
+        if ($request->hasFile('ine')) {
+            if ($user->ine_path && \Storage::disk('public')->exists($user->ine_path)) {
+                \Storage::disk('public')->delete($user->ine_path);
+            }
+            $datos['ine_path'] = $request->file('ine')
+                ->storeAs("documentos/{$user->id}", 'ine.' . $request->file('ine')->extension(), 'public');
+        }
+
+        if ($request->hasFile('csf')) {
+            if ($user->csf_path && \Storage::disk('public')->exists($user->csf_path)) {
+                \Storage::disk('public')->delete($user->csf_path);
+            }
+            $datos['csf_path'] = $request->file('csf')
+                ->storeAs("documentos/{$user->id}", 'csf.' . $request->file('csf')->extension(), 'public');
+        }
+
+        if ($request->filled('csf_fecha')) {
+            $datos['csf_fecha'] = $request->csf_fecha;
+        }
+
+        if (!empty($datos)) {
+            $user->update($datos);
+        }
+
+        return back()->with('documentos_success', 'Documentos actualizados correctamente.');
     }
 }

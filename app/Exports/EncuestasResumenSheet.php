@@ -15,7 +15,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, WithTitle
 {
-    private array $boldRows = [1, 10];
+    private array $boldRows = [1, 12];
 
     public function __construct(
         private EncuestaPlantilla $plantilla,
@@ -62,6 +62,16 @@ class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, 
             ->when($this->eventoId, fn ($q) => $q->where('evento_id', $this->eventoId))
             ->count();
 
+        // Fuente de verdad: rol Spatie del usuario, no el campo tipo almacenado
+        // (evita descuadres con Correo Masivo).
+        $compradoresRespondidos = EncuestaSatisfaccion::whereIn('id', $encuestaIds)
+            ->whereHas('user.roles', fn ($q) => $q->where('name', 'cliente'))
+            ->whereDoesntHave('user.roles', fn ($q) => $q->where('name', 'admin'))
+            ->count();
+        $proveedoresRespondidos = EncuestaSatisfaccion::whereIn('id', $encuestaIds)
+            ->whereHas('user.roles', fn ($q) => $q->where('name', 'restaurantero'))
+            ->count();
+
         $rows = [
             ['REPORTE DE ENCUESTAS DE SATISFACCIÓN', '', '', ''],
             ['Plantilla:', $this->plantilla->nombre, '', ''],
@@ -69,6 +79,8 @@ class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, 
             ['Total respondidas:', $totalRespondidas, '', ''],
             ['Tasa de respuesta:', ($totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0) . '%', '', ''],
             ['Generado:', now()->format('d/m/Y H:i'), '', ''],
+            ['Compradores respondidos:', $compradoresRespondidos, '', ''],
+            ['Proveedores respondidos:', $proveedoresRespondidos, '', ''],
             ['Miembros Canirac respondidos:', $caniracRespondidos, '', ''],
             ['No Canirac respondidos:', $noCaniracRespondidos, '', ''],
             ['', '', '', ''],
@@ -135,7 +147,7 @@ class EncuestasResumenSheet implements FromArray, WithColumnWidths, WithStyles, 
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
         ]);
 
-        $sheet->getStyle('A10:D10')->applyFromArray([
+        $sheet->getStyle('A12:D12')->applyFromArray([
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '8B1028']],
         ]);

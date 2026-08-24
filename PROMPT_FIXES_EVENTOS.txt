@@ -1,0 +1,353 @@
+═══════════════════════════════════════════════════════════════
+PROMPT — FIXES EVENTOS: BAZAR + REGISTRO + DEPLOY
+Laravel 11 · Inertia.js · Vue 3 · Tailwind CSS
+═══════════════════════════════════════════════════════════════
+
+Aplica los siguientes 4 cambios en el proyecto Impulsate.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 1 — RestauranteroPublicoController.php
+Bazar: página /proveedores no filtra por evento, muestra todos
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: app/Http/Controllers/RestauranteroPublicoController.php
+
+En el método index(), actualmente cuando hay un evento activo muestra
+solo los proveedores registrados en ese evento (tipo='proveedor',
+estado='aprobado'), con la sección "Explora los proveedores de la
+plataforma" al fondo.
+
+Cuando el evento activo es un bazar (tipo_evento === 'bazar_exposicion'),
+los expositores NO son proveedores, por lo que esa lista queda vacía.
+El comportamiento correcto: si el evento es bazar, tratar la página
+exactamente como si no hubiera evento activo (sin_evento = true),
+mostrando todos los proveedores de la plataforma como contenido
+principal y sin sección secundaria.
+
+REEMPLAZA el bloque actual que comienza en:
+
+    if (!$evento) {
+
+Por este nuevo bloque que también contempla bazares:
+
+    // Para bazares, mostrar todos los proveedores de la plataforma
+    // (no hay "proveedores del evento" en un bazar)
+    if (!$evento || $evento->tipo_evento === 'bazar_exposicion') {
+
+El resto del bloque if (queries $queryTodos, $categoriasTodos y el
+return Inertia::render con sin_evento=true, proveedoresPlataforma=null)
+permanece exactamente igual.
+
+El resultado: cuando el evento activo sea bazar, /proveedores muestra
+el título "Todos los Proveedores", la descripción "Conoce a todos los
+proveedores registrados en la plataforma Impulsate." y lista a todos
+los proveedores aprobados y activos (no filtrados por evento).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 2 — Migration: agregar fecha_aceptacion_solicitudes a eventos
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Crea una nueva migración:
+
+    php artisan make:migration add_fecha_aceptacion_solicitudes_to_eventos_table
+
+Contenido del método up():
+
+    Schema::table('eventos', function (Blueprint $table) {
+        $table->datetime('fecha_aceptacion_solicitudes')
+              ->nullable()
+              ->after('tipo_evento')
+              ->comment('Bazar: fecha desde la que se aceptan solicitudes de expositores');
+    });
+
+Contenido del método down():
+
+    Schema::table('eventos', function (Blueprint $table) {
+        $table->dropColumn('fecha_aceptacion_solicitudes');
+    });
+
+Luego ejecuta: php artisan migrate
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 3 — Modelo Evento.php
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: app/Models/Evento.php
+
+3A. Agrega 'fecha_aceptacion_solicitudes' al array $fillable, junto a
+    los otros campos datetime existentes.
+
+3B. En el método casts(), agrega dentro del array return:
+
+        'fecha_aceptacion_solicitudes' => 'datetime',
+
+3C. Agrega este nuevo método al final de la clase (antes del cierre }):
+
+    /**
+     * Segundos restantes hasta que abra el registro de solicitudes de bazar.
+     * Retorna null si ya abrió o si no hay fecha configurada.
+     */
+    public function segundosHastaSolicitudes(): ?int
+    {
+        if (!$this->fecha_aceptacion_solicitudes) return null;
+        $diff = now()->diffInSeconds($this->fecha_aceptacion_solicitudes, false);
+        return $diff > 0 ? $diff : null;
+    }
+
+    /**
+     * ¿Está abierto el registro de solicitudes de bazar ahora mismo?
+     */
+    public function registroSolicitudesAbierto(): bool
+    {
+        if (!$this->fecha_aceptacion_solicitudes) return true; // sin fecha = siempre abierto
+        return now()->gte($this->fecha_aceptacion_solicitudes);
+    }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 4 — EventoController.php
+Validación, persistencia y formulario admin del nuevo campo
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: app/Http/Controllers/Admin/EventoController.php
+
+4A. En validationRules(), dentro del array return, agrega:
+
+        'fecha_aceptacion_solicitudes' => 'nullable|date',
+
+4B. En eventoFields(), dentro del array return, agrega:
+
+        'fecha_aceptacion_solicitudes' => $request->fecha_aceptacion_solicitudes ?: null,
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 5 — Admin/Eventos/Index.vue
+Agregar el nuevo campo al formulario de creación y edición
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: resources/js/Pages/Admin/Eventos/Index.vue
+
+5A. En el objeto form (useForm de creación), agrega después de
+    'con_criterios_evaluacion':
+
+        fecha_aceptacion_solicitudes: '',
+
+5B. En el objeto formEditar (useForm de edición), agrega igual:
+
+        fecha_aceptacion_solicitudes: '',
+
+5C. En la función abrirEditar(), agrega después de la línea que asigna
+    formEditar.max_espacios:
+
+        formEditar.fecha_aceptacion_solicitudes = toLocal(evento.fecha_aceptacion_solicitudes);
+
+5D. En el template del formulario de CREACIÓN, dentro de la sección de
+    campos del bazar (donde ya está el campo max_espacios, visible con
+    v-if="form.tipo_evento === 'bazar_exposicion'"), agrega un nuevo
+    campo justo después del campo de max_espacios:
+
+    <!-- Apertura de solicitudes (solo bazar) -->
+    <div v-if="form.tipo_evento === 'bazar_exposicion'">
+        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            Apertura de solicitudes de expositores
+            <span class="text-xs text-gray-400 font-normal ml-1">(opcional — si no se define, el registro abre inmediatamente)</span>
+        </label>
+        <input
+            type="datetime-local"
+            v-model="form.fecha_aceptacion_solicitudes"
+            class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500"
+        />
+        <p class="text-xs text-gray-400 mt-1">
+            Los usuarios no podrán registrarse antes de esta fecha/hora.
+        </p>
+    </div>
+
+5E. Repite exactamente el mismo bloque en el formulario de EDICIÓN,
+    pero usando formEditar.fecha_aceptacion_solicitudes en lugar de
+    form.fecha_aceptacion_solicitudes.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 6 — CitaPublicaController.php → dashboard()
+Pasar fecha_aceptacion_solicitudes, segundos_hasta_solicitudes y
+descripcion al array de eventos para TabEventos
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: app/Http/Controllers/CitaPublicaController.php
+Método: dashboard()
+
+En la función map que construye $todosLosEventos (líneas ~312-343),
+dentro del array que retorna cada evento, agrega los siguientes campos
+junto a los ya existentes:
+
+    'descripcion'                    => $ev->descripcion,
+    'fecha_aceptacion_solicitudes'   => $ev->fecha_aceptacion_solicitudes?->toISOString(),
+    'segundos_hasta_solicitudes'     => $ev->segundosHastaSolicitudes(),
+    'registro_solicitudes_abierto'   => $ev->registroSolicitudesAbierto(),
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 7 — EventoRegistroController.php
+Bloquear registro bazar si aún no abre fecha_aceptacion_solicitudes
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: app/Http/Controllers/EventoRegistroController.php
+
+En el método registrarBazar() (busca el método que guarda en
+evento_usuario con tipo='expositor'), agrega esta validación al inicio,
+justo después de verificar que el evento exista y no haya finalizado:
+
+    // Verificar que la ventana de solicitudes esté abierta
+    if (
+        $evento->fecha_aceptacion_solicitudes &&
+        now()->lt($evento->fecha_aceptacion_solicitudes)
+    ) {
+        throw ValidationException::withMessages([
+            'error' => 'El registro aún no está abierto. Apertura: '
+                . $evento->fecha_aceptacion_solicitudes->format('d/m/Y H:i') . '.',
+        ]);
+    }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 8 — TabEventos.vue
+Mostrar descripción, fechas y countdown para registro de bazar
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Archivo: resources/js/Components/TabEventos.vue
+
+8A. DESCRIPCIÓN del evento en el header.
+
+    En la sección del header del evento activo (líneas ~186-197), después
+    del <p> que muestra sector_economico, agrega:
+
+        <p v-if="eventoActivo.descripcion"
+           class="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">
+            {{ eventoActivo.descripcion }}
+        </p>
+
+8B. FECHAS del bazar: mostrar también fecha_aceptacion_solicitudes.
+
+    Dentro del bloque <template v-else> (bazar, líneas ~253-265),
+    reemplaza el bloque completo de fechas por este:
+
+        <div v-if="eventoActivo.fecha_hora_inicio
+                   || eventoActivo.fecha_hora_fin
+                   || eventoActivo.fecha_aceptacion_solicitudes"
+             class="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-1.5 text-xs text-gray-600 dark:text-gray-400 mb-4">
+            <div v-if="eventoActivo.fecha_aceptacion_solicitudes" class="flex gap-2">
+                <span class="w-2 h-2 bg-blue-400 rounded-full mt-1 shrink-0"></span>
+                <span>Apertura de registro:
+                    <strong class="text-gray-800 dark:text-gray-200">
+                        {{ formatFecha(eventoActivo.fecha_aceptacion_solicitudes) }}
+                    </strong>
+                </span>
+            </div>
+            <div v-if="eventoActivo.fecha_hora_inicio" class="flex gap-2">
+                <span class="w-2 h-2 bg-guinda-500 rounded-full mt-1 shrink-0"></span>
+                <span>Fecha del evento:
+                    <strong class="text-gray-800 dark:text-gray-200">
+                        {{ formatFecha(eventoActivo.fecha_hora_inicio) }}
+                    </strong>
+                </span>
+            </div>
+            <div v-if="eventoActivo.fecha_hora_fin" class="flex gap-2">
+                <span class="w-2 h-2 bg-red-400 rounded-full mt-1 shrink-0"></span>
+                <span>Fin: <strong class="text-gray-800 dark:text-gray-200">
+                    {{ formatFecha(eventoActivo.fecha_hora_fin) }}
+                </strong></span>
+            </div>
+        </div>
+
+8C. COUNTDOWN: mostrar cuenta regresiva si el registro aún no abre,
+    en lugar del botón "Solicitar participación".
+
+    Dentro del bloque CTAs para bazar (línea ~271 en adelante), localiza
+    el sub-bloque "No registrado":
+
+        <div v-if="!eventoActivo.mi_registro?.expositor">
+            <p class="text-sm ...">Solicita tu participación...</p>
+            <button @click="abrirModalRegistro(eventoActivo, 'expositor')" ...>
+                Solicitar participación
+            </button>
+        </div>
+
+    Reemplázalo COMPLETO por:
+
+        <div v-if="!eventoActivo.mi_registro?.expositor">
+            <!-- Cuenta regresiva si el registro aún no ha abierto -->
+            <CuentaRegresiva
+                v-if="eventoActivo.segundos_hasta_solicitudes"
+                :segundos="eventoActivo.segundos_hasta_solicitudes"
+                label="El registro de expositores abre en:"
+                label-cero="¡El registro de expositores ya está abierto!" />
+
+            <!-- Registro abierto: mostrar botón -->
+            <template v-else>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                    Solicita tu participación en este evento. El equipo revisará tu
+                    solicitud y te notificará por correo el resultado.
+                </p>
+                <button @click="abrirModalRegistro(eventoActivo, 'expositor')"
+                    class="w-full sm:w-auto px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700
+                           text-white text-sm font-semibold rounded-xl transition-colors">
+                    Solicitar participación
+                </button>
+            </template>
+        </div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CAMBIO 9 — DEPLOY A PRODUCCIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Antes de hacer el deploy, asegúrate de tener todos los cambios
+commiteados y pusheados a la rama principal (git push).
+
+Luego conéctate al servidor por SSH y ejecuta los siguientes comandos
+en orden. (Proporciona las credenciales tú mismo al conectarte — no
+las escribas en ningún archivo ni se las compartas a Claude.)
+
+Una vez dentro del servidor, navega a la carpeta del proyecto y ejecuta:
+
+    cd /ruta/al/proyecto   # ajusta según tu servidor
+
+    git pull origin main   # o la rama que uses
+
+    composer install --no-dev --optimize-autoloader
+
+    php artisan migrate --force
+
+    php artisan config:cache
+    php artisan route:cache
+    php artisan view:cache
+    php artisan event:cache
+
+    npm ci
+    npm run build
+
+    php artisan storage:link   # solo si no existe ya el enlace simbólico
+
+    php artisan queue:restart  # si tienes workers de cola activos
+
+    # Verifica que el sitio responde correctamente:
+    curl -I https://impulsate.iyemyucatan.com
+
+Si el servidor usa Supervisor para las colas, reinicia el proceso:
+
+    sudo supervisorctl restart laravel-worker:*
+
+IMPORTANTE: Cambia la contraseña SSH después del deploy si aún no
+lo has hecho. Nunca compartas credenciales SSH por chat.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ORDEN DE APLICACIÓN RECOMENDADA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. CAMBIO 2  — Crear y correr la migración
+2. CAMBIO 3  — Modelo Evento.php ($fillable, casts, nuevos métodos)
+3. CAMBIO 4  — EventoController.php (validationRules + eventoFields)
+4. CAMBIO 1  — RestauranteroPublicoController.php (fix bazar)
+5. CAMBIO 5  — Admin/Eventos/Index.vue (formulario admin)
+6. CAMBIO 6  — CitaPublicaController.php (pasar campos al frontend)
+7. CAMBIO 7  — EventoRegistroController.php (validar ventana abierta)
+8. CAMBIO 8  — TabEventos.vue (descripcion + fechas + countdown)
+9. CAMBIO 9  — Deploy a producción
+
+Prueba localmente con php artisan serve antes del deploy.
+Para el bazar activo, edítalo desde admin/eventos y guarda la
+"Apertura de solicitudes" para que el countdown funcione.

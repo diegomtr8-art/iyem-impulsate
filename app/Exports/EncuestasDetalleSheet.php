@@ -37,11 +37,18 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
     {
         $preguntas = $this->plantilla->preguntas ?? [];
 
-        $query = EncuestaSatisfaccion::with(['evento', 'user', 'respuestas'])
+        $query = EncuestaSatisfaccion::with(['evento', 'user.roles', 'respuestas'])
             ->where('es_prueba', false)
             ->whereNotNull('completada_at')
             ->when($this->eventoId, fn ($q) => $q->where('evento_id', $this->eventoId))
-            ->when($this->tipo, fn ($q) => $q->where('tipo', $this->tipo))
+            // Fuente de verdad: rol Spatie del usuario, no el campo tipo almacenado.
+            ->when($this->tipo === 'comprador', fn ($q) =>
+                $q->whereHas('user.roles', fn ($r) => $r->where('name', 'cliente'))
+                    ->whereDoesntHave('user.roles', fn ($r) => $r->where('name', 'admin'))
+            )
+            ->when($this->tipo === 'proveedor', fn ($q) =>
+                $q->whereHas('user.roles', fn ($r) => $r->where('name', 'restaurantero'))
+            )
             ->when($this->canirac === 'si', fn ($q) =>
                 $q->whereHas('user', fn ($u) => $u->where('camara_asociacion', 'CANIRAC'))
             )
@@ -56,11 +63,15 @@ class EncuestasDetalleSheet implements FromCollection, WithColumnWidths, WithHea
         return $query->get()->map(function ($enc) use ($preguntas) {
             $respuestasMap = $enc->respuestas->pluck('respuesta', 'pregunta');
 
+            $tipoReal = $enc->user?->hasRole('restaurantero')
+                ? 'Proveedor'
+                : ($enc->user?->hasRole('cliente') && !$enc->user->hasRole('admin') ? 'Comprador' : ucfirst($enc->tipo));
+
             $row = [
                 'Evento'          => $enc->evento?->nombre ?? '—',
                 'Participante'    => $enc->user?->name ?? '—',
                 'Email'           => $enc->user?->email ?? '—',
-                'Tipo'            => ucfirst($enc->tipo),
+                'Tipo'            => $tipoReal,
                 'Canirac'         => $enc->user?->camara_asociacion === 'CANIRAC' ? 'Sí' : 'No',
                 'Fecha respuesta' => $enc->completada_at?->format('d/m/Y H:i'),
             ];

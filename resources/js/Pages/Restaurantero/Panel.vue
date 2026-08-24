@@ -3,12 +3,11 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import TabEventos from '@/Components/TabEventos.vue';
 import EventosSidebar from '@/Components/EventosSidebar.vue';
 import { ref, computed, onMounted } from 'vue';
-import { Link, router, useForm, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import FullCalendar from '@fullcalendar/vue3';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import esLocale from '@fullcalendar/core/locales/es';
-import { MUNICIPIOS_YUCATAN } from '@/constants/municipiosYucatan';
 
 const props = defineProps({
     restaurantero: Object,
@@ -77,112 +76,6 @@ const submitReagendar = () => {
     });
 };
 
-// ── Edición de perfil ─────────────────────────────────────────
-const showPerfilModal = ref(false);
-const MAX_PROD = 5;
-const productosInputs = ref(
-    Array.from({ length: MAX_PROD }, (_, i) => {
-        const p = props.restaurantero.productos_top?.[i];
-        if (!p) return { nombre: '', descripcion: '', foto_path: null, _file: null, capacidad_cantidad: '', capacidad_unidad: 'piezas' };
-        if (typeof p === 'string') return { nombre: p, descripcion: '', foto_path: null, _file: null, capacidad_cantidad: '', capacidad_unidad: 'piezas' };
-        return { nombre: p.nombre || '', descripcion: p.descripcion || '', foto_path: p.foto_path || null, _file: null, capacidad_cantidad: p.capacidad_cantidad ?? '', capacidad_unidad: p.capacidad_unidad || 'piezas' };
-    })
-);
-
-const formPerfil = useForm({
-    nombre_restaurante:      props.restaurantero.nombre_restaurante || '',
-    razon_social:            props.restaurantero.razon_social || '',
-    nombre_representante:    props.restaurantero.nombre_representante || '',
-    curp_representante:      props.restaurantero.curp_representante || '',
-    fecha_inicio_operaciones:props.restaurantero.fecha_inicio_operaciones || '',
-    num_empleados:           props.restaurantero.num_empleados ?? '',
-    domicilio_en_yucatan:    props.restaurantero.domicilio_en_yucatan ?? null,
-    descripcion:             props.restaurantero.descripcion || '',
-    mercado_meta:            props.restaurantero.mercado_meta || '',
-    tiempo_vida_anaquel:     props.restaurantero.tiempo_vida_anaquel || '',
-    requisitos_alimentos:    props.restaurantero.requisitos_alimentos || [],
-    apoyo_requisitos:        props.restaurantero.apoyo_requisitos || [],
-    requiere_refrigeracion:  props.restaurantero.requiere_refrigeracion ?? null,
-    requiere_congelacion:    props.restaurantero.requiere_congelacion ?? null,
-    telefono:                props.restaurantero.telefono || '',
-    municipio:               props.restaurantero.municipio || '',
-    direccion:               props.restaurantero.direccion || '',
-    sitio_web:               props.restaurantero.sitio_web || '',
-    rfc:                     props.restaurantero.rfc || '',
-    acepta_credito:          props.restaurantero.acepta_credito ?? false,
-    credito_monto_maximo:    props.restaurantero.credito_monto_maximo ?? '',
-    credito_tiempo_cantidad: props.restaurantero.credito_tiempo_cantidad ?? '',
-    credito_tiempo_unidad:   props.restaurantero.credito_tiempo_unidad || 'dias',
-    credito_a_negociar:      props.restaurantero.credito_a_negociar ?? false,
-    pago_contraentrega:      props.restaurantero.pago_contraentrega ?? false,
-    factura:                 props.restaurantero.factura ?? false,
-    regimen_fiscal:          props.restaurantero.regimen_fiscal || '',
-    entrega_domicilio:       props.restaurantero.entrega_domicilio ?? null,
-    cobertura_entrega:       props.restaurantero.cobertura_entrega || '',
-    forma_entrega:           props.restaurantero.forma_entrega || '',
-    productos_top:           [],
-    foto:                    null,
-});
-
-const guardandoPerfil = ref(false);
-
-const submitPerfil = () => {
-    guardandoPerfil.value = true;
-    const fd = new FormData();
-    fd.append('nombre_restaurante',       formPerfil.nombre_restaurante);
-    fd.append('razon_social',             formPerfil.razon_social || '');
-    fd.append('nombre_representante',     formPerfil.nombre_representante || '');
-    fd.append('curp_representante',       formPerfil.curp_representante || '');
-    fd.append('fecha_inicio_operaciones', formPerfil.fecha_inicio_operaciones || '');
-    fd.append('num_empleados',            formPerfil.num_empleados ?? '');
-    if (formPerfil.domicilio_en_yucatan !== null) fd.append('domicilio_en_yucatan', formPerfil.domicilio_en_yucatan ? '1' : '0');
-    fd.append('descripcion',              formPerfil.descripcion || '');
-    fd.append('mercado_meta',             formPerfil.mercado_meta || '');
-    fd.append('tiempo_vida_anaquel',      formPerfil.tiempo_vida_anaquel || '');
-    (formPerfil.requisitos_alimentos || []).forEach(v => fd.append('requisitos_alimentos[]', v));
-    (formPerfil.apoyo_requisitos || []).forEach(v => fd.append('apoyo_requisitos[]', v));
-    if (formPerfil.requiere_refrigeracion !== null) fd.append('requiere_refrigeracion', formPerfil.requiere_refrigeracion ? '1' : '0');
-    if (formPerfil.requiere_congelacion !== null) fd.append('requiere_congelacion', formPerfil.requiere_congelacion ? '1' : '0');
-    fd.append('telefono',                 formPerfil.telefono || '');
-    fd.append('municipio',                formPerfil.municipio || '');
-    fd.append('direccion',                formPerfil.direccion || '');
-    fd.append('sitio_web',                formPerfil.sitio_web || '');
-    fd.append('rfc',                      formPerfil.rfc || '');
-    fd.append('acepta_credito',     formPerfil.acepta_credito ? '1' : '0');
-    fd.append('credito_a_negociar', formPerfil.credito_a_negociar ? '1' : '0');
-    fd.append('pago_contraentrega', formPerfil.pago_contraentrega ? '1' : '0');
-    fd.append('factura',            formPerfil.factura ? '1' : '0');
-    if (formPerfil.acepta_credito) {
-        if (formPerfil.credito_monto_maximo !== '') fd.append('credito_monto_maximo', formPerfil.credito_monto_maximo);
-        if (formPerfil.credito_tiempo_cantidad !== '') fd.append('credito_tiempo_cantidad', formPerfil.credito_tiempo_cantidad);
-        fd.append('credito_tiempo_unidad', formPerfil.credito_tiempo_unidad || 'dias');
-    }
-    if (formPerfil.factura && formPerfil.regimen_fiscal) fd.append('regimen_fiscal', formPerfil.regimen_fiscal);
-    fd.append('entrega_domicilio', formPerfil.entrega_domicilio === true ? '1' : '0');
-    if (formPerfil.entrega_domicilio) {
-        if (formPerfil.cobertura_entrega) fd.append('cobertura_entrega', formPerfil.cobertura_entrega);
-        if (formPerfil.forma_entrega)     fd.append('forma_entrega', formPerfil.forma_entrega);
-    }
-    if (formPerfil.foto) fd.append('foto', formPerfil.foto);
-
-    let idx = 0;
-    productosInputs.value.forEach(p => {
-        if (!p.nombre.trim()) return;
-        fd.append(`productos[${idx}][nombre]`,      p.nombre);
-        fd.append(`productos[${idx}][descripcion]`, p.descripcion || '');
-        fd.append(`productos[${idx}][capacidad_cantidad]`, p.capacidad_cantidad ?? '');
-        fd.append(`productos[${idx}][capacidad_unidad]`,   p.capacidad_unidad   || 'piezas');
-        if (p._file) fd.append(`producto_foto_${idx}`, p._file);
-        idx++;
-    });
-
-    router.post(route('restaurantero.completar-perfil.store'), fd, {
-        forceFormData: true,
-        onSuccess: () => { showPerfilModal.value = false; guardandoPerfil.value = false; },
-        onError: () => { guardandoPerfil.value = false; },
-    });
-};
-
 // ── Helpers ───────────────────────────────────────────────────
 const fmt = (dt) => dt ? new Date(dt).toLocaleString('es-MX', {
     weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -200,8 +93,6 @@ const kpis = computed(() => [
     { label: '% Aceptadas',  value: props.tasaAceptacion !== null && props.tasaAceptacion !== undefined ? props.tasaAceptacion + '%' : '—', bg: 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20', iconColor: 'text-emerald-600 dark:text-emerald-400', valColor: 'text-emerald-700 dark:text-emerald-300', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
     { label: 'Total evento', value: props.totalEnEvento,   bg: 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/20', iconColor: 'text-indigo-600 dark:text-indigo-400', valColor: 'text-indigo-700 dark:text-indigo-300', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z' },
 ]);
-
-const municipios = MUNICIPIOS_YUCATAN;
 
 // ── PERFIL INCOMPLETO ─────────────────────────────────────────
 const perfilPorcentaje = computed(() => {
@@ -281,7 +172,7 @@ onMounted(() => {
 
 const completarDesdeModal = () => {
     mostrarModalPerfil.value = false;
-    showPerfilModal.value = true;
+    router.visit(route('user.perfil'));
 };
 
 // ── NOTIFICACIONES ────────────────────────────────────────────
@@ -316,10 +207,10 @@ const tiempoHastaCitaProxima = computed(() => {
                     <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">{{ restaurantero.nombre_restaurante }}</p>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button @click="showPerfilModal = true"
+                    <Link :href="route('user.perfil')"
                         class="px-4 py-2 text-sm font-semibold bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors">
                         Editar perfil
-                    </button>
+                    </Link>
                     <!-- Ver perfil público -->
                     <Link :href="route('proveedores.show', restaurantero.id)"
                         class="px-4 py-2 text-sm font-semibold bg-guinda-50 dark:bg-guinda-950/30 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 border border-guinda-200 dark:border-guinda-800 text-guinda-700 dark:text-guinda-400 rounded-xl transition-colors flex items-center gap-1.5">
@@ -385,7 +276,7 @@ const tiempoHastaCitaProxima = computed(() => {
 
             <!-- ── TAB EVENTOS ──────────────────────────────────────── -->
             <div v-if="mainTab === 'eventos'">
-                <TabEventos :eventos="eventos" @open-perfil-modal="showPerfilModal = true" />
+                <TabEventos :eventos="eventos" />
             </div>
 
             <!-- ── TAB CITAS ────────────────────────────────────────── -->
@@ -492,10 +383,10 @@ const tiempoHastaCitaProxima = computed(() => {
                         </div>
                         <p class="text-xs text-red-600 dark:text-red-500 mt-2">Corrige la información indicada y guarda de nuevo tu perfil.</p>
                     </div>
-                    <button @click="showPerfilModal = true"
+                    <Link :href="route('user.perfil')"
                         class="shrink-0 px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl">
                         Corregir perfil
-                    </button>
+                    </Link>
                 </div>
             </div>
 
@@ -593,10 +484,10 @@ const tiempoHastaCitaProxima = computed(() => {
                                 class="inline-flex items-center px-2 py-0.5 bg-guinda-50 dark:bg-guinda-950/30 text-guinda-700 dark:text-guinda-400 text-xs font-medium rounded-full border border-guinda-200 dark:border-guinda-900">
                                 {{ campo }}
                             </span>
-                            <button @click="showPerfilModal = true"
+                            <Link :href="route('user.perfil')"
                                 class="ml-auto shrink-0 px-3 py-1.5 bg-guinda-800 hover:bg-guinda-700 text-white text-xs font-bold rounded-xl transition-colors">
                                 Completar ahora
-                            </button>
+                            </Link>
                         </div>
                     </div>
                 </div>
@@ -623,7 +514,7 @@ const tiempoHastaCitaProxima = computed(() => {
                 class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 shadow-sm">
                 <div class="flex items-center justify-between mb-4">
                     <h3 class="font-bold text-gray-900 dark:text-white">Mis productos / servicios</h3>
-                    <button @click="showPerfilModal = true" class="text-xs text-guinda-700 dark:text-guinda-400 hover:underline">Editar →</button>
+                    <Link :href="route('user.perfil')" class="text-xs text-guinda-700 dark:text-guinda-400 hover:underline">Editar →</Link>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <div v-for="(prod, i) in restaurantero.productos_top" :key="i"
@@ -794,416 +685,6 @@ const tiempoHastaCitaProxima = computed(() => {
                             {{ procesando ? 'Enviando...' : 'Enviar propuesta' }}
                         </button>
                     </div>
-                </div>
-            </div>
-        </Teleport>
-
-        <!-- Modal Editar Perfil -->
-        <Teleport to="body">
-            <div v-if="showPerfilModal" class="fixed inset-0 z-50 flex items-center justify-center p-4"
-                 style="background:rgba(0,0,0,0.6)" @click.self="showPerfilModal = false">
-                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-                        <div>
-                            <h2 class="text-lg font-bold text-gray-900 dark:text-white">Editar perfil de negocio</h2>
-                            <p class="text-xs text-gray-500 dark:text-gray-500 mt-0.5">Al completar todos los campos requeridos, tu perfil se aprueba automáticamente</p>
-                        </div>
-                        <button @click="showPerfilModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </div>
-
-                    <form @submit.prevent="submitPerfil" enctype="multipart/form-data" class="px-6 py-5 space-y-5">
-                        <!-- Info básica -->
-                        <div>
-                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Información del negocio</p>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div class="sm:col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre del negocio *</label>
-                                    <input v-model="formPerfil.nombre_restaurante" type="text"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                    <p v-if="formPerfil.errors.nombre_restaurante" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.nombre_restaurante }}</p>
-                                </div>
-                                <div class="sm:col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción del negocio</label>
-                                    <textarea v-model="formPerfil.descripcion" rows="3"
-                                        placeholder="¿Qué ofreces? ¿Cuál es tu propuesta de valor?..."
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 resize-none" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
-                                    <input v-model="formPerfil.telefono" type="tel" maxlength="10" placeholder="9991234567"
-                                        @input="formPerfil.telefono = formPerfil.telefono.replace(/\D/g, '').slice(0, 10)"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Municipio</label>
-                                    <select v-model="formPerfil.municipio"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
-                                        <option value="">— Seleccionar —</option>
-                                        <option v-for="m in municipios" :key="m" :value="m">{{ m }}</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">RFC</label>
-                                    <input v-model="formPerfil.rfc" type="text" placeholder="XXXX000000XXX"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sitio web</label>
-                                    <input v-model="formPerfil.sitio_web" type="url" placeholder="https://..."
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Condiciones comerciales -->
-                        <div>
-                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Condiciones comerciales</p>
-                            <div class="space-y-4">
-                                <!-- Crédito -->
-                                <label class="flex items-center gap-3 cursor-pointer">
-                                    <input type="checkbox" v-model="formPerfil.acepta_credito"
-                                        class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
-                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Acepta crédito</span>
-                                </label>
-                                <div v-if="formPerfil.acepta_credito" class="ml-7 space-y-3">
-                                    <!-- Checkbox A negociar -->
-                                    <label class="flex items-center gap-3 cursor-pointer">
-                                        <input type="checkbox" v-model="formPerfil.credito_a_negociar"
-                                            class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
-                                        <span class="text-sm text-gray-700 dark:text-gray-300">A negociar</span>
-                                    </label>
-
-                                    <!-- Campos condicionales: requeridos si NO es a negociar -->
-                                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                                                Monto máximo (MXN)
-                                                <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
-                                            </label>
-                                            <input v-model="formPerfil.credito_monto_maximo"
-                                                type="number" min="0" step="0.01" placeholder="50000"
-                                                :required="formPerfil.acepta_credito && !formPerfil.credito_a_negociar"
-                                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                                                Plazo
-                                                <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
-                                            </label>
-                                            <input v-model="formPerfil.credito_tiempo_cantidad"
-                                                type="number" min="1" placeholder="30"
-                                                :required="formPerfil.acepta_credito && !formPerfil.credito_a_negociar"
-                                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
-                                        </div>
-                                        <div>
-                                            <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                                                Unidad
-                                                <span v-if="!formPerfil.credito_a_negociar" class="text-red-500">*</span>
-                                            </label>
-                                            <select v-model="formPerfil.credito_tiempo_unidad"
-                                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500">
-                                                <option value="">-- Selecciona --</option>
-                                                <option value="dias">Días</option>
-                                                <option value="semanas">Semanas</option>
-                                                <option value="meses">Meses</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <!-- Contraentrega -->
-                                <label class="flex items-center gap-3 cursor-pointer">
-                                    <input type="checkbox" v-model="formPerfil.pago_contraentrega"
-                                        class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
-                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Acepta pago contraentrega</span>
-                                </label>
-                                <!-- Factura -->
-                                <label class="flex items-center gap-3 cursor-pointer">
-                                    <input type="checkbox" v-model="formPerfil.factura"
-                                        class="w-4 h-4 rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
-                                    <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Emite factura</span>
-                                </label>
-                                <div v-if="formPerfil.factura" class="ml-7">
-                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Régimen fiscal</label>
-                                    <input v-model="formPerfil.regimen_fiscal" type="text" maxlength="100"
-                                        placeholder="Ej. Régimen Simplificado de Confianza (RESICO)"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Logística y Distribución -->
-                        <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-4">
-                            <h3 class="text-sm font-bold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                                🚚 Logística y Distribución
-                            </h3>
-
-                            <div>
-                                <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                    ¿Entregan a domicilio?
-                                </p>
-                                <div class="flex gap-3">
-                                    <button type="button"
-                                        @click="formPerfil.entrega_domicilio = true"
-                                        :class="formPerfil.entrega_domicilio === true
-                                            ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
-                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
-                                        class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors">
-                                        Sí
-                                    </button>
-                                    <button type="button"
-                                        @click="formPerfil.entrega_domicilio = false; formPerfil.cobertura_entrega = ''; formPerfil.forma_entrega = ''"
-                                        :class="formPerfil.entrega_domicilio === false
-                                            ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
-                                            : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
-                                        class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors">
-                                        No
-                                    </button>
-                                </div>
-                                <p v-if="formPerfil.errors?.entrega_domicilio"
-                                   class="text-red-500 text-xs mt-1">
-                                    {{ formPerfil.errors.entrega_domicilio }}
-                                </p>
-                            </div>
-
-                            <template v-if="formPerfil.entrega_domicilio === true">
-                                <div>
-                                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                        ¿Cobertura de entrega?
-                                    </p>
-                                    <div class="flex gap-2 flex-wrap">
-                                        <button v-for="op in ['local', 'regional', 'nacional']"
-                                            :key="op" type="button"
-                                            @click="formPerfil.cobertura_entrega = op"
-                                            :class="formPerfil.cobertura_entrega === op
-                                                ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
-                                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
-                                            class="px-5 py-2 rounded-xl border text-sm font-semibold transition-colors capitalize">
-                                            {{ op.charAt(0).toUpperCase() + op.slice(1) }}
-                                        </button>
-                                    </div>
-                                    <p v-if="formPerfil.errors?.cobertura_entrega"
-                                       class="text-red-500 text-xs mt-1">
-                                        {{ formPerfil.errors.cobertura_entrega }}
-                                    </p>
-                                </div>
-
-                                <div>
-                                    <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                        ¿Forma de entrega?
-                                    </p>
-                                    <div class="flex gap-2">
-                                        <button v-for="op in ['programada', 'flexible']"
-                                            :key="op" type="button"
-                                            @click="formPerfil.forma_entrega = op"
-                                            :class="formPerfil.forma_entrega === op
-                                                ? 'bg-guinda-700 text-white border-guinda-700 dark:bg-guinda-600 dark:border-guinda-600'
-                                                : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:border-guinda-400'"
-                                            class="flex-1 py-2 rounded-xl border text-sm font-semibold transition-colors capitalize">
-                                            {{ op.charAt(0).toUpperCase() + op.slice(1) }}
-                                        </button>
-                                    </div>
-                                    <p v-if="formPerfil.errors?.forma_entrega"
-                                       class="text-red-500 text-xs mt-1">
-                                        {{ formPerfil.errors.forma_entrega }}
-                                    </p>
-                                </div>
-                            </template>
-                        </div>
-
-                        <!-- Información legal y operativa (IYEM) -->
-                        <div>
-                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Información legal y operativa</p>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div class="sm:col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Razón social</label>
-                                    <input v-model="formPerfil.razon_social" type="text" maxlength="200" placeholder="Mi Empresa S.A. de C.V."
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre del representante legal</label>
-                                    <input v-model="formPerfil.nombre_representante" type="text" maxlength="200" placeholder="Nombre completo"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CURP del representante</label>
-                                    <input v-model="formPerfil.curp_representante" type="text" maxlength="18" placeholder="XXXX000000XXXXXXXX"
-                                        @input="formPerfil.curp_representante = formPerfil.curp_representante.toUpperCase().slice(0,18)"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 uppercase" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de inicio de operaciones</label>
-                                    <input v-model="formPerfil.fecha_inicio_operaciones" type="date"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Número de empleados</label>
-                                    <input v-model.number="formPerfil.num_empleados" type="number" min="0" placeholder="0"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Domicilio fiscal en Yucatán?</label>
-                                    <select v-model="formPerfil.domicilio_en_yucatan"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
-                                        <option :value="null">— Sin especificar —</option>
-                                        <option :value="true">Sí</option>
-                                        <option :value="false">No</option>
-                                    </select>
-                                </div>
-                                <div class="sm:col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Mercado meta / Segmento objetivo</label>
-                                    <textarea v-model="formPerfil.mercado_meta" rows="2" placeholder="¿A quién va dirigido tu producto o servicio?"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 resize-none" />
-                                </div>
-                                <div class="sm:col-span-2">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tiempo de vida en anaquel (si aplica)</label>
-                                    <input v-model="formPerfil.tiempo_vida_anaquel" type="text" maxlength="500"
-                                        placeholder="Ej: Vasos 365 días, Mermelada 180 días"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                </div>
-                                <!-- Solo alimentos y bebidas -->
-                                <div class="sm:col-span-2 space-y-3">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">Requisitos de alimentos y bebidas (marcar los que cumple)</label>
-                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                        <label v-for="req in ['Tabla Nutrimental','Etiquetado NOM-051','Código de barras','Registro de Marca','Cert. calidad/inocuidad']"
-                                            :key="req" class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                                            <input type="checkbox" :value="req" v-model="formPerfil.requisitos_alimentos"
-                                                class="rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
-                                            {{ req }}
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="sm:col-span-2 space-y-3">
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">¿En qué requisitos requieres apoyo del IYEM?</label>
-                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                        <label v-for="req in ['Tabla Nutrimental','Etiquetado NOM-051','Código de barras','Registro de Marca','Cert. calidad/inocuidad']"
-                                            :key="req" class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
-                                            <input type="checkbox" :value="req" v-model="formPerfil.apoyo_requisitos"
-                                                class="rounded border-gray-300 text-guinda-600 focus:ring-guinda-500" />
-                                            {{ req }}
-                                        </label>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Requiere refrigeración?</label>
-                                    <select v-model="formPerfil.requiere_refrigeracion"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
-                                        <option :value="null">— No aplica —</option>
-                                        <option :value="true">Sí</option>
-                                        <option :value="false">No</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Requiere congelación (-4° o menos)?</label>
-                                    <select v-model="formPerfil.requiere_congelacion"
-                                        class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500">
-                                        <option :value="null">— No aplica —</option>
-                                        <option :value="true">Sí</option>
-                                        <option :value="false">No</option>
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Foto / Logo -->
-                        <div>
-                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Imagen del negocio</p>
-                            <div class="flex items-start gap-4">
-                                <div v-if="restaurantero.logo_path"
-                                    class="w-20 h-20 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
-                                    <img :src="`/storage/${restaurantero.logo_path}`" class="w-full h-full object-cover" />
-                                </div>
-                                <div v-else class="w-20 h-20 rounded-xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center shrink-0">
-                                    <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/>
-                                    </svg>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Foto del negocio</label>
-                                    <input type="file" accept="image/*" @change="e => formPerfil.foto = e.target.files[0]"
-                                        class="text-sm text-gray-600 dark:text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-100 dark:file:bg-guinda-900/30 file:text-guinda-700 dark:file:text-guinda-400 hover:file:bg-guinda-200 dark:hover:file:bg-guinda-900/50 cursor-pointer" />
-                                    <p class="text-xs text-gray-400 mt-1">JPG, PNG o WEBP · Máx. 4MB · Resolución recomendada: <span class="font-semibold text-gray-500 dark:text-gray-300">1280 × 720 px</span> (proporción 16:9 horizontal)</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Productos/servicios top -->
-                        <div>
-                            <p class="text-xs font-bold text-gray-500 dark:text-gray-500 uppercase tracking-wider mb-3">Productos o servicios destacados (máx. 5)</p>
-                            <div class="space-y-4">
-                                <div v-for="(prod, i) in productosInputs" :key="i"
-                                    class="bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded-xl p-4 space-y-2.5">
-                                    <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Producto {{ i + 1 }}</p>
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre del producto</label>
-                                        <input v-model="prod.nombre" type="text" :placeholder="`Ej. Vasos de vidrio, Tecnología, Catering...`"
-                                            class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descripción</label>
-                                        <textarea v-model="prod.descripcion" rows="2" placeholder="Breve descripción del producto o servicio..."
-                                            class="w-full text-sm bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 resize-none" />
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fotografía del producto</label>
-                                        <div class="flex items-center gap-3">
-                                            <div v-if="prod.foto_path" class="w-12 h-12 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
-                                                <img :src="`/storage/${prod.foto_path}`" class="w-full h-full object-cover" />
-                                            </div>
-                                            <input type="file" accept="image/*"
-                                                @change="e => { prod._file = e.target.files[0] }"
-                                                class="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-100 dark:file:bg-guinda-900/30 file:text-guinda-700 dark:file:text-guinda-400" />
-                                        </div>
-                                        <p class="text-xs text-gray-400 mt-1">JPG, PNG o WEBP · Máx. 4MB · Resolución recomendada: <span class="font-semibold text-gray-500 dark:text-gray-300">800 × 600 px</span></p>
-                                    </div>
-                                    <div class="flex gap-2 mt-2">
-                                        <input
-                                            type="number"
-                                            v-model="prod.capacidad_cantidad"
-                                            min="0"
-                                            placeholder="Cant. aprox."
-                                            class="w-1/2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700
-                                                   text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-600
-                                                   rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-guinda-500
-                                                   dark:focus:border-guinda-500 transition-colors"
-                                        />
-                                        <select
-                                            v-model="prod.capacidad_unidad"
-                                            class="w-1/2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700
-                                                   text-gray-900 dark:text-white rounded-xl px-3 py-2 text-sm
-                                                   focus:outline-none focus:border-guinda-500 dark:focus:border-guinda-500
-                                                   transition-colors"
-                                        >
-                                            <option value="piezas">Piezas</option>
-                                            <option value="cajas">Cajas</option>
-                                            <option value="litros">Litros</option>
-                                            <option value="kilogramos">Kilogramos</option>
-                                        </select>
-                                    </div>
-                                    <p class="text-xs text-gray-400 dark:text-gray-600 mt-1">
-                                        Capacidad de producción mensual aprox.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-if="formPerfil.errors.nombre_restaurante || formPerfil.errors.foto"
-                            class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-3 text-sm text-red-600 dark:text-red-400">
-                            {{ formPerfil.errors.nombre_restaurante || formPerfil.errors.foto }}
-                        </div>
-
-                        <div class="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                            <button type="button" @click="showPerfilModal = false"
-                                class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl">
-                                Cancelar
-                            </button>
-                            <button type="button" @click="submitPerfil" :disabled="guardandoPerfil"
-                                class="px-5 py-2 text-sm font-bold text-white bg-guinda-800 hover:bg-guinda-700 disabled:opacity-60 rounded-xl">
-                                {{ guardandoPerfil ? 'Guardando...' : 'Guardar perfil' }}
-                            </button>
-                        </div>
-                    </form>
                 </div>
             </div>
         </Teleport>

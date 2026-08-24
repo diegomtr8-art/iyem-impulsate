@@ -97,7 +97,7 @@ const enviado = computed(() => props.status === 'verification-link-sent');
                 </form>
 
                 <div class="mt-6 flex items-center justify-center gap-6">
-                    <Link :href="route('profile.show')"
+                    <Link :href="route('user.perfil')"
                         class="text-sm text-gray-500 dark:text-gray-400 hover:text-guinda-700 dark:hover:text-guinda-400 transition-colors">
                         Editar perfil
                     </Link>

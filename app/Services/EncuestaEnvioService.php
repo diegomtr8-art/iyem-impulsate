@@ -18,39 +18,50 @@ class EncuestaEnvioService
         EncuestaPlantilla $plantilla,
         string $segmento = 'todos'
     ): int {
-        $query = DB::table('evento_usuario')
+        $userIds = DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
-            ->where('estado', 'aprobado');
+            ->where('estado', 'aprobado')
+            ->pluck('user_id');
+
+        // Fuente de verdad: rol Spatie del usuario, no evento_usuario.tipo
+        // (evita descuadres con Correo Masivo, que ya filtra por rol).
+        $usuarios = User::whereIn('id', $userIds)->with('roles');
 
         match ($segmento) {
-            'proveedores', 'proveedores_evento' => $query->where('tipo', 'proveedor'),
-            'compradores', 'compradores_evento' => $query->where('tipo', 'comprador'),
+            'proveedores', 'proveedores_evento' => $usuarios->whereHas('roles', fn ($q) => $q->where('name', 'restaurantero')),
+            'compradores', 'compradores_evento' => $usuarios->whereHas('roles', fn ($q) => $q->where('name', 'cliente'))
+                ->whereDoesntHave('roles', fn ($q) => $q->where('name', 'admin')),
             default => null, // 'todos' — sin filtro adicional
         };
 
-        $participantes = $query->get();
-
         $enviados = 0;
-        foreach ($participantes as $p) {
+        foreach ($usuarios->get() as $user) {
+            $tipo = $user->hasRole('restaurantero')
+                ? 'proveedor'
+                : ($user->hasRole('cliente') && !$user->hasRole('admin') ? 'comprador' : null);
+
+            if (!$tipo) {
+                continue;
+            }
+
             // Único por evento+usuario+tipo (restricción de BD); evita reenvíos duplicados
             // aunque cambie la plantilla seleccionada.
             $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
-                ->where('user_id', $p->user_id)
-                ->where('tipo', $p->tipo)
+                ->where('user_id', $user->id)
+                ->where('tipo', $tipo)
                 ->exists();
 
             if (!$existe) {
                 $encuesta = EncuestaSatisfaccion::create([
                     'evento_id'             => $evento->id,
-                    'user_id'               => $p->user_id,
-                    'tipo'                  => $p->tipo,
+                    'user_id'               => $user->id,
+                    'tipo'                  => $tipo,
                     'segmento'              => $segmento,
                     'token'                 => Str::random(40),
                     'encuesta_plantilla_id' => $plantilla->id,
                 ]);
 
-                $user = User::find($p->user_id);
-                if ($user?->email) {
+                if ($user->email) {
                     Mail::to($user->email)
                         ->send(new EncuestaSatisfaccionMail($encuesta->load(['evento', 'user', 'plantilla'])));
                     $enviados++;

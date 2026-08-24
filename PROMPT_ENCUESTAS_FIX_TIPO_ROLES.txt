@@ -1,0 +1,265 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Fix: Comprador/Proveedor por Rol Spatie en Encuestas
+Archivo: PROMPT_ENCUESTAS_FIX_TIPO_ROLES.txt
+================================================================================
+
+PROBLEMA DETECTADO:
+El módulo de encuestas determina si un participante es "comprador" o "proveedor"
+usando el campo `evento_usuario.tipo`, pero la definición real en la plataforma es:
+
+  comprador  = usuario con rol Spatie  'cliente'
+  proveedor  = usuario con rol Spatie  'restaurantero'
+
+Esto causa que los conteos del módulo de encuestas no coincidan con los de
+Correo Masivo ni con el resto de la plataforma.
+(Ejemplo confirmado: Correo Masivo muestra 176 compradores; encuestas mostraba menos)
+
+OBJETIVO: Reemplazar TODOS los filtros por `evento_usuario.tipo` en el módulo de
+encuestas por filtros basados en el rol Spatie del usuario.
+
+════════════════════════════════════════════════════════════════════════════════
+TABLA DE EQUIVALENCIAS
+════════════════════════════════════════════════════════════════════════════════
+
+  ANTES (incorrecto)              →  DESPUÉS (correcto)
+  ─────────────────────────────────────────────────────
+  evento_usuario.tipo = 'comprador'  →  user tiene rol 'cliente'
+  evento_usuario.tipo = 'proveedor'  →  user tiene rol 'restaurantero'
+
+En Eloquent:
+  →  comprador: ->whereHas('user.roles', fn($q) => $q->where('name', 'cliente'))
+  →  proveedor: ->whereHas('user.roles', fn($q) => $q->where('name', 'restaurantero'))
+
+En SQL puro (cuando se necesite):
+  JOIN model_has_roles mhr ON mhr.model_id = eu.user_id
+                           AND mhr.model_type = 'App\\Models\\User'
+  JOIN roles r ON r.id = mhr.role_id AND r.name = 'cliente'   -- o 'restaurantero'
+
+════════════════════════════════════════════════════════════════════════════════
+ARCHIVO 1 — app/Services/EncuestaEnvioService.php
+════════════════════════════════════════════════════════════════════════════════
+
+En el método enviarParaEvento(), la query que obtiene participantes del evento
+probablemente hace algo como:
+
+    EventoUsuario::where('evento_id', $eventoId)
+        ->where('estado', 'aprobado')
+        ->get()
+
+Y luego usa $participante->tipo para almacenarlo en EncuestaSatisfaccion.
+
+CAMBIO: Al crear cada EncuestaSatisfaccion, determinar el tipo desde el rol del
+usuario en lugar de desde evento_usuario.tipo:
+
+    foreach ($participantes as $participante) {
+        $user = $participante->user;
+
+        // Determinar tipo por rol Spatie (fuente de verdad)
+        if ($user->hasRole('cliente')) {
+            $tipo = 'comprador';
+        } elseif ($user->hasRole('restaurantero')) {
+            $tipo = 'proveedor';
+        } else {
+            continue; // Ignorar usuarios sin rol relevante (ej. admin)
+        }
+
+        // Verificar si ya existe encuesta para este usuario en este evento
+        $yaExiste = EncuestaSatisfaccion::where('evento_id', $eventoId)
+            ->where('user_id', $user->id)
+            ->where('tipo', $tipo)
+            ->exists();
+
+        if ($yaExiste) continue;
+
+        // Crear o despachar job con el $tipo correcto
+        SendEncuestaJob::dispatch([
+            'user_id'               => $user->id,
+            'evento_id'             => $eventoId,
+            'tipo'                  => $tipo,   // ← derivado del rol, no de evento_usuario.tipo
+            'encuesta_plantilla_id' => $plantilla?->id,
+        ])->onQueue('encuestas');
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+ARCHIVO 2 — app/Http/Controllers/Admin/EncuestaAdminController.php
+════════════════════════════════════════════════════════════════════════════════
+
+─ 2A. Método graficas() — filtro por segmento ──────────────────────────────
+
+ANTES:
+    ->when($segmento, fn($q) => $q->where('tipo', $segmento))
+
+DESPUÉS (el campo tipo en encuestas_satisfaccion ya fue guardado correctamente
+desde el rol, así que el filtro sobre ese campo sigue igual — pero si hay
+registros legacy con tipo incorrecto, filtrar también por rol):
+
+    ->when($segmento === 'comprador', fn($q) =>
+        $q->whereHas('user.roles', fn($r) => $r->where('name', 'cliente'))
+    )
+    ->when($segmento === 'proveedor', fn($q) =>
+        $q->whereHas('user.roles', fn($r) => $r->where('name', 'restaurantero'))
+    )
+
+─ 2B. Método participantes() — lista de participantes para envío selectivo ──
+
+ANTES (probablemente filtra desde evento_usuario.tipo):
+    EventoUsuario::where('evento_id', $eventoId)
+        ->where('estado', 'aprobado')
+        ->when($tipo, fn($q) => $q->where('tipo', $tipo))
+        ->with('user')
+        ->get()
+
+DESPUÉS:
+    EventoUsuario::where('evento_id', $eventoId)
+        ->where('estado', 'aprobado')
+        ->when($tipo === 'comprador', fn($q) =>
+            $q->whereHas('user.roles', fn($r) => $r->where('name', 'cliente'))
+        )
+        ->when($tipo === 'proveedor', fn($q) =>
+            $q->whereHas('user.roles', fn($r) => $r->where('name', 'restaurantero'))
+        )
+        ->with(['user.roles'])
+        ->get()
+
+    // Al mapear para el frontend, derivar el tipo del rol:
+    ->map(function ($eu) {
+        $tipo = $eu->user->hasRole('cliente') ? 'comprador' : 'proveedor';
+        return [
+            'id'          => $eu->user->id,
+            'nombre'      => $eu->user->name,
+            'email'       => $eu->user->email,
+            'tipo'        => $tipo,
+            'ya_enviada'  => /* lógica existente */,
+        ];
+    })
+
+─ 2C. Método enviarRecordatorio() — pendientes por tipo ────────────────────
+
+ANTES:
+    EncuestaSatisfaccion::where('evento_id', $eventoId)
+        ->where('tipo', 'comprador')  // o proveedor
+        ->whereNull('completada_at')
+        ->get()
+
+DESPUÉS:
+    EncuestaSatisfaccion::where('evento_id', $eventoId)
+        ->whereNull('completada_at')
+        ->where('es_prueba', false)
+        ->whereHas('user.roles', fn($q) =>
+            $q->whereIn('name', ['cliente', 'restaurantero'])
+        )
+        ->get()
+
+    // Si se filtra por segmento específico:
+    ->when($segmento === 'comprador', fn($q) =>
+        $q->whereHas('user.roles', fn($r) => $r->where('name', 'cliente'))
+    )
+    ->when($segmento === 'proveedor', fn($q) =>
+        $q->whereHas('user.roles', fn($r) => $r->where('name', 'restaurantero'))
+    )
+
+─ 2D. Método enviarSeleccion() — envío a selección manual ──────────────────
+
+Al crear EncuestaSatisfaccion para cada user_id seleccionado, derivar tipo del rol:
+
+    $user = User::with('roles')->find($userId);
+    $tipo = $user->hasRole('cliente') ? 'comprador' : 'proveedor';
+
+    EncuestaSatisfaccion::firstOrCreate(
+        ['evento_id' => $eventoId, 'user_id' => $userId],
+        [
+            'tipo'  => $tipo,   // ← del rol, no de evento_usuario.tipo
+            'token' => Str::random(40),
+            'encuesta_plantilla_id' => $plantilla?->id,
+        ]
+    );
+
+════════════════════════════════════════════════════════════════════════════════
+ARCHIVO 3 — app/Exports/EncuestasDetalleSheet.php
+════════════════════════════════════════════════════════════════════════════════
+
+En la query del método collection(), el filtro por tipo debe usar el rol:
+
+ANTES:
+    ->when($this->tipo, fn($q) => $q->where('tipo', $this->tipo))
+
+DESPUÉS:
+    ->when($this->tipo === 'comprador', fn($q) =>
+        $q->whereHas('user.roles', fn($r) => $r->where('name', 'cliente'))
+    )
+    ->when($this->tipo === 'proveedor', fn($q) =>
+        $q->whereHas('user.roles', fn($r) => $r->where('name', 'restaurantero'))
+    )
+
+Al generar la columna 'Tipo' en cada fila, derivarla del rol también:
+
+    'Tipo' => $enc->user?->hasRole('cliente')
+                ? 'Comprador'
+                : ($enc->user?->hasRole('restaurantero') ? 'Proveedor' : ucfirst($enc->tipo)),
+
+════════════════════════════════════════════════════════════════════════════════
+ARCHIVO 4 — app/Exports/EncuestasResumenSheet.php
+════════════════════════════════════════════════════════════════════════════════
+
+En los KPIs de resumen, reemplazar conteos por tipo con conteos por rol:
+
+    // ANTES
+    $compradores = EncuestaSatisfaccion::whereIn('id', $ids)->where('tipo', 'comprador')->count();
+    $proveedores = EncuestaSatisfaccion::whereIn('id', $ids)->where('tipo', 'proveedor')->count();
+
+    // DESPUÉS
+    $compradores = EncuestaSatisfaccion::whereIn('id', $ids)
+        ->whereHas('user.roles', fn($q) => $q->where('name', 'cliente'))
+        ->count();
+
+    $proveedores = EncuestaSatisfaccion::whereIn('id', $ids)
+        ->whereHas('user.roles', fn($q) => $q->where('name', 'restaurantero'))
+        ->count();
+
+════════════════════════════════════════════════════════════════════════════════
+ARCHIVO 5 — resources/js/Pages/Encuestas/Index.vue y Graficas.vue
+════════════════════════════════════════════════════════════════════════════════
+
+Los labels en el frontend ya son correctos ("Compradores" / "Proveedores").
+No requieren cambio, siempre que el backend devuelva los datos correctos.
+
+Si hay algún select/filter con opciones hardcodeadas como value="comprador" o
+value="proveedor", mantener esos valores — el controller los recibirá y usará
+el rol correspondiente según la tabla de equivalencias.
+
+════════════════════════════════════════════════════════════════════════════════
+MIGRACIÓN DE DATOS EXISTENTES (OPCIONAL PERO RECOMENDADO)
+════════════════════════════════════════════════════════════════════════════════
+
+Los registros existentes en encuestas_satisfaccion pueden tener el campo `tipo`
+incorrecto. Para corregirlos, ejecutar en Tinker o como migration/seeder:
+
+    php artisan tinker
+
+    // Corregir tipo = 'comprador' basado en rol 'cliente'
+    \App\Models\EncuestaSatisfaccion::with('user.roles')
+        ->whereNotNull('user_id')
+        ->get()
+        ->each(function ($enc) {
+            if (!$enc->user) return;
+            $tipoReal = $enc->user->hasRole('cliente') ? 'comprador' : 'proveedor';
+            if ($enc->tipo !== $tipoReal) {
+                $enc->update(['tipo' => $tipoReal]);
+                echo "Corregido user_id {$enc->user_id}: {$enc->tipo} → {$tipoReal}\n";
+            }
+        });
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Ir a /admin/encuestas/graficas con el evento activo
+2. El KPI "Compradores" debe coincidir con lo que muestra Correo Masivo
+   filtrando "Solo compradores + Aprobados" (176 en el evento actual)
+3. Descargar Excel → hoja "Compradores" debe tener 176 filas
+4. Enviar recordatorio → el conteo del popup debe coincidir con compradores reales
+5. En /admin/encuestas/participantes, el listado de compradores debe mostrar 176
+
+================================================================================
+FIN DEL PROMPT — Fix comprador/proveedor por rol Spatie
+================================================================================

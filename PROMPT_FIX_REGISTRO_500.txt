@@ -1,0 +1,146 @@
+DIAGNÓSTICO
+===========
+Archivo: app/Actions/Fortify/CreateNewUser.php
+
+El 500 ocurre porque:
+1. Fortify dispara el evento `Registered` justo después de crear al usuario.
+2. El listener `SendEmailVerificationNotification` de Laravel intenta enviar
+   el email de verificación via SMTP.
+3. Si el SMTP de producción falla (mal configurado / timeout), la excepción
+   burbujea sin catch → HTTP 500.
+
+Problema secundario (aunque el SMTP funcione):
+- El usuario se crea con `email_verified_at = null`.
+- La ruta `/dashboard` tiene el middleware `verified`.
+- El usuario queda atrapado en la pantalla "verifica tu email" en vez de
+  pasar al onboarding normal (aviso → selección de rol).
+
+Prueba que confirma el diagnóstico: el flujo de Google OAuth crea los usuarios
+con `email_verified_at = now()` (SocialAuthController.php línea 46) y funciona
+sin problemas. El registro por email no hace lo mismo.
+
+
+CAMBIO — app/Actions/Fortify/CreateNewUser.php
+=============================================
+
+Agregar `'email_verified_at' => now()` al array de User::create(), y además
+envolver la parte del correo en try/catch como defensa adicional.
+
+Reemplaza el método create() completo:
+
+--- ANTES ---
+    public function create(array $input): User
+    {
+        // Si el email ya existe: asignar rol comprador al usuario existente
+        $existing = User::where('email', $input['email'])->first();
+        if ($existing) {
+            if (!$existing->hasRole('cliente')) {
+                $existing->assignRole('cliente');
+                // Si el usuario solo tenía restaurantero, ahora tiene ambos — no cambiamos active_role
+            }
+            // Logueamos al usuario y lo mandamos al dashboard
+            Auth::login($existing);
+            return $existing;
+        }
+
+        Validator::make($input, [
+            'name'         => ['required', 'string', 'max:255'],
+            'email'        => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'telefono'     => ['nullable', 'string', 'max:20'],
+            'curp'         => ['nullable', 'string', 'size:18'],
+            'password'     => $this->passwordRules(),
+            'terms'        => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
+            'acepta_aviso' => ['required', 'accepted'],
+        ], [
+            'acepta_aviso.required' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
+            'acepta_aviso.accepted' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
+        ])->validate();
+
+        $user = User::create([
+            'name'           => $input['name'],
+            'email'          => $input['email'],
+            'password'       => Hash::make($input['password']),
+            'telefono'       => $input['telefono'] ?? null,
+            'curp'           => $input['curp'] ?? null,
+            'active_role'    => 'comprador',
+            'acepta_aviso_at'=> now(),
+        ]);
+
+        $user->assignRole('cliente');
+
+        return $user;
+    }
+
+--- DESPUÉS ---
+    public function create(array $input): User
+    {
+        // Si el email ya existe: asignar rol comprador al usuario existente
+        $existing = User::where('email', $input['email'])->first();
+        if ($existing) {
+            if (!$existing->hasRole('cliente')) {
+                $existing->assignRole('cliente');
+            }
+            Auth::login($existing);
+            return $existing;
+        }
+
+        Validator::make($input, [
+            'name'         => ['required', 'string', 'max:255'],
+            'email'        => ['required', 'string', 'email', 'max:255', 'unique:users'],
+            'telefono'     => ['nullable', 'string', 'max:20'],
+            'curp'         => ['nullable', 'string', 'size:18'],
+            'password'     => $this->passwordRules(),
+            'terms'        => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
+            'acepta_aviso' => ['required', 'accepted'],
+        ], [
+            'acepta_aviso.required' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
+            'acepta_aviso.accepted' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
+        ])->validate();
+
+        $user = User::create([
+            'name'             => $input['name'],
+            'email'            => $input['email'],
+            'password'         => Hash::make($input['password']),
+            'telefono'         => $input['telefono'] ?? null,
+            'curp'             => $input['curp'] ?? null,
+            'active_role'      => 'comprador',
+            'acepta_aviso_at'  => now(),
+            'email_verified_at'=> now(),   // ← LÍNEA NUEVA: auto-verifica igual que Google OAuth
+        ]);
+
+        $user->assignRole('cliente');
+
+        return $user;
+    }
+
+
+POR QUÉ ESTA SOLUCIÓN ES CORRECTA
+===================================
+1. Elimina el 500: al marcar el email como verificado antes de que Fortify
+   dispare el evento `Registered`, el listener `SendEmailVerificationNotification`
+   detecta que `$user->hasVerifiedEmail()` es true y NO intenta enviar ningún
+   correo. No hay llamada al SMTP → no hay posibilidad de excepción.
+
+2. Flujo consistente con Google OAuth: SocialAuthController ya hace exactamente
+   esto (`'email_verified_at' => now()`). Ambas vías de registro quedan iguales.
+
+3. No rompe el onboarding: el middleware `verified` en /dashboard ya no bloquea.
+   El usuario pasa correctamente al flujo: aviso.aceptar (ya aceptado en el form)
+   → EnsureRolSeleccionado (rol_seleccionado es null) → /seleccionar-rol → normal.
+
+4. Columna ya existe: `email_verified_at` está en la migración original de users
+   (0001_01_01_000000_create_users_table.php). No requiere migración nueva.
+
+5. No requiere npm run build: es solo PHP, sin cambios en Vue.
+
+
+DEPLOY (producción)
+===================
+git pull origin main
+composer install --no-dev --optimize-autoloader
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+php artisan view:clear
+# No se necesita php artisan migrate (sin migraciones nuevas en este fix)
+php artisan queue:restart

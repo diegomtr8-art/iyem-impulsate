@@ -36,6 +36,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'telefono',
         'curp',
         'rfc',
+        'genero',
         'municipio',
         'nombre_empresa',
         'active_role',
@@ -47,6 +48,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'acepta_aviso_at',
         'camara_asociacion',
         'nombre_establecimiento',
+        'ine_path',
+        'csf_path',
+        'csf_fecha',
     ];
 
     public function restaurantero()
@@ -108,5 +112,17 @@ class User extends Authenticatable implements MustVerifyEmail
             'es_restaurantero'  => 'boolean',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Si el SMTP falla, registra el error pero no lanza excepción al usuario (evita 500).
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        try {
+            parent::sendEmailVerificationNotification();
+        } catch (\Exception $e) {
+            \Log::error('Error al enviar correo de verificación a ' . $this->email . ': ' . $e->getMessage());
+        }
     }
 }

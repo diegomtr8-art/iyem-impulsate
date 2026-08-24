@@ -1,0 +1,384 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Registro simple para eventos Bazar/Exposición
+Archivo: PROMPT_BAZAR_REGISTRO_SIMPLE.txt
+================================================================================
+
+CONTEXTO:
+  Los eventos de tipo 'encuentro_negocios' tienen flujo de registro con rol
+  proveedor/comprador, ventanas temporales, citas, etc. — NO TOCAR nada de eso.
+
+  Los eventos de tipo 'bazar_exposicion' necesitan un flujo completamente
+  distinto y simplificado: cualquier usuario autenticado ve un solo botón
+  "Solicitar participación", lo confirma en el modal, y espera su correo
+  de aprobado o rechazado. Sin rol, sin citas, sin ventanas temporales.
+
+ARCHIVOS A MODIFICAR: 4
+ARCHIVOS NUEVOS: 0
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — Nueva ruta en routes/web.php
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: routes/web.php
+
+Agregar junto a las rutas de registrar-comprador y registrar-proveedor:
+
+    Route::post('/eventos/{evento}/registrar-bazar',
+        [EventoRegistroController::class, 'registrarBazar'])
+        ->name('evento.registrar-bazar');
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — Nuevo método en EventoRegistroController.php
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: app/Http/Controllers/EventoRegistroController.php
+
+Agregar al final de la clase, antes del cierre de llave:
+
+    public function registrarBazar(Request $request, Evento $evento)
+    {
+        // Solo para eventos de tipo bazar
+        if ($evento->tipo_evento !== 'bazar_exposicion') {
+            throw ValidationException::withMessages([
+                'error' => 'Este evento no es de tipo Bazar/Exposición.',
+            ]);
+        }
+
+        // El evento debe estar activo
+        if (!$evento->activa) {
+            throw ValidationException::withMessages([
+                'error' => 'Este evento no está activo.',
+            ]);
+        }
+
+        // Si el evento ya finalizó
+        if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
+            throw ValidationException::withMessages([
+                'error' => 'Este evento ya ha finalizado.',
+            ]);
+        }
+
+        $user = $request->user();
+
+        // Verificar si ya está registrado
+        $registro = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $user->id)
+            ->where('tipo', 'expositor')
+            ->first();
+
+        if ($registro) {
+            if (in_array($registro->estado, ['pendiente', 'aprobado'])) {
+                return back()->with('success', 'Ya tienes una solicitud registrada para este evento.');
+            }
+            // Si fue rechazado: volver a poner en pendiente
+            DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $user->id)
+                ->where('tipo', 'expositor')
+                ->update([
+                    'estado'          => 'pendiente',
+                    'motivo_rechazo'  => null,
+                    'respondido_at'   => null,
+                    'seleccionado'    => false,
+                    'updated_at'      => now(),
+                ]);
+        } else {
+            DB::table('evento_usuario')->insert([
+                'evento_id'   => $evento->id,
+                'user_id'     => $user->id,
+                'tipo'        => 'expositor',   // nuevo tipo para bazar
+                'estado'      => 'pendiente',
+                'seleccionado'=> false,
+                'created_at'  => now(),
+                'updated_at'  => now(),
+            ]);
+        }
+
+        // Notificar al admin
+        $admin = User::role('admin')->first();
+        if ($admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de bazar',
+                $user->name . ' solicita participar en "' . $evento->nombre . '".'
+            );
+        }
+
+        return back()->with('success',
+            'Tu solicitud fue enviada. Te notificaremos por correo cuando sea revisada.');
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 3 — CitaPublicaController.php y RestauranteroPanelController.php:
+          Agregar tipo_evento y mi_registro.expositor al map de eventos
+════════════════════════════════════════════════════════════════════════════════
+
+AMBOS controladores tienen el mismo bloque de map() con los datos del evento.
+Aplicar el mismo cambio en los dos archivos:
+
+Archivos:
+  - app/Http/Controllers/CitaPublicaController.php
+  - app/Http/Controllers/RestauranteroPanelController.php
+
+Buscar el bloque donde se arma el array del evento (tiene 'registro_proveedor_abierto',
+'mi_registro', etc.) y hacer dos cambios:
+
+─ 3A. Agregar tipo_evento al array del evento ────────────────────────────────
+
+    Agregar después de 'activa':
+        'tipo_evento' => $ev->tipo_evento ?? 'encuentro_negocios',
+
+─ 3B. Agregar expositor a mi_registro ───────────────────────────────────────
+
+    El bloque mi_registro actualmente es:
+        'mi_registro' => [
+            'comprador' => $registro->firstWhere('tipo', 'comprador'),
+            'proveedor' => $registro->firstWhere('tipo', 'proveedor'),
+        ],
+
+    Cambiarlo a:
+        'mi_registro' => [
+            'comprador' => $registro->firstWhere('tipo', 'comprador'),
+            'proveedor' => $registro->firstWhere('tipo', 'proveedor'),
+            'expositor' => $registro->firstWhere('tipo', 'expositor'),
+        ],
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 4 — TabEventos.vue: flujo simplificado para bazar
+════════════════════════════════════════════════════════════════════════════════
+
+Archivo: resources/js/Components/TabEventos.vue
+
+─ 4A. Agregar helper para el registro bazar en el script setup ─────────────
+
+    const confirmarRegistroBazar = () => {
+        if (!heLeidoConvocatoria.value || cargandoRegistro.value) return;
+        cargandoRegistro.value = true;
+        errorModal.value = '';
+        router.post(route('evento.registrar-bazar', eventoParaRegistro.value.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => { modalConvocatoria.value = false; },
+            onError: (errors) => {
+                errorModal.value = errors.error || Object.values(errors)[0] || 'Ocurrió un error.';
+            },
+            onFinish: () => { cargandoRegistro.value = false; },
+        });
+    };
+
+─ 4B. Modificar el bloque del evento activo en el template ──────────────────
+
+Dentro del bloque del evento activo (div.bg-white.dark:bg-gray-900 con border
+border-emerald-*), hay un timeline de fases y el bloque de CTAs. Envolver el
+timeline de fases y las fechas clave con v-if para que solo aparezcan en
+encuentro_negocios. Para bazar mostrar una versión simplificada.
+
+BUSCAR el bloque de "Timeline de fases" (<!-- Timeline de fases -->) y
+envolverlo con:
+
+    <template v-if="eventoActivo.tipo_evento !== 'bazar_exposicion'">
+        <!-- Timeline de fases -->
+        <div class="overflow-x-auto mb-5">
+            ...todo el timeline existente sin cambios...
+        </div>
+
+        <!-- Fechas clave -->
+        <div class="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-1.5 text-xs ... mb-4">
+            ...todas las fechas de proveedores/compradores sin cambios...
+        </div>
+    </template>
+
+    <!-- Para bazar: mostrar solo la fecha del evento si existe -->
+    <template v-else>
+        <div v-if="eventoActivo.fecha_hora_inicio || eventoActivo.fecha_hora_fin"
+             class="p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl space-y-1.5 text-xs text-gray-600 dark:text-gray-400 mb-4">
+            <div v-if="eventoActivo.fecha_hora_inicio" class="flex gap-2">
+                <span class="w-2 h-2 bg-guinda-500 rounded-full mt-1 shrink-0"></span>
+                <span>Fecha del evento: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_inicio) }}</strong></span>
+            </div>
+            <div v-if="eventoActivo.fecha_hora_fin" class="flex gap-2">
+                <span class="w-2 h-2 bg-red-400 rounded-full mt-1 shrink-0"></span>
+                <span>Fin: <strong class="text-gray-800 dark:text-gray-200">{{ formatFecha(eventoActivo.fecha_hora_fin) }}</strong></span>
+            </div>
+        </div>
+    </template>
+
+─ 4C. Modificar el bloque de CTAs ──────────────────────────────────────────
+
+Dentro del bloque "CTAs según rol" (<!-- CTAs según rol -->), hay tres
+<template> para los casos proveedor/comprador/dual. Agregar ANTES de ellos
+un nuevo caso para bazar, y encerrar los existentes con v-if:
+
+    <!-- CASO BAZAR: registro simple sin rol -->
+    <template v-if="eventoActivo.tipo_evento === 'bazar_exposicion'">
+        <!-- No registrado -->
+        <div v-if="!eventoActivo.mi_registro?.expositor">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">
+                Solicita tu participación en este evento. El equipo revisará tu
+                solicitud y te notificará por correo el resultado.
+            </p>
+            <button @click="abrirModalRegistro(eventoActivo, 'expositor')"
+                class="w-full sm:w-auto px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700
+                       text-white text-sm font-semibold rounded-xl transition-colors">
+                Solicitar participación
+            </button>
+        </div>
+
+        <!-- Pendiente -->
+        <div v-else-if="eventoActivo.mi_registro.expositor.estado === 'pendiente'"
+             class="p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200
+                    dark:border-amber-800/40 rounded-xl">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor"
+                     stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="text-sm font-semibold text-amber-700 dark:text-amber-400">
+                    Solicitud enviada — pendiente de revisión
+                </span>
+            </div>
+            <p class="text-xs text-amber-600 dark:text-amber-500/80 mt-1 ml-6">
+                Te notificaremos por correo cuando tu solicitud sea revisada.
+            </p>
+        </div>
+
+        <!-- Aprobado / Seleccionado -->
+        <div v-else-if="eventoActivo.mi_registro.expositor.estado === 'aprobado'"
+             class="p-4 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200
+                    dark:border-emerald-700/40 rounded-xl">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor"
+                     stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+                    ¡Participación aprobada!
+                </span>
+            </div>
+            <p class="text-xs text-emerald-600 dark:text-emerald-500/80 mt-1 ml-6">
+                Has sido seleccionado(a) para participar en este evento. Revisa
+                tu correo para los detalles.
+            </p>
+        </div>
+
+        <!-- Rechazado (no seleccionado) -->
+        <div v-else-if="eventoActivo.mi_registro.expositor.estado === 'rechazado'"
+             class="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200
+                    dark:border-red-800/40 rounded-xl space-y-2">
+            <div class="flex items-center gap-2">
+                <svg class="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor"
+                     stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                          d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span class="text-sm font-semibold text-red-700 dark:text-red-400">
+                    Tu solicitud no fue seleccionada
+                </span>
+            </div>
+            <p class="text-xs text-red-600 dark:text-red-500/80 ml-6">
+                Revisa tu correo para ver el detalle de tu evaluación.
+            </p>
+        </div>
+    </template>
+
+    <!-- CASO ENCUENTRO DE NEGOCIOS: flujo original — envolver los 3 templates existentes -->
+    <template v-else>
+        <!-- CASO: Solo Proveedor — existente sin cambios -->
+        <template v-if="esProveedor && !esComprador">
+            ...todo el bloque existente sin tocar...
+        </template>
+
+        <!-- CASO: Solo Comprador — existente sin cambios -->
+        <template v-else-if="esComprador && !esProveedor">
+            ...todo el bloque existente sin tocar...
+        </template>
+
+        <!-- CASO: Dual rol — existente sin cambios -->
+        <template v-else-if="tieneDualRol">
+            ...todo el bloque existente sin tocar...
+        </template>
+    </template>
+
+─ 4D. Actualizar el modal de confirmación ──────────────────────────────────
+
+El modal actual dice "Para registrarte como proveedor/comprador...". Para bazar
+debe decir simplemente "Para participar en este evento...".
+
+Buscar dentro del modal (<!-- Modal de confirmación de convocatoria -->):
+
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        Para registrarte como <strong>{{ tipoParaRegistro === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>
+        en <strong>{{ eventoParaRegistro?.nombre }}</strong> debes haber leído la convocatoria oficial del evento.
+    </p>
+
+Reemplazar con:
+
+    <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        <template v-if="tipoParaRegistro === 'expositor'">
+            Para solicitar tu participación en
+            <strong>{{ eventoParaRegistro?.nombre }}</strong>
+            debes haber leído la convocatoria oficial del evento.
+        </template>
+        <template v-else>
+            Para registrarte como
+            <strong>{{ tipoParaRegistro === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>
+            en <strong>{{ eventoParaRegistro?.nombre }}</strong>
+            debes haber leído la convocatoria oficial del evento.
+        </template>
+    </p>
+
+Y el botón "Confirmar registro" del modal, que llama a confirmarRegistro(),
+debe llamar a la función correcta según el tipo:
+
+ANTES:
+    <button @click="confirmarRegistro" ...>
+
+DESPUÉS:
+    <button @click="tipoParaRegistro === 'expositor' ? confirmarRegistroBazar() : confirmarRegistro()" ...>
+
+════════════════════════════════════════════════════════════════════════════════
+NOTAS IMPORTANTES
+════════════════════════════════════════════════════════════════════════════════
+
+1. El campo tipo = 'expositor' es nuevo en evento_usuario. La tabla ya tiene
+   el campo tipo como string, así que no necesita migración. Solo se inserta
+   con ese valor nuevo.
+
+2. El evento de tipo 'bazar_exposicion' NO tiene restricción de rol: cualquier
+   usuario autenticado puede registrarse, sin importar si es restaurantero,
+   cliente, o no tiene perfil completo. La evaluación la hace el admin.
+
+3. El flujo del Solicitudes admin (Admin/Eventos/Solicitudes.vue) probablemente
+   filtra por tipo 'proveedor'/'comprador'. Verificar que también muestre
+   registros con tipo 'expositor' para los bazares. Si filtra, agregar el
+   tipo 'expositor' a la consulta.
+
+4. El módulo de Encuestas y Correo Masivo también filtran por tipo/rol. Para
+   eventos bazar, los 'expositor' son los participantes. Si en el futuro se
+   quiere enviar correos masivos a expositores, agregar tipo 'expositor' a
+   los filtros relevantes.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+Con un evento de tipo 'bazar_exposicion' activo:
+
+1. Usuario con cualquier rol (o sin rol) entra a su Dashboard
+2. Ve la card del evento activo SIN el timeline de fases
+3. Ve solo la fecha del evento (si está configurada)
+4. Ve el botón "Solicitar participación" (no "como proveedor" ni "como comprador")
+5. Hace click → modal dice "Para solicitar tu participación en..."
+6. Confirma → se inserta en evento_usuario con tipo='expositor', estado='pendiente'
+7. La card muestra "Solicitud enviada — pendiente de revisión"
+8. El admin ve la solicitud en /admin/eventos/{id}/solicitudes
+
+Con un evento de tipo 'encuentro_negocios' activo:
+   → Todo sigue exactamente igual que antes, sin ningún cambio
+
+================================================================================
+FIN DEL PROMPT
+================================================================================

@@ -34,7 +34,7 @@ class ProveedorPerfilController extends Controller
             ]);
         }
 
-        $request->validate([
+        $rules = [
             'nombre_restaurante'      => ['required', 'string', 'max:200'],
             'razon_social'            => ['nullable', 'string', 'max:200'],
             'nombre_representante'    => ['nullable', 'string', 'max:200'],
@@ -44,6 +44,21 @@ class ProveedorPerfilController extends Controller
             'domicilio_en_yucatan'    => ['nullable', 'boolean'],
             'descripcion'             => ['nullable', 'string', 'max:2000'],
             'mercado_meta'            => ['nullable', 'string', 'max:1000'],
+            'tipo_oferta'             => ['nullable', Rule::in(['producto', 'servicio', 'ambos'])],
+
+            // Certificaciones producto
+            'tiene_certificaciones_producto'   => ['nullable', 'boolean'],
+            'certificaciones_cumple'           => ['nullable', 'array'],
+            'certificaciones_cumple.*'         => ['string', 'max:100'],
+            'certificaciones_cumple_otros'     => ['nullable', 'string', 'max:1000'],
+            'apoyo_iyem'                        => ['nullable', 'array'],
+            'apoyo_iyem.*'                      => ['string', 'max:100'],
+            'apoyo_iyem_otros'                  => ['nullable', 'string', 'max:1000'],
+
+            // Certificaciones servicio
+            'tiene_certificaciones_servicio'   => ['nullable', 'boolean'],
+            'certificaciones_servicio_detalle' => ['nullable', 'string', 'max:2000'],
+
             'tiempo_vida_anaquel'     => ['nullable', 'string', 'max:500'],
             'requisitos_alimentos'    => ['nullable', 'array'],
             'apoyo_requisitos'        => ['nullable', 'array'],
@@ -80,7 +95,13 @@ class ProveedorPerfilController extends Controller
             ],
             'productos.*.capacidad_cantidad' => ['nullable', 'numeric', 'min:0'],
             'productos.*.capacidad_unidad'   => ['nullable', 'string', Rule::in(['piezas', 'cajas', 'litros', 'kilogramos'])],
-        ]);
+        ];
+
+        foreach (range(0, 4) as $i) {
+            $rules["producto_foto_{$i}"] = ['nullable', 'image', 'max:4096'];
+        }
+
+        $request->validate($rules);
 
         $data = $request->only([
             'nombre_restaurante', 'razon_social', 'nombre_representante',
@@ -88,6 +109,9 @@ class ProveedorPerfilController extends Controller
             'mercado_meta', 'tiempo_vida_anaquel',
             'descripcion', 'telefono', 'direccion', 'municipio', 'rfc', 'sitio_web',
             'credito_tiempo_unidad', 'regimen_fiscal',
+            'tiene_certificaciones_producto', 'certificaciones_cumple', 'certificaciones_cumple_otros',
+            'apoyo_iyem', 'apoyo_iyem_otros',
+            'tiene_certificaciones_servicio', 'certificaciones_servicio_detalle',
         ]);
 
         if (!empty($data['sitio_web']) && !preg_match('/^https?:\/\//', $data['sitio_web'])) {
@@ -99,6 +123,32 @@ class ProveedorPerfilController extends Controller
         $data['requiere_congelacion']   = filter_var($request->requiere_congelacion, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
         $data['requisitos_alimentos']   = $request->requisitos_alimentos ?? [];
         $data['apoyo_requisitos']       = $request->apoyo_requisitos ?? [];
+
+        $tipoOferta = $request->tipo_oferta ?? 'producto';
+        $data['tipo_oferta'] = $tipoOferta;
+
+        $data['tiene_certificaciones_producto'] = filter_var($request->tiene_certificaciones_producto, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        $data['certificaciones_cumple']         = $request->certificaciones_cumple ?? [];
+        $data['apoyo_iyem']                     = $request->apoyo_iyem ?? [];
+        $data['tiene_certificaciones_servicio'] = filter_var($request->tiene_certificaciones_servicio, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+        // Si no incluye producto, limpiar campos de producto
+        if (!in_array($tipoOferta, ['producto', 'ambos'])) {
+            $data['tiempo_vida_anaquel']            = null;
+            $data['requiere_refrigeracion']         = false;
+            $data['requiere_congelacion']           = false;
+            $data['tiene_certificaciones_producto'] = null;
+            $data['certificaciones_cumple']         = null;
+            $data['certificaciones_cumple_otros']   = null;
+            $data['apoyo_iyem']                     = null;
+            $data['apoyo_iyem_otros']                = null;
+        }
+
+        // Si no incluye servicio, limpiar campos de servicio
+        if (!in_array($tipoOferta, ['servicio', 'ambos'])) {
+            $data['tiene_certificaciones_servicio']   = null;
+            $data['certificaciones_servicio_detalle'] = null;
+        }
 
         $data['acepta_credito']     = filter_var($request->acepta_credito, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
         $data['credito_a_negociar'] = filter_var($request->credito_a_negociar, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;

@@ -1,0 +1,363 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Módulo de Métricas: 4 nuevos KPIs
+Archivo: PROMPT_METRICAS_KPIS.txt
+================================================================================
+
+CONTEXTO:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode: 'class')
+  Color corporativo: guinda #8B1028 — NUNCA azul/indigo
+  Roles: restaurantero = proveedor, cliente = comprador
+
+OBJETIVO:
+  Agregar 4 KPIs al módulo de métricas admin existente.
+  NO toques nada más — solo el módulo de métricas.
+
+  KPIs a agregar:
+    1. Top municipios con más proveedores registrados
+    2. Top municipios con más compradores registrados
+    3. Top categorías de proveedores
+    4. Top necesidades de compradores
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 0 — LEE ANTES DE MODIFICAR
+════════════════════════════════════════════════════════════════════════════════
+
+Antes de escribir una sola línea, lee estos archivos:
+
+  1. El controller que sirve las métricas (busca con grep):
+     grep -r "Metricas\|metrics\|estadisticas\|dashboard" app/Http/Controllers --include="*.php" -l
+
+  2. La vista Vue de métricas:
+     find resources/js -name "*.vue" | xargs grep -l "metricas\|Metricas\|Metrics\|KPI\|estadistica" 2>/dev/null
+
+  3. El modelo Restaurantero para conocer sus campos:
+     cat app/Models/Restaurantero.php
+
+  4. El modelo User para conocer los campos del comprador:
+     cat app/Models/User.php
+
+  5. Verifica qué tabla/campo guarda "necesidades" del comprador:
+     grep -r "necesidad\|rubro\|categoria\|tipo_negocio" app/Models app/Http --include="*.php" -l
+
+Usa la información encontrada para saber exactamente dónde insertar los datos.
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — Controller de Métricas: agregar los 4 nuevos KPIs
+════════════════════════════════════════════════════════════════════════════════
+
+En el controller de métricas existente, dentro del método que retorna los datos
+(puede llamarse index(), show(), metricas(), dashboard(), etc.),
+agrega estas 4 consultas junto a las existentes.
+NO elimines ni reemplaces los KPIs actuales — solo agrega los nuevos.
+
+    // ── TOP MUNICIPIOS — PROVEEDORES ─────────────────────────────────────
+    $topMunicipiosProveedores = \App\Models\Restaurantero::query()
+        ->select('municipio', \DB::raw('COUNT(*) as total'))
+        ->whereNotNull('municipio')
+        ->where('municipio', '!=', '')
+        ->groupBy('municipio')
+        ->orderByDesc('total')
+        ->limit(10)
+        ->get();
+
+    // ── TOP MUNICIPIOS — COMPRADORES ──────────────────────────────────────
+    // El campo municipio puede estar en la tabla users o en un perfil relacionado.
+    // Verifica el modelo User. Si el campo se llama diferente, ajusta aquí.
+    $topMunicipiosCompradores = \App\Models\User::role('cliente')
+        ->select('municipio', \DB::raw('COUNT(*) as total'))
+        ->whereNotNull('municipio')
+        ->where('municipio', '!=', '')
+        ->groupBy('municipio')
+        ->orderByDesc('total')
+        ->limit(10)
+        ->get();
+
+    // ── TOP CATEGORÍAS — PROVEEDORES ──────────────────────────────────────
+    $topCategoriasProveedores = \App\Models\Restaurantero::query()
+        ->join('categorias', 'restauranteros.categoria_id', '=', 'categorias.id')
+        ->select('categorias.nombre as categoria', \DB::raw('COUNT(*) as total'))
+        ->whereNotNull('restauranteros.categoria_id')
+        ->groupBy('categorias.id', 'categorias.nombre')
+        ->orderByDesc('total')
+        ->limit(10)
+        ->get();
+
+    // ── TOP NECESIDADES — COMPRADORES ─────────────────────────────────────
+    // Verifica cómo se llama el campo de necesidades en el modelo User.
+    // Puede llamarse: necesidades, rubro, tipo_negocio, giro, categoria_comprador, etc.
+    // Si el campo no existe en users, busca en una tabla de perfiles relacionada.
+    // Ajusta el nombre del campo según lo que encontraste en el Paso 0.
+    //
+    // Opción A — si es un campo de texto libre en users:
+    $topNecesidadesCompradores = \App\Models\User::role('cliente')
+        ->select('necesidades', \DB::raw('COUNT(*) as total'))
+        // Cambia 'necesidades' por el nombre real del campo
+        ->whereNotNull('necesidades')
+        ->where('necesidades', '!=', '')
+        ->groupBy('necesidades')
+        ->orderByDesc('total')
+        ->limit(10)
+        ->get();
+    //
+    // Opción B — si es una relación (tabla separada de necesidades/categorías comprador):
+    // Adapta según el esquema real de tu BD.
+
+Agrega los 4 resultados al array que retorna Inertia::render() o la respuesta JSON:
+
+    return Inertia::render('Admin/Metricas/Index', [
+        // ... props existentes que ya están aquí, NO las toques ...
+
+        // Nuevos KPIs:
+        'topMunicipiosProveedores'  => $topMunicipiosProveedores,
+        'topMunicipiosCompradores'  => $topMunicipiosCompradores,
+        'topCategoriasProveedores'  => $topCategoriasProveedores,
+        'topNecesidadesCompradores' => $topNecesidadesCompradores,
+    ]);
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — Vista Vue de Métricas: mostrar los 4 KPIs
+════════════════════════════════════════════════════════════════════════════════
+
+En la vista existente de métricas (la que encontraste en el Paso 0),
+agrega los 4 nuevos props en <script setup>:
+
+    const props = defineProps({
+        // ... props existentes ...
+        topMunicipiosProveedores:  { type: Array, default: () => [] },
+        topMunicipiosCompradores:  { type: Array, default: () => [] },
+        topCategoriasProveedores:  { type: Array, default: () => [] },
+        topNecesidadesCompradores: { type: Array, default: () => [] },
+    });
+
+Agrega el componente reutilizable TopList (ponlo en el mismo archivo como
+componente inline, o como un componente separado en el mismo directorio):
+
+    <!-- Componente reutilizable para rankings -->
+    <!-- Uso: <TopList titulo="..." :items="arr" campo-nombre="municipio" campo-valor="total" /> -->
+
+En el template, agrega una sección nueva después de las métricas existentes.
+NO muevas ni alteres las secciones actuales:
+
+    <!-- ════ NUEVOS KPIs ════ -->
+    <div class="mt-8">
+        <h2 class="text-base font-black text-guinda-800 dark:text-white mb-4 uppercase tracking-wide">
+            Distribución geográfica y categorías
+        </h2>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+            <!-- Top Municipios Proveedores -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                        border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div class="px-5 py-3 bg-guinda-50 dark:bg-guinda-900/20
+                            border-b border-guinda-100 dark:border-guinda-800">
+                    <h3 class="text-xs font-black text-guinda-700 dark:text-guinda-400
+                               uppercase tracking-wide">
+                        📍 Top municipios — Proveedores
+                    </h3>
+                </div>
+                <div v-if="topMunicipiosProveedores.length" class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    <div v-for="(item, i) in topMunicipiosProveedores" :key="item.municipio"
+                        class="flex items-center justify-between px-5 py-2.5">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="text-xs font-black w-5 text-gray-400 flex-shrink-0">
+                                {{ i + 1 }}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-sm font-semibold text-gray-800
+                                                 dark:text-gray-200 truncate">
+                                        {{ item.municipio }}
+                                    </span>
+                                </div>
+                                <!-- Barra proporcional -->
+                                <div class="mt-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full w-full">
+                                    <div class="h-1.5 bg-guinda-600 rounded-full transition-all"
+                                        :style="{
+                                            width: (item.total / topMunicipiosProveedores[0].total * 100) + '%'
+                                        }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-black text-guinda-700 dark:text-guinda-400
+                                     ml-3 flex-shrink-0">
+                            {{ item.total }}
+                        </span>
+                    </div>
+                </div>
+                <div v-else class="px-5 py-8 text-center text-sm text-gray-400">
+                    Sin datos
+                </div>
+            </div>
+
+            <!-- Top Municipios Compradores -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                        border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div class="px-5 py-3 bg-guinda-50 dark:bg-guinda-900/20
+                            border-b border-guinda-100 dark:border-guinda-800">
+                    <h3 class="text-xs font-black text-guinda-700 dark:text-guinda-400
+                               uppercase tracking-wide">
+                        📍 Top municipios — Compradores
+                    </h3>
+                </div>
+                <div v-if="topMunicipiosCompradores.length" class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    <div v-for="(item, i) in topMunicipiosCompradores" :key="item.municipio"
+                        class="flex items-center justify-between px-5 py-2.5">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="text-xs font-black w-5 text-gray-400 flex-shrink-0">
+                                {{ i + 1 }}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <span class="text-sm font-semibold text-gray-800
+                                             dark:text-gray-200 truncate block">
+                                    {{ item.municipio }}
+                                </span>
+                                <div class="mt-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full w-full">
+                                    <div class="h-1.5 bg-guinda-600 rounded-full transition-all"
+                                        :style="{
+                                            width: (item.total / topMunicipiosCompradores[0].total * 100) + '%'
+                                        }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-black text-guinda-700 dark:text-guinda-400
+                                     ml-3 flex-shrink-0">
+                            {{ item.total }}
+                        </span>
+                    </div>
+                </div>
+                <div v-else class="px-5 py-8 text-center text-sm text-gray-400">
+                    Sin datos
+                </div>
+            </div>
+
+            <!-- Top Categorías Proveedores -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                        border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div class="px-5 py-3 bg-guinda-50 dark:bg-guinda-900/20
+                            border-b border-guinda-100 dark:border-guinda-800">
+                    <h3 class="text-xs font-black text-guinda-700 dark:text-guinda-400
+                               uppercase tracking-wide">
+                        🏷️ Top categorías — Proveedores
+                    </h3>
+                </div>
+                <div v-if="topCategoriasProveedores.length" class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    <div v-for="(item, i) in topCategoriasProveedores" :key="item.categoria"
+                        class="flex items-center justify-between px-5 py-2.5">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="text-xs font-black w-5 text-gray-400 flex-shrink-0">
+                                {{ i + 1 }}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <span class="text-sm font-semibold text-gray-800
+                                             dark:text-gray-200 truncate block">
+                                    {{ item.categoria }}
+                                </span>
+                                <div class="mt-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full w-full">
+                                    <div class="h-1.5 bg-guinda-600 rounded-full transition-all"
+                                        :style="{
+                                            width: (item.total / topCategoriasProveedores[0].total * 100) + '%'
+                                        }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-black text-guinda-700 dark:text-guinda-400
+                                     ml-3 flex-shrink-0">
+                            {{ item.total }}
+                        </span>
+                    </div>
+                </div>
+                <div v-else class="px-5 py-8 text-center text-sm text-gray-400">
+                    Sin datos
+                </div>
+            </div>
+
+            <!-- Top Necesidades Compradores -->
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow border
+                        border-gray-100 dark:border-gray-700 overflow-hidden">
+                <div class="px-5 py-3 bg-guinda-50 dark:bg-guinda-900/20
+                            border-b border-guinda-100 dark:border-guinda-800">
+                    <h3 class="text-xs font-black text-guinda-700 dark:text-guinda-400
+                               uppercase tracking-wide">
+                        🛒 Top necesidades — Compradores
+                    </h3>
+                </div>
+                <div v-if="topNecesidadesCompradores.length" class="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    <div v-for="(item, i) in topNecesidadesCompradores" :key="i"
+                        class="flex items-center justify-between px-5 py-2.5">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="text-xs font-black w-5 text-gray-400 flex-shrink-0">
+                                {{ i + 1 }}
+                            </span>
+                            <div class="flex-1 min-w-0">
+                                <span class="text-sm font-semibold text-gray-800
+                                             dark:text-gray-200 truncate block">
+                                    {{ item.necesidades ?? item[Object.keys(item)[0]] }}
+                                </span>
+                                <div class="mt-1 h-1.5 bg-gray-100 dark:bg-gray-700 rounded-full w-full">
+                                    <div class="h-1.5 bg-guinda-600 rounded-full transition-all"
+                                        :style="{
+                                            width: (item.total / topNecesidadesCompradores[0].total * 100) + '%'
+                                        }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-black text-guinda-700 dark:text-guinda-400
+                                     ml-3 flex-shrink-0">
+                            {{ item.total }}
+                        </span>
+                    </div>
+                </div>
+                <div v-else class="px-5 py-8 text-center text-sm text-gray-400">
+                    Sin datos
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <!-- ════ FIN NUEVOS KPIs ════ -->
+
+IMPORTANTE SOBRE TOP NECESIDADES:
+  En el bloque del controller para topNecesidadesCompradores, ajusta el campo
+  según lo que encuentres en el modelo User. Opciones comunes:
+    - 'necesidades'       → campo de texto libre
+    - 'rubro'             → giro del restaurante
+    - 'tipo_restaurante'  → tipo de establecimiento
+    - 'giro'              → giro comercial
+
+  Si el campo almacena múltiples valores separados por coma, usa una consulta
+  diferente para separar y contar cada valor individualmente.
+
+  Si NO existe un campo de necesidades/categoría en el comprador, omite esa
+  tarjeta y deja solo los 3 KPIs que sí tienen datos. No dejes una tarjeta
+  vacía en producción.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Ve a Admin → Métricas
+2. Verifica que las métricas existentes siguen igual (sin cambios)
+3. Verifica que aparecen las 4 nuevas tarjetas al final de la página
+4. Verifica que cada tarjeta muestra la lista ordenada de mayor a menor
+5. Verifica que las barras de progreso son proporcionales (el primero = 100%)
+6. Si alguna tarjeta no tiene datos, muestra "Sin datos" (no error)
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    npm run build
+    php artisan optimize
+
+    # NO hay migraciones — solo cambios en controller y vista
+
+================================================================================
+FIN DEL PROMPT — Métricas: 4 nuevos KPIs
+================================================================================

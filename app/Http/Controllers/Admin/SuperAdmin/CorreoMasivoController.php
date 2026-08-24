@@ -33,10 +33,11 @@ class CorreoMasivoController extends Controller
         return response()->json([
             'total'         => $users->count(),
             'destinatarios' => $users->take(20)->map(fn ($u) => [
-                'id'    => $u->id,
-                'name'  => $u->name,
-                'email' => $u->email,
-                'rol'   => $u->roles->pluck('name')->join(', '),
+                'id'      => $u->id,
+                'name'    => $u->name,
+                'email'   => $u->email,
+                'rol'     => $u->roles->pluck('name')->join(', '),
+                'canirac' => $u->camara_asociacion === 'CANIRAC',
             ])->values(),
         ]);
     }
@@ -124,6 +125,7 @@ class CorreoMasivoController extends Controller
         $eventoId        = $request->input('evento_id');
         $estadoEvento    = $request->input('estado_evento');
         $estadoProveedor = $request->input('estado_proveedor');
+        $canirac         = $request->input('canirac'); // 'si' | 'no' | null
 
         $query = User::with(['roles', 'restaurantero'])
             ->where('email_verified_at', '!=', null);
@@ -156,8 +158,28 @@ class CorreoMasivoController extends Controller
             if ($estadoEvento) {
                 $eventoQuery->where('estado', $estadoEvento);
             }
+
+            // Filtrar también por el tipo de participación en el evento, solo
+            // cuando hay un segmento específico seleccionado: evita que un
+            // 'cliente' que participó como proveedor en ESE evento (edge case)
+            // pase el filtro de compradores, y viceversa.
+            if ($tipo === 'compradores') {
+                $eventoQuery->where('tipo', 'comprador');
+            } elseif ($tipo === 'proveedores') {
+                $eventoQuery->where('tipo', 'proveedor');
+            }
+
             $userIdsEnEvento = $eventoQuery->pluck('user_id');
             $query->whereIn('id', $userIdsEnEvento);
+        }
+
+        if ($canirac === 'si') {
+            $query->where('camara_asociacion', 'CANIRAC');
+        } elseif ($canirac === 'no') {
+            $query->where(fn ($q) =>
+                $q->whereNull('camara_asociacion')
+                  ->orWhere('camara_asociacion', '!=', 'CANIRAC')
+            );
         }
 
         return $query->get();

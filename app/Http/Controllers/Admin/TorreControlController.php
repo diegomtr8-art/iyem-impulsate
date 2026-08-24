@@ -6,17 +6,33 @@ use App\Http\Controllers\Controller;
 use App\Models\Cita;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class TorreControlController extends Controller
 {
-    private static int $NUM_MESAS = 10;
-
     public function index()
     {
         return Inertia::render('Admin/TorreControl', [
-            'numMesas' => self::$NUM_MESAS,
+            'numMesas' => $this->numMesas(),
         ]);
+    }
+
+    private function numMesas(): int
+    {
+        return (int) (DB::table('config_evento')->where('clave', 'num_mesas')->value('valor') ?? 50);
+    }
+
+    public function actualizarMesas(Request $request)
+    {
+        $request->validate(['num_mesas' => 'required|integer|min:1|max:500']);
+
+        DB::table('config_evento')->updateOrInsert(
+            ['clave' => 'num_mesas'],
+            ['valor' => $request->num_mesas, 'updated_at' => now()]
+        );
+
+        return back()->with('success', 'Número de mesas actualizado a ' . $request->num_mesas . '.');
     }
 
     /** API: estado completo para polling (3s) */

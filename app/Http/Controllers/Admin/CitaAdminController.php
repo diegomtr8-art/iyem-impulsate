@@ -54,6 +54,7 @@ class CitaAdminController extends Controller
             'restaurantero_id' => 'required|exists:restauranteros,id',
             'fecha'            => 'required|date',
             'hora'             => 'required|date_format:H:i',
+            'duracion'         => 'required|integer|min:5|max:480',
             'notas'            => 'nullable|string|max:1000',
         ]);
 
@@ -86,7 +87,7 @@ class CitaAdminController extends Controller
         }
 
         $inicio = \Carbon\Carbon::parse($request->fecha . ' ' . $request->hora);
-        $fin    = $inicio->copy()->addMinutes($servicio->duracion_minutos ?? 30);
+        $fin    = $inicio->copy()->addMinutes((int) $request->duracion);
 
         // Colchón de 10 minutos para el cliente
         $inicioConBuffer = $inicio->copy()->subMinutes(10);

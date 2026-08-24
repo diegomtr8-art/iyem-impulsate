@@ -17,6 +17,7 @@ const filtros = ref({
     categoria:        '',
     evento_id:        '',
     estado_evento:    '',
+    canirac:          '',
 });
 
 // ── Preview destinatarios ──────────────────────────────────────
@@ -52,6 +53,7 @@ const form = useForm({
     categoria:        '',
     evento_id:        '',
     estado_evento:    '',
+    canirac:          '',
     asunto:           '',
     contenido:        '',
 });
@@ -210,6 +212,17 @@ const enviarPrueba = () => {
                             </select>
                         </div>
 
+                        <!-- Canirac -->
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cámara / Asociación</label>
+                            <select v-model="filtros.canirac"
+                                class="w-full text-sm px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-guinda-400">
+                                <option value="">Canirac: Todos</option>
+                                <option value="si">Solo Canirac</option>
+                                <option value="no">No Canirac</option>
+                            </select>
+                        </div>
+
                         <button @click="verDestinatarios" :disabled="previewing"
                             class="w-full py-2.5 text-sm font-semibold rounded-xl bg-gray-800 hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 text-white transition-colors disabled:opacity-60">
                             {{ previewing ? 'Cargando...' : 'Ver destinatarios' }}
@@ -229,7 +242,13 @@ const enviarPrueba = () => {
                             <div v-for="u in preview.destinatarios" :key="u.id"
                                 class="flex items-center gap-3 px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800">
                                 <div class="flex-1 min-w-0">
-                                    <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{{ u.name }}</p>
+                                    <p class="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate flex items-center gap-1.5">
+                                        <span class="truncate">{{ u.name }}</span>
+                                        <span v-if="u.canirac"
+                                            class="shrink-0 text-[10px] px-1.5 py-0.5 bg-orange-900/30 text-orange-400 border border-orange-500/20 rounded font-medium">
+                                            CANIRAC
+                                        </span>
+                                    </p>
                                     <p class="text-xs text-gray-400 dark:text-gray-500 truncate">{{ u.email }}</p>
                                 </div>
                                 <span class="text-xs text-gray-400 dark:text-gray-500 shrink-0">{{ u.rol }}</span>

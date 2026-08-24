@@ -1,0 +1,1055 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Módulo de Encuestas: Rediseño completo
+Archivo: PROMPT_ENCUESTAS_COMPLETO.txt
+================================================================================
+
+CONTEXTO:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode: 'class')
+  Color corporativo: guinda #8B1028 — NUNCA azul/indigo
+  Archivos clave ya existentes:
+    - app/Http/Controllers/Admin/EncuestaAdminController.php
+    - app/Http/Controllers/EncuestaController.php
+    - app/Mail/EncuestaSatisfaccionMail.php
+    - app/Services/EncuestaEnvioService.php
+    - app/Models/EncuestaPlantilla.php
+    - app/Models/EncuestaSatisfaccion.php
+    - app/Models/EncuestaRespuesta.php
+    - resources/views/mail/encuesta-satisfaccion.blade.php
+    - resources/js/Pages/Admin/Encuestas/Index.vue
+    - resources/js/Pages/Admin/Encuestas/Plantillas.vue
+    - config/encuestas.php
+
+LEE TODOS LOS ARCHIVOS ANTES DE MODIFICAR.
+
+════════════════════════════════════════════════════════════════════════════════
+BUG CRÍTICO 1 — Error 500 en enviar-prueba
+════════════════════════════════════════════════════════════════════════════════
+
+CAUSA: resources/views/mail/encuesta-satisfaccion.blade.php accede a
+$evento->nombre y $user->name cuando ambos pueden ser null en una prueba
+(evento_id=null, user_id=null), lo que lanza un error PHP.
+
+FIX en el blade — reemplaza TODAS las referencias directas a propiedades
+de $evento y $user por el operador null-safe:
+
+  ANTES:  {{ $evento->nombre }}
+  DESPUÉS: {{ $evento?->nombre ?? 'Evento de prueba' }}
+
+  ANTES:  {{ $user->name ?? 'Participante' }}
+  DESPUÉS: {{ $user?->name ?? 'Participante' }}
+
+  ANTES:  en el evento <strong>{{ $evento->nombre }}</strong>
+  DESPUÉS: {{ $evento ? 'en el evento <strong>'.$evento->nombre.'</strong>' : '' }}
+
+  Cualquier otra propiedad de $evento o $user: agrega ?-> y ?? fallback.
+
+Verifica también EncuestaSatisfaccionMail.php → método content():
+  El array with: pasa $evento y $user como modelos.
+  Cuando es prueba, estos son null.
+  Agrega protección:
+
+    with: [
+        'evento'          => $this->encuesta->evento,        // puede ser null
+        'user'            => $this->encuesta->user,          // puede ser null
+        'tipo'            => $this->encuesta->tipo,
+        'esPrueba'        => $this->esPrueba,
+        'enlaceEncuesta'  => route('encuestas.responder', $this->encuesta->token),
+    ],
+
+════════════════════════════════════════════════════════════════════════════════
+BUG CRÍTICO 2 — Métricas no funcionan al responder
+════════════════════════════════════════════════════════════════════════════════
+
+En EncuestaController::store(), el loop guarda respuestas usando $pregunta['id']
+como clave del request. Verifica que la vista Encuestas/Responder.vue envía
+exactamente $pregunta['id'] como name del input.
+
+Si las métricas de tipo 'escala' no suman bien, es porque el campo respuesta
+en encuesta_respuestas es VARCHAR. La query usa CAST(respuesta AS DECIMAL).
+En MySQL esto funciona si el valor es numérico. Verifica que el frontend
+envía el valor numérico (no el label "⭐⭐⭐").
+
+Asegúrate de que EncuestaController::store() guarda el tipo de pregunta
+correctamente en encuesta_respuestas.tipo para que las métricas puedan
+agrupar por tipo.
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 1 — MIGRACIÓN: encuesta_plantillas mejoradas
+════════════════════════════════════════════════════════════════════════════════
+
+Crea migración: php artisan make:migration enhance_encuesta_plantillas
+
+    Schema::table('encuesta_plantillas', function (Blueprint $table) {
+        // Activa ya existe. Agregar:
+        $table->string('segmento')->default('todos')->after('activa');
+        // Valores: 'todos','proveedores','compradores',
+        //          'proveedores_evento','compradores_evento'
+    });
+
+    // La tabla de preguntas es JSON — el schema de cada pregunta se extiende
+    // en el frontend. No necesita nueva columna, el JSON ya soporta el esquema ampliado.
+
+    // Agregar campo 'segmento' a encuestas_satisfaccion para saber a quién va dirigida
+    Schema::table('encuestas_satisfaccion', function (Blueprint $table) {
+        $table->string('segmento')->nullable()->after('tipo');
+    });
+
+Ejecuta: php artisan migrate
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 2 — Esquema JSON de preguntas (en plantilla)
+════════════════════════════════════════════════════════════════════════════════
+
+El campo encuesta_plantillas.preguntas es un JSON array.
+El nuevo esquema de cada pregunta soporta:
+
+    {
+        "id": "p1",                          // único dentro de la plantilla
+        "tipo": "escala|texto|binario|opciones|multiple|nps",
+        "texto": "¿Pregunta?",
+        "requerida": true,
+        "opciones": ["Op A", "Op B"],        // solo para tipo opciones y multiple
+        "escala_min": 1,                     // solo para tipo escala (default 1)
+        "escala_max": 5,                     // solo para tipo escala (default 5)
+        "condicion": {                       // OPCIONAL — mostrar solo si...
+            "pregunta_id": "p1",             // id de la pregunta fuente
+            "operador": "igual|diferente|mayor|menor",
+            "valor": "Sí"                    // valor a comparar
+        }
+    }
+
+Tipos de pregunta:
+  - escala    → slider numérico 1–5 (o escala_min a escala_max)
+  - nps       → Net Promoter Score 0–10
+  - texto     → textarea libre
+  - binario   → botones Sí / No
+  - opciones  → radio buttons (una sola opción)
+  - multiple  → checkboxes (varias opciones)
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 3 — EncuestaAdminController: métodos actualizados
+════════════════════════════════════════════════════════════════════════════════
+
+── 3A. guardarPlantilla() — validar nuevos tipos y opciones ──
+
+    public function guardarPlantilla(Request $request)
+    {
+        $data = $request->validate([
+            'id'                              => 'nullable|exists:encuesta_plantillas,id',
+            'nombre'                          => 'required|string|max:150',
+            'descripcion'                     => 'nullable|string|max:500',
+            'segmento'                        => 'required|in:todos,proveedores,compradores,proveedores_evento,compradores_evento',
+            'preguntas'                       => 'required|array|min:1',
+            'preguntas.*.id'                  => 'required|string|max:80',
+            'preguntas.*.tipo'                => 'required|in:escala,texto,binario,opciones,multiple,nps',
+            'preguntas.*.texto'               => 'required|string|max:500',
+            'preguntas.*.requerida'           => 'nullable|boolean',
+            'preguntas.*.opciones'            => 'nullable|array',
+            'preguntas.*.opciones.*'          => 'nullable|string|max:200',
+            'preguntas.*.escala_min'          => 'nullable|integer|min:0|max:10',
+            'preguntas.*.escala_max'          => 'nullable|integer|min:1|max:10',
+            'preguntas.*.condicion'           => 'nullable|array',
+            'preguntas.*.condicion.pregunta_id' => 'nullable|string',
+            'preguntas.*.condicion.operador'    => 'nullable|in:igual,diferente,mayor,menor',
+            'preguntas.*.condicion.valor'       => 'nullable|string',
+        ]);
+
+        EncuestaPlantilla::updateOrCreate(
+            ['id' => $data['id'] ?? null],
+            [
+                'nombre'      => $data['nombre'],
+                'descripcion' => $data['descripcion'] ?? null,
+                'segmento'    => $data['segmento'],
+                'preguntas'   => $data['preguntas'],
+            ]
+        );
+
+        return back()->with('success', 'Plantilla guardada correctamente.');
+    }
+
+── 3B. enviarParaEvento() — con segmento y plantilla seleccionada ──
+
+    public function enviarParaEvento(Request $request)
+    {
+        $request->validate([
+            'evento_id'    => 'required|exists:eventos,id',
+            'plantilla_id' => 'nullable|exists:encuesta_plantillas,id',
+            'segmento'     => 'required|in:todos,proveedores,compradores,proveedores_evento,compradores_evento',
+        ]);
+
+        $evento    = Evento::findOrFail($request->evento_id);
+        $plantilla = $request->plantilla_id
+            ? EncuestaPlantilla::find($request->plantilla_id)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        if (!$plantilla) {
+            return back()->withErrors(['error' => 'No hay plantilla activa. Activa una plantilla primero.']);
+        }
+
+        $enviados = app(EncuestaEnvioService::class)
+            ->enviarParaEvento($evento, $plantilla, $request->segmento);
+
+        return back()->with('success', "Encuestas enviadas a {$enviados} participante(s).");
+    }
+
+── 3C. enviarPrueba() — con plantilla seleccionable ──
+
+    public function enviarPrueba(Request $request)
+    {
+        $request->validate([
+            'email'        => 'required|email',
+            'plantilla_id' => 'nullable|exists:encuesta_plantillas,id',
+        ]);
+
+        $plantilla = $request->plantilla_id
+            ? EncuestaPlantilla::find($request->plantilla_id)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        // Si no hay plantilla, usar preguntas de config como fallback
+        $encuesta = EncuestaSatisfaccion::create([
+            'evento_id'             => null,
+            'user_id'               => null,
+            'tipo'                  => 'comprador',
+            'token'                 => Str::random(40),
+            'encuesta_plantilla_id' => $plantilla?->id,
+            'es_prueba'             => true,
+            'email_prueba'          => $request->email,
+        ]);
+
+        Mail::to($request->email)
+            ->send(new EncuestaSatisfaccionMail(
+                $encuesta->load('plantilla'),
+                esPrueba: true
+            ));
+
+        return back()->with('success', "Prueba enviada a {$request->email}.");
+    }
+
+── 3D. index() — agregar plantillas al props para selección en UI ──
+
+    Agrega al return del método index():
+        'plantillas'      => EncuestaPlantilla::orderByDesc('activa')->orderBy('nombre')->get([
+                                'id','nombre','activa','segmento','descripcion'
+                             ]),
+        'plantillaActiva' => EncuestaPlantilla::where('activa', true)->first(['id','nombre']),
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 4 — EncuestaEnvioService: soporte de segmento y plantilla
+════════════════════════════════════════════════════════════════════════════════
+
+Reemplaza el método enviarParaEvento():
+
+    public function enviarParaEvento(
+        Evento $evento,
+        EncuestaPlantilla $plantilla,
+        string $segmento = 'todos'
+    ): int {
+        // Construir query base según segmento
+        $query = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('estado', 'aprobado');
+
+        match ($segmento) {
+            'proveedores'         => $query->where('tipo', 'proveedor'),
+            'compradores'         => $query->where('tipo', 'comprador'),
+            'proveedores_evento'  => $query->where('tipo', 'proveedor'),
+            'compradores_evento'  => $query->where('tipo', 'comprador'),
+            default               => null, // 'todos' — sin filtro adicional
+        };
+
+        $participantes = $query->get();
+
+        $enviados = 0;
+        foreach ($participantes as $p) {
+            // No enviar duplicado (mismo evento + usuario + plantilla + tipo)
+            $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
+                ->where('user_id', $p->user_id)
+                ->where('tipo', $p->tipo)
+                ->where('encuesta_plantilla_id', $plantilla->id)
+                ->exists();
+
+            if (!$existe) {
+                $encuesta = EncuestaSatisfaccion::create([
+                    'evento_id'             => $evento->id,
+                    'user_id'               => $p->user_id,
+                    'tipo'                  => $p->tipo,
+                    'segmento'              => $segmento,
+                    'token'                 => Str::random(40),
+                    'encuesta_plantilla_id' => $plantilla->id,
+                ]);
+
+                $user = User::find($p->user_id);
+                if ($user?->email) {
+                    Mail::to($user->email)
+                        ->send(new EncuestaSatisfaccionMail($encuesta->load(['evento','user','plantilla'])));
+                    $enviados++;
+                }
+            }
+        }
+
+        return $enviados;
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 5 — EncuestaController: soporte de condicionales al responder
+════════════════════════════════════════════════════════════════════════════════
+
+En store(), ajusta para guardar respuesta con tipo correcto y manejar multiple:
+
+    public function store(Request $request, string $token)
+    {
+        $encuesta = EncuestaSatisfaccion::with('plantilla')
+            ->where('token', $token)->firstOrFail();
+
+        if ($encuesta->completada()) {
+            return back()->withErrors(['error' => 'Esta encuesta ya fue respondida.']);
+        }
+
+        $preguntas = $encuesta->plantilla?->preguntas ?? config('encuestas.preguntas');
+
+        foreach ($preguntas as $pregunta) {
+            $respuesta = $request->input($pregunta['id']);
+
+            // Tipo multiple → array, serializar como JSON string
+            if ($pregunta['tipo'] === 'multiple' && is_array($respuesta)) {
+                $respuesta = implode(', ', array_filter($respuesta));
+            }
+
+            if ($respuesta !== null && $respuesta !== '' && $respuesta !== []) {
+                EncuestaRespuesta::create([
+                    'encuesta_satisfaccion_id' => $encuesta->id,
+                    'pregunta'                 => $pregunta['texto'],
+                    'tipo'                     => $pregunta['tipo'],
+                    'respuesta'                => (string) $respuesta,
+                ]);
+            }
+        }
+
+        $encuesta->update(['completada_at' => now()]);
+
+        return Inertia::render('Encuestas/Gracias', [
+            'evento' => $encuesta->evento?->only(['nombre']),
+        ]);
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 6 — VISTA: Admin/Encuestas/Plantillas.vue — constructor mejorado
+════════════════════════════════════════════════════════════════════════════════
+
+Reemplaza COMPLETAMENTE la vista Plantillas.vue con un constructor visual
+de encuestas profesional. Debe incluir:
+
+<script setup>
+import AdminLayout from '@/Layouts/AdminLayout.vue';
+import { Head, router } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+
+const props = defineProps({
+    plantillas: { type: Array, default: () => [] },
+});
+
+// ── Estado del formulario de plantilla ──────────────────────────────────────
+const modoEdicion  = ref(false);
+const plantillaActual = ref(null);
+
+const form = ref({
+    id: null,
+    nombre: '',
+    descripcion: '',
+    segmento: 'todos',
+    preguntas: [],
+});
+
+const tiposDisponibles = [
+    { value: 'escala',   label: '⭐ Escala numérica (1-5)',    icono: '📊' },
+    { value: 'nps',      label: '📈 NPS (0-10)',               icono: '📈' },
+    { value: 'binario',  label: '✅ Sí / No',                  icono: '✅' },
+    { value: 'texto',    label: '💬 Texto libre',              icono: '💬' },
+    { value: 'opciones', label: '🔘 Opción única',             icono: '🔘' },
+    { value: 'multiple', label: '☑️ Selección múltiple',       icono: '☑️' },
+];
+
+const segmentosDisponibles = [
+    { value: 'todos',                label: '👥 Todos los participantes' },
+    { value: 'proveedores',          label: '🏭 Solo proveedores (plataforma)' },
+    { value: 'compradores',          label: '🛒 Solo compradores (plataforma)' },
+    { value: 'proveedores_evento',   label: '🏭 Proveedores del evento' },
+    { value: 'compradores_evento',   label: '🛒 Compradores del evento' },
+];
+
+// ── Agregar pregunta ─────────────────────────────────────────────────────────
+const agregarPregunta = () => {
+    form.value.preguntas.push({
+        id:         'p' + Date.now(),
+        tipo:       'escala',
+        texto:      '',
+        requerida:  true,
+        opciones:   [],
+        escala_min: 1,
+        escala_max: 5,
+        condicion:  null,
+    });
+};
+
+const eliminarPregunta = (idx) => {
+    form.value.preguntas.splice(idx, 1);
+};
+
+const moverPregunta = (idx, dir) => {
+    const arr = form.value.preguntas;
+    const newIdx = idx + dir;
+    if (newIdx < 0 || newIdx >= arr.length) return;
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+};
+
+// ── Condicionales ────────────────────────────────────────────────────────────
+const toggleCondicion = (pregunta) => {
+    if (pregunta.condicion) {
+        pregunta.condicion = null;
+    } else {
+        pregunta.condicion = { pregunta_id: '', operador: 'igual', valor: '' };
+    }
+};
+
+// Preguntas disponibles como fuente de condición (todas excepto la actual)
+const preguntasFuente = (idx) =>
+    form.value.preguntas
+        .filter((_, i) => i !== idx)
+        .map(p => ({ id: p.id, texto: p.texto || '(sin texto)' }));
+
+// ── Opciones para tipo opciones/multiple ────────────────────────────────────
+const agregarOpcion = (pregunta) => {
+    if (!pregunta.opciones) pregunta.opciones = [];
+    pregunta.opciones.push('');
+};
+const eliminarOpcion = (pregunta, oi) => {
+    pregunta.opciones.splice(oi, 1);
+};
+
+// ── CRUD ─────────────────────────────────────────────────────────────────────
+const editarPlantilla = (plantilla) => {
+    modoEdicion.value  = true;
+    plantillaActual.value = plantilla;
+    form.value = JSON.parse(JSON.stringify({
+        id:          plantilla.id,
+        nombre:      plantilla.nombre,
+        descripcion: plantilla.descripcion ?? '',
+        segmento:    plantilla.segmento ?? 'todos',
+        preguntas:   plantilla.preguntas ?? [],
+    }));
+};
+
+const nuevaPlantilla = () => {
+    modoEdicion.value  = true;
+    plantillaActual.value = null;
+    form.value = { id: null, nombre: '', descripcion: '', segmento: 'todos', preguntas: [] };
+};
+
+const cancelarEdicion = () => { modoEdicion.value = false; };
+
+const guardar = () => {
+    router.post(route('encuestas.plantillas.guardar'), form.value, {
+        onSuccess: () => { modoEdicion.value = false; },
+    });
+};
+
+const activar = (plantilla) => {
+    router.post(route('encuestas.plantillas.activar', plantilla.id));
+};
+
+const eliminar = (plantilla) => {
+    if (confirm(`¿Eliminar la plantilla "${plantilla.nombre}"? Esta acción no se puede deshacer.`)) {
+        router.delete(route('encuestas.plantillas.eliminar', plantilla.id));
+    }
+};
+</script>
+
+<template>
+    <AdminLayout>
+        <Head title="Plantillas de encuesta — IMPULSATE" />
+
+        <div class="max-w-5xl mx-auto py-8 px-4">
+
+            <!-- ── ENCABEZADO ──────────────────────────────────────────── -->
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h1 class="text-xl font-black text-guinda-800 dark:text-white">
+                        Plantillas de Encuesta
+                    </h1>
+                    <p class="text-sm text-gray-500 mt-0.5">
+                        Crea, edita y activa las plantillas que se enviarán a participantes.
+                    </p>
+                </div>
+                <button v-if="!modoEdicion" @click="nuevaPlantilla"
+                    class="px-5 py-2 bg-guinda-800 hover:bg-guinda-700 text-white
+                           font-bold text-sm rounded-xl transition-colors">
+                    + Nueva plantilla
+                </button>
+            </div>
+
+            <!-- ── LISTA DE PLANTILLAS ─────────────────────────────────── -->
+            <div v-if="!modoEdicion" class="space-y-3 mb-8">
+                <div v-if="!plantillas.length"
+                    class="text-center py-12 text-gray-400 bg-white dark:bg-gray-800
+                           rounded-2xl border border-dashed border-gray-200 dark:border-gray-700">
+                    No hay plantillas creadas todavía.
+                </div>
+
+                <div v-for="plantilla in plantillas" :key="plantilla.id"
+                    class="bg-white dark:bg-gray-800 rounded-2xl border
+                           border-gray-100 dark:border-gray-700 p-4
+                           flex items-center justify-between gap-4">
+
+                    <div class="flex items-center gap-3 min-w-0">
+                        <!-- Badge activa/inactiva -->
+                        <span v-if="plantilla.activa"
+                            class="flex-shrink-0 text-xs font-black px-2.5 py-1 rounded-full
+                                   bg-green-100 text-green-700 border border-green-200">
+                            ✓ Activa
+                        </span>
+                        <span v-else
+                            class="flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-full
+                                   bg-gray-100 text-gray-500 border border-gray-200">
+                            Inactiva
+                        </span>
+                        <div class="min-w-0">
+                            <p class="font-bold text-gray-900 dark:text-white truncate">
+                                {{ plantilla.nombre }}
+                            </p>
+                            <p class="text-xs text-gray-400 mt-0.5">
+                                {{ plantilla.preguntas?.length ?? 0 }} preguntas
+                                · Segmento: {{ plantilla.segmento ?? 'todos' }}
+                                <span v-if="plantilla.descripcion"> · {{ plantilla.descripcion }}</span>
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <button v-if="!plantilla.activa" @click="activar(plantilla)"
+                            class="px-3 py-1.5 text-xs font-bold bg-green-50 text-green-700
+                                   border border-green-200 rounded-lg hover:bg-green-100 transition-colors">
+                            Activar
+                        </button>
+                        <button @click="editarPlantilla(plantilla)"
+                            class="px-3 py-1.5 text-xs font-bold bg-guinda-50 text-guinda-700
+                                   border border-guinda-200 rounded-lg hover:bg-guinda-100 transition-colors">
+                            ✏️ Editar
+                        </button>
+                        <button v-if="!plantilla.activa" @click="eliminar(plantilla)"
+                            class="px-3 py-1.5 text-xs font-bold bg-red-50 text-red-600
+                                   border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
+                            🗑
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── CONSTRUCTOR DE PLANTILLA ────────────────────────────── -->
+            <div v-if="modoEdicion"
+                class="bg-white dark:bg-gray-800 rounded-2xl border
+                       border-gray-200 dark:border-gray-700 p-6">
+
+                <!-- Cabecera del form -->
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-lg font-black text-guinda-800 dark:text-white">
+                        {{ form.id ? 'Editar plantilla' : 'Nueva plantilla' }}
+                    </h2>
+                    <button @click="cancelarEdicion"
+                        class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                        ✕ Cancelar
+                    </button>
+                </div>
+
+                <!-- Datos generales -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">
+                            Nombre de la plantilla *
+                        </label>
+                        <input v-model="form.nombre" type="text" placeholder="Ej: Satisfacción post-evento"
+                            class="input-admin w-full" />
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">
+                            Segmento de envío *
+                        </label>
+                        <select v-model="form.segmento" class="input-admin w-full">
+                            <option v-for="s in segmentosDisponibles" :key="s.value" :value="s.value">
+                                {{ s.label }}
+                            </option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-bold text-gray-600 dark:text-gray-400 mb-1">
+                            Descripción (opcional)
+                        </label>
+                        <input v-model="form.descripcion" type="text"
+                            placeholder="Descripción interna de esta plantilla"
+                            class="input-admin w-full" />
+                    </div>
+                </div>
+
+                <!-- ── PREGUNTAS ──────────────────────────────────────── -->
+                <div class="border-t border-gray-100 dark:border-gray-700 pt-5 mb-4">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-sm font-black text-gray-700 dark:text-white uppercase tracking-wide">
+                            Preguntas ({{ form.preguntas.length }})
+                        </h3>
+                        <button @click="agregarPregunta"
+                            class="px-3 py-1.5 text-xs font-bold bg-guinda-800 text-white
+                                   rounded-lg hover:bg-guinda-700 transition-colors">
+                            + Agregar pregunta
+                        </button>
+                    </div>
+
+                    <div v-if="!form.preguntas.length"
+                        class="text-center py-8 text-gray-400 border-2 border-dashed
+                               border-gray-200 dark:border-gray-700 rounded-xl">
+                        Haz clic en "Agregar pregunta" para comenzar.
+                    </div>
+
+                    <div v-for="(pregunta, idx) in form.preguntas" :key="pregunta.id"
+                        class="mb-4 border border-gray-200 dark:border-gray-700
+                               rounded-xl overflow-hidden">
+
+                        <!-- Cabecera de la pregunta -->
+                        <div class="bg-gray-50 dark:bg-gray-700/50 px-4 py-2.5
+                                    flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-black text-guinda-600 w-6">
+                                    {{ idx + 1 }}
+                                </span>
+                                <select v-model="pregunta.tipo"
+                                    class="text-xs border border-gray-200 dark:border-gray-600
+                                           rounded-lg px-2 py-1 bg-white dark:bg-gray-700
+                                           text-gray-700 dark:text-gray-200 font-semibold">
+                                    <option v-for="t in tiposDisponibles" :key="t.value" :value="t.value">
+                                        {{ t.label }}
+                                    </option>
+                                </select>
+                                <label class="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+                                    <input v-model="pregunta.requerida" type="checkbox"
+                                        class="w-3.5 h-3.5 accent-guinda-700" />
+                                    Requerida
+                                </label>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <button @click="moverPregunta(idx, -1)" :disabled="idx === 0"
+                                    class="px-2 py-1 text-xs text-gray-400 hover:text-gray-600
+                                           disabled:opacity-30 transition-colors">▲</button>
+                                <button @click="moverPregunta(idx, 1)"
+                                    :disabled="idx === form.preguntas.length - 1"
+                                    class="px-2 py-1 text-xs text-gray-400 hover:text-gray-600
+                                           disabled:opacity-30 transition-colors">▼</button>
+                                <button @click="eliminarPregunta(idx)"
+                                    class="px-2 py-1 text-xs text-red-400 hover:text-red-600 transition-colors">
+                                    ✕
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Cuerpo de la pregunta -->
+                        <div class="p-4 space-y-3">
+
+                            <!-- Texto de la pregunta -->
+                            <textarea v-model="pregunta.texto" rows="2"
+                                placeholder="Escribe la pregunta aquí..."
+                                class="input-admin w-full resize-none text-sm"></textarea>
+
+                            <!-- Escala: config min/max -->
+                            <div v-if="pregunta.tipo === 'escala'"
+                                class="flex items-center gap-3">
+                                <label class="text-xs text-gray-500">Rango:</label>
+                                <input v-model.number="pregunta.escala_min" type="number"
+                                    min="0" max="9" class="w-16 input-admin text-center text-xs" />
+                                <span class="text-gray-400 text-xs">a</span>
+                                <input v-model.number="pregunta.escala_max" type="number"
+                                    min="2" max="10" class="w-16 input-admin text-center text-xs" />
+                            </div>
+
+                            <!-- Opciones para tipo opciones/multiple -->
+                            <div v-if="pregunta.tipo === 'opciones' || pregunta.tipo === 'multiple'"
+                                class="space-y-2">
+                                <div v-for="(opcion, oi) in pregunta.opciones" :key="oi"
+                                    class="flex items-center gap-2">
+                                    <input v-model="pregunta.opciones[oi]" type="text"
+                                        :placeholder="`Opción ${oi + 1}`"
+                                        class="input-admin flex-1 text-sm" />
+                                    <button @click="eliminarOpcion(pregunta, oi)"
+                                        class="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                                </div>
+                                <button @click="agregarOpcion(pregunta)"
+                                    class="text-xs text-guinda-600 hover:text-guinda-800 font-semibold">
+                                    + Agregar opción
+                                </button>
+                            </div>
+
+                            <!-- Condicional -->
+                            <div class="border-t border-gray-100 dark:border-gray-700/50 pt-3">
+                                <button @click="toggleCondicion(pregunta)"
+                                    class="text-xs font-semibold transition-colors"
+                                    :class="pregunta.condicion
+                                        ? 'text-guinda-600 hover:text-guinda-800'
+                                        : 'text-gray-400 hover:text-gray-600'">
+                                    {{ pregunta.condicion ? '🔀 Condicional activa' : '+ Agregar condicional' }}
+                                </button>
+
+                                <div v-if="pregunta.condicion"
+                                    class="mt-2 p-3 bg-guinda-50 dark:bg-guinda-900/20
+                                           border border-guinda-100 dark:border-guinda-800
+                                           rounded-xl grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">
+                                            Si la pregunta
+                                        </label>
+                                        <select v-model="pregunta.condicion.pregunta_id"
+                                            class="input-admin text-xs w-full">
+                                            <option value="">— Selecciona —</option>
+                                            <option v-for="pf in preguntasFuente(idx)"
+                                                :key="pf.id" :value="pf.id">
+                                                {{ pf.texto.substring(0, 40) }}...
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Operador</label>
+                                        <select v-model="pregunta.condicion.operador"
+                                            class="input-admin text-xs w-full">
+                                            <option value="igual">es igual a</option>
+                                            <option value="diferente">es diferente de</option>
+                                            <option value="mayor">es mayor que</option>
+                                            <option value="menor">es menor que</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-500 block mb-1">Valor</label>
+                                        <input v-model="pregunta.condicion.valor" type="text"
+                                            placeholder="Ej: Sí, 4, ..."
+                                            class="input-admin text-xs w-full" />
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botones guardar -->
+                <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                    <button @click="cancelarEdicion"
+                        class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">
+                        Cancelar
+                    </button>
+                    <button @click="guardar"
+                        class="px-6 py-2 bg-guinda-800 hover:bg-guinda-700 text-white
+                               font-bold text-sm rounded-xl transition-colors">
+                        Guardar plantilla
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </AdminLayout>
+</template>
+
+<style scoped>
+.input-admin {
+    @apply border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2
+           bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm
+           focus:outline-none focus:ring-2 focus:ring-guinda-500 transition;
+}
+</style>
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 7 — VISTA: Encuestas/Responder.vue — renderizar todos los tipos + condicionales
+════════════════════════════════════════════════════════════════════════════════
+
+La vista Encuestas/Responder.vue debe renderizar cada pregunta según su tipo
+y evaluar condicionales antes de mostrarla.
+
+Agrega en <script setup>:
+
+    import { ref, computed, useForm } from 'vue';
+    // useForm de @inertiajs/vue3
+
+    const props = defineProps({ encuesta: Object, evento: Object, usuario: Object, preguntas: Array });
+
+    const form = useForm(
+        Object.fromEntries((props.preguntas ?? []).map(p => [p.id, p.tipo === 'multiple' ? [] : '']))
+    );
+
+    // ── Evaluador de condicionales ────────────────────────────────────────
+    const preguntaVisible = (pregunta) => {
+        if (!pregunta.condicion?.pregunta_id) return true;
+        const { pregunta_id, operador, valor } = pregunta.condicion;
+        const respuestaFuente = form[pregunta_id];
+        if (respuestaFuente === undefined || respuestaFuente === '') return false;
+        const rf = String(respuestaFuente);
+        const vl = String(valor);
+        switch (operador) {
+            case 'igual':     return rf === vl;
+            case 'diferente': return rf !== vl;
+            case 'mayor':     return parseFloat(rf) > parseFloat(vl);
+            case 'menor':     return parseFloat(rf) < parseFloat(vl);
+            default:          return true;
+        }
+    };
+
+    const submit = () => {
+        form.post(route('encuestas.responder.store', props.encuesta.token));
+    };
+
+En el template, itera las preguntas con v-if="preguntaVisible(pregunta)":
+
+    <div v-for="pregunta in preguntas" :key="pregunta.id">
+        <div v-if="preguntaVisible(pregunta)" class="...">
+            <p class="font-bold text-gray-800 mb-3">
+                {{ pregunta.texto }}
+                <span v-if="pregunta.requerida" class="text-red-500 ml-1">*</span>
+            </p>
+
+            <!-- ESCALA -->
+            <div v-if="pregunta.tipo === 'escala'" class="flex gap-2">
+                <button v-for="n in Array.from({length: (pregunta.escala_max ?? 5) - (pregunta.escala_min ?? 1) + 1}, (_, i) => i + (pregunta.escala_min ?? 1))"
+                    :key="n" type="button"
+                    @click="form[pregunta.id] = n"
+                    :class="[
+                        'w-12 h-12 rounded-xl font-black text-sm transition-all',
+                        form[pregunta.id] === n
+                            ? 'bg-guinda-800 text-white shadow-lg scale-110'
+                            : 'bg-gray-100 text-gray-600 hover:bg-guinda-50'
+                    ]">
+                    {{ n }}
+                </button>
+            </div>
+
+            <!-- NPS (0-10) -->
+            <div v-else-if="pregunta.tipo === 'nps'" class="space-y-2">
+                <div class="flex gap-1 flex-wrap">
+                    <button v-for="n in 11" :key="n-1" type="button"
+                        @click="form[pregunta.id] = n - 1"
+                        :class="[
+                            'w-10 h-10 rounded-lg font-black text-sm transition-all',
+                            form[pregunta.id] === n-1
+                                ? 'bg-guinda-800 text-white shadow-lg'
+                                : 'bg-gray-100 text-gray-600 hover:bg-guinda-50'
+                        ]">
+                        {{ n - 1 }}
+                    </button>
+                </div>
+                <div class="flex justify-between text-xs text-gray-400 px-1">
+                    <span>Muy improbable</span>
+                    <span>Muy probable</span>
+                </div>
+            </div>
+
+            <!-- BINARIO -->
+            <div v-else-if="pregunta.tipo === 'binario'" class="flex gap-3">
+                <button v-for="opt in ['Sí', 'No']" :key="opt" type="button"
+                    @click="form[pregunta.id] = opt"
+                    :class="[
+                        'px-8 py-3 rounded-xl font-black text-sm transition-all',
+                        form[pregunta.id] === opt
+                            ? 'bg-guinda-800 text-white shadow-lg'
+                            : 'bg-gray-100 text-gray-700 hover:bg-guinda-50'
+                    ]">
+                    {{ opt }}
+                </button>
+            </div>
+
+            <!-- TEXTO -->
+            <textarea v-else-if="pregunta.tipo === 'texto'"
+                v-model="form[pregunta.id]" rows="4"
+                class="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-guinda-500 transition">
+            </textarea>
+
+            <!-- OPCIONES (radio) -->
+            <div v-else-if="pregunta.tipo === 'opciones'" class="space-y-2">
+                <label v-for="opcion in pregunta.opciones" :key="opcion"
+                    class="flex items-center gap-3 cursor-pointer p-3 rounded-xl border
+                           border-gray-200 hover:border-guinda-300 transition-colors"
+                    :class="form[pregunta.id] === opcion ? 'border-guinda-500 bg-guinda-50' : ''">
+                    <input type="radio" :name="pregunta.id" :value="opcion"
+                        v-model="form[pregunta.id]" class="accent-guinda-700" />
+                    <span class="text-sm font-medium text-gray-700">{{ opcion }}</span>
+                </label>
+            </div>
+
+            <!-- MULTIPLE (checkboxes) -->
+            <div v-else-if="pregunta.tipo === 'multiple'" class="space-y-2">
+                <label v-for="opcion in pregunta.opciones" :key="opcion"
+                    class="flex items-center gap-3 cursor-pointer p-3 rounded-xl border
+                           border-gray-200 hover:border-guinda-300 transition-colors"
+                    :class="form[pregunta.id]?.includes(opcion) ? 'border-guinda-500 bg-guinda-50' : ''">
+                    <input type="checkbox" :value="opcion"
+                        v-model="form[pregunta.id]" class="accent-guinda-700" />
+                    <span class="text-sm font-medium text-gray-700">{{ opcion }}</span>
+                </label>
+            </div>
+
+        </div>
+    </div>
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 8 — VISTA: Admin/Encuestas/Index.vue — Envío con filtros + métricas
+════════════════════════════════════════════════════════════════════════════════
+
+En la sección de "Enviar encuestas" del Index.vue, reemplaza el formulario
+de envío con uno que incluya:
+  1. Selector de plantilla (dropdown con todas las plantillas)
+  2. Selector de evento
+  3. Selector de segmento
+  4. Botón de enviar
+
+    <form @submit.prevent="enviar" class="...">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+            <div>
+                <label class="label-admin">Plantilla</label>
+                <select v-model="formEnvio.plantilla_id" class="input-admin w-full" required>
+                    <option value="">— Selecciona plantilla —</option>
+                    <option v-for="p in plantillas" :key="p.id" :value="p.id">
+                        {{ p.activa ? '✓ ' : '' }}{{ p.nombre }}
+                    </option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label-admin">Evento</label>
+                <select v-model="formEnvio.evento_id" class="input-admin w-full" required>
+                    <option value="">— Selecciona evento —</option>
+                    <option v-for="e in eventos" :key="e.id" :value="e.id">
+                        {{ e.nombre }}
+                    </option>
+                </select>
+            </div>
+
+            <div>
+                <label class="label-admin">Segmento</label>
+                <select v-model="formEnvio.segmento" class="input-admin w-full">
+                    <option value="todos">👥 Todos</option>
+                    <option value="proveedores_evento">🏭 Proveedores del evento</option>
+                    <option value="compradores_evento">🛒 Compradores del evento</option>
+                    <option value="proveedores">🏭 Solo proveedores</option>
+                    <option value="compradores">🛒 Solo compradores</option>
+                </select>
+            </div>
+
+        </div>
+
+        <button type="submit" :disabled="formEnvio.processing || !formEnvio.plantilla_id || !formEnvio.evento_id"
+            class="mt-4 px-6 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white
+                   font-bold text-sm rounded-xl transition-colors disabled:opacity-60">
+            Enviar encuestas
+        </button>
+    </form>
+
+    <!-- Enviar prueba -->
+    <form @submit.prevent="enviarPrueba" class="mt-4 flex gap-3 items-end">
+        <div class="flex-1">
+            <label class="label-admin">Email de prueba</label>
+            <input v-model="formPrueba.email" type="email" class="input-admin w-full"
+                placeholder="correo@ejemplo.com" />
+        </div>
+        <div class="w-56">
+            <label class="label-admin">Plantilla a probar</label>
+            <select v-model="formPrueba.plantilla_id" class="input-admin w-full">
+                <option value="">Plantilla activa</option>
+                <option v-for="p in plantillas" :key="p.id" :value="p.id">
+                    {{ p.nombre }}
+                </option>
+            </select>
+        </div>
+        <button type="submit" :disabled="formPrueba.processing"
+            class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm
+                   font-bold rounded-xl transition-colors disabled:opacity-60">
+            Enviar prueba
+        </button>
+    </form>
+
+En <script setup> del Index.vue, agrega:
+
+    const props = defineProps({
+        // ... props existentes ...
+        plantillas:      { type: Array, default: () => [] },
+        plantillaActiva: { type: Object, default: null },
+    });
+
+    const formEnvio = useForm({
+        evento_id:    '',
+        plantilla_id: props.plantillaActiva?.id ?? '',
+        segmento:     'todos',
+    });
+
+    const formPrueba = useForm({ email: '', plantilla_id: '' });
+
+    const enviar = () => {
+        formEnvio.post(route('encuestas.enviar-evento'));
+    };
+
+    const enviarPrueba = () => {
+        formPrueba.post(route('encuestas.enviar-prueba'), {
+            onSuccess: () => formPrueba.reset('email'),
+        });
+    };
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN COMPLETA
+════════════════════════════════════════════════════════════════════════════════
+
+1. ENVIAR PRUEBA:
+   a) Ve a Admin → Encuestas
+   b) Ingresa tu correo y haz clic en "Enviar prueba"
+   c) Verifica que llega el correo SIN error 500
+   d) Haz clic en el link del correo → abre la encuesta
+   e) Responde todas las preguntas → verifica que guarda sin error
+
+2. PLANTILLAS — nuevo tipo:
+   a) Ve a Admin → Encuestas → Plantillas
+   b) Crea una nueva plantilla con:
+      - 1 pregunta tipo "escala" (1-5)
+      - 1 pregunta tipo "opciones" con 3 opciones
+      - 1 pregunta tipo "texto" con condicional:
+        "Mostrar solo si la pregunta de opciones es igual a 'Otro'"
+   c) Guarda y actívala
+   d) Envía prueba con esa plantilla
+
+3. CONDICIONALES:
+   a) Responde la encuesta eligiendo la opción que activa el condicional
+   b) Verifica que la pregunta condicional aparece
+   c) Elige otra opción → verifica que desaparece
+
+4. ENVÍO CON SEGMENTO:
+   a) Selecciona plantilla + evento + "Compradores del evento"
+   b) Haz clic en Enviar
+   c) Verifica en BD que solo creó encuestas para compradores aprobados en ese evento
+
+5. MÉTRICAS:
+   a) Responde 2-3 encuestas con distintas respuestas
+   b) Ve a Admin → Encuestas
+   c) Verifica que los promedios de escala son correctos
+   d) Verifica que los porcentajes de binario (Sí/No) son correctos
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # 1. Migración (campo segmento)
+    php artisan migrate
+
+    # 2. Compilar (cambiaron vistas Vue + blade)
+    npm run build
+
+    # 3. Limpiar caché
+    php artisan route:cache
+    php artisan optimize
+
+    # 4. Verificar que el bug 500 está resuelto:
+    # Envía prueba desde /admin/encuestas — debe llegar sin errores
+
+================================================================================
+FIN DEL PROMPT — Módulo de Encuestas completo
+================================================================================

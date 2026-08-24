@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flujo de Registro — Bazar/Exposición · Impulsate</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        guinda: {
+          50:  '#fdf2f4', 100: '#fce7eb', 200: '#f9c5ce',
+          300: '#f49aaa', 400: '#ed6680', 500: '#e13d5e',
+          600: '#cc2048', 700: '#ab1838', 800: '#8b1028',
+          900: '#741026', 950: '#400611',
+        }
+      }
+    }
+  }
+}
+</script>
+<style>
+  body { font-family: 'Inter', system-ui, sans-serif; }
+  .fade-in { animation: fadeIn .25s ease; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+  .pulse-dot { animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+</style>
+</head>
+<body class="bg-gray-950 text-white min-h-screen">
+
+<!-- NAV -->
+<nav class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between sticky top-0 z-40">
+  <div class="flex items-center gap-3">
+    <div class="w-7 h-7 bg-guinda-800 rounded-lg flex items-center justify-center text-xs font-black text-white">I</div>
+    <span class="font-bold text-white text-sm">Impulsate</span>
+  </div>
+  <div class="flex items-center gap-2 text-xs text-gray-400">
+    <div class="w-7 h-7 rounded-full bg-guinda-800 flex items-center justify-center text-white text-xs font-bold">U</div>
+    <span>Usuario Demo</span>
+  </div>
+</nav>
+
+<!-- HEADER DE SECCIÓN -->
+<div class="max-w-5xl mx-auto px-4 pt-8 pb-4">
+  <div class="flex items-center gap-3 mb-1">
+    <span class="text-xs font-semibold text-guinda-400 uppercase tracking-wider bg-guinda-950/60 border border-guinda-800/40 px-2.5 py-1 rounded-full">Mockup interactivo</span>
+  </div>
+  <h1 class="text-2xl font-black text-white">Flujo de registro — Evento Bazar/Exposición</h1>
+  <p class="text-gray-400 text-sm mt-1">Haz clic en los botones para navegar entre estados del usuario.</p>
+</div>
+
+<!-- CONTROLES DE ESTADO -->
+<div class="max-w-5xl mx-auto px-4 mb-6">
+  <div class="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Simular estado del usuario</p>
+    <div class="flex flex-wrap gap-2">
+      <button onclick="setEstado('sin_registro')"
+        class="estado-btn px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors"
+        id="btn-sin_registro">Sin registro</button>
+      <button onclick="setEstado('pendiente')"
+        class="estado-btn px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors"
+        id="btn-pendiente">Pendiente</button>
+      <button onclick="setEstado('aprobado')"
+        class="estado-btn px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors"
+        id="btn-aprobado">Aprobado ✓</button>
+      <button onclick="setEstado('rechazado')"
+        class="estado-btn px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors"
+        id="btn-rechazado">No seleccionado ✕</button>
+    </div>
+  </div>
+</div>
+
+<!-- LAYOUT PRINCIPAL -->
+<div class="max-w-5xl mx-auto px-4 pb-16 grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- COLUMNA IZQUIERDA: Sidebar del evento -->
+  <div class="space-y-4">
+
+    <!-- Bienvenida -->
+    <div class="bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <p class="text-xs text-gray-500 mb-1">Bienvenido(a)</p>
+      <p class="font-bold text-white">María Hernández</p>
+      <p class="text-xs text-gray-400 mt-0.5">maria@ejemplo.com</p>
+      <div class="mt-3 pt-3 border-t border-gray-800">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 bg-emerald-400 rounded-full pulse-dot"></div>
+          <span class="text-xs text-emerald-400 font-semibold">Sesión activa</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Info del evento -->
+    <div class="bg-gray-900 border border-guinda-800/40 rounded-2xl p-5">
+      <div class="flex items-center gap-2 mb-3">
+        <span class="text-[10px] font-bold text-guinda-400 uppercase tracking-wider bg-guinda-950/60 border border-guinda-800/40 px-2 py-0.5 rounded-full">Exposición</span>
+        <span class="text-[10px] text-gray-500">Sin citas</span>
+      </div>
+      <h4 class="font-bold text-white text-sm">Bazar Artesanal Yucatán 2026</h4>
+      <p class="text-xs text-gray-400 mt-1">Gastronomía y artesanías</p>
+      <div class="mt-3 space-y-1.5 text-xs text-gray-400">
+        <div class="flex gap-2 items-center">
+          <svg class="w-3.5 h-3.5 text-guinda-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          <span>15 de septiembre, 2026</span>
+        </div>
+        <div class="flex gap-2 items-center">
+          <svg class="w-3.5 h-3.5 text-guinda-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span>Mérida, Yucatán</span>
+        </div>
+        <div class="flex gap-2 items-center">
+          <svg class="w-3.5 h-3.5 text-guinda-500 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span>12 espacios disponibles</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Diferencia con encuentro -->
+    <div class="bg-gray-900/60 border border-gray-800 rounded-2xl p-4">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Comparación de flujos</p>
+      <div class="space-y-2 text-xs">
+        <div class="flex items-start gap-2 text-red-400">
+          <span class="mt-0.5 shrink-0">✕</span>
+          <span class="text-gray-500 line-through">Registro como Proveedor</span>
+        </div>
+        <div class="flex items-start gap-2 text-red-400">
+          <span class="mt-0.5 shrink-0">✕</span>
+          <span class="text-gray-500 line-through">Registro como Comprador</span>
+        </div>
+        <div class="flex items-start gap-2 text-red-400">
+          <span class="mt-0.5 shrink-0">✕</span>
+          <span class="text-gray-500 line-through">Timeline de fases</span>
+        </div>
+        <div class="flex items-start gap-2 text-red-400">
+          <span class="mt-0.5 shrink-0">✕</span>
+          <span class="text-gray-500 line-through">Ventanas reg. proveedores</span>
+        </div>
+        <div class="flex items-start gap-2 text-red-400">
+          <span class="mt-0.5 shrink-0">✕</span>
+          <span class="text-gray-500 line-through">Agendado compradores</span>
+        </div>
+        <div class="border-t border-gray-800 pt-2 mt-2">
+          <div class="flex items-start gap-2 text-emerald-400">
+            <span class="mt-0.5 shrink-0">✓</span>
+            <span>Un solo botón "Solicitar participación"</span>
+          </div>
+          <div class="flex items-start gap-2 text-emerald-400 mt-1.5">
+            <span class="mt-0.5 shrink-0">✓</span>
+            <span>Cualquier usuario registrado aplica</span>
+          </div>
+          <div class="flex items-start gap-2 text-emerald-400 mt-1.5">
+            <span class="mt-0.5 shrink-0">✓</span>
+            <span>Estado: pendiente / aprobado / rechazado</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLUMNA DERECHA: Card principal del evento -->
+  <div class="lg:col-span-2">
+
+    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Evento Activo</h3>
+
+    <!-- CARD DEL EVENTO -->
+    <div class="bg-gray-900 border-2 border-emerald-600/60 rounded-2xl p-5 shadow-lg">
+
+      <!-- Header del evento -->
+      <div class="flex items-start gap-3 mb-4">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <div class="w-2 h-2 bg-emerald-400 rounded-full pulse-dot"></div>
+            <span class="text-xs font-bold text-emerald-400 uppercase tracking-wider">En Curso</span>
+            <span class="text-[10px] bg-guinda-950/80 border border-guinda-800/50 text-guinda-400 px-2 py-0.5 rounded-full font-semibold">Exposición / Bazar</span>
+          </div>
+          <h4 class="text-lg font-black text-white">Bazar Artesanal Yucatán 2026</h4>
+          <p class="text-sm text-gray-400">Gastronomía y artesanías</p>
+        </div>
+      </div>
+
+      <!-- Fechas simplificadas (solo inicio/fin, sin proveedores/compradores) -->
+      <div class="p-3 bg-gray-800/50 rounded-xl space-y-1.5 text-xs text-gray-400 mb-5">
+        <div class="flex gap-2 items-center">
+          <span class="w-2 h-2 bg-guinda-500 rounded-full shrink-0"></span>
+          <span>Fecha del evento: <strong class="text-gray-200">15 de septiembre, 2026 — 09:00</strong></span>
+        </div>
+        <div class="flex gap-2 items-center">
+          <span class="w-2 h-2 bg-red-400 rounded-full shrink-0"></span>
+          <span>Fin: <strong class="text-gray-200">15 de septiembre, 2026 — 18:00</strong></span>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════
+           ÁREA DINÁMICA: cambia según el estado del usuario
+           ═══════════════════════════════════════════════════ -->
+
+      <!-- ESTADO: sin_registro -->
+      <div id="estado-sin_registro" class="hidden fade-in">
+        <p class="text-sm text-gray-400 mb-4">
+          Solicita tu participación en este evento. El equipo revisará tu solicitud
+          y te notificará por correo el resultado.
+        </p>
+        <button onclick="abrirModal()"
+          class="w-full sm:w-auto px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
+          Solicitar participación
+        </button>
+      </div>
+
+      <!-- ESTADO: pendiente -->
+      <div id="estado-pendiente" class="hidden fade-in">
+        <div class="p-4 bg-amber-950/30 border border-amber-800/50 rounded-xl">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-sm font-semibold text-amber-300">Solicitud enviada — pendiente de revisión</span>
+          </div>
+          <p class="text-xs text-amber-500/80 mt-2 ml-6">
+            Te notificaremos por correo cuando tu solicitud sea revisada. El admin
+            evalúa todas las solicitudes recibidas.
+          </p>
+          <div class="mt-3 ml-6 flex items-center gap-2">
+            <div class="flex gap-0.5">
+              <div class="w-2 h-2 bg-amber-500 rounded-full pulse-dot" style="animation-delay:0s"></div>
+              <div class="w-2 h-2 bg-amber-500/60 rounded-full pulse-dot" style="animation-delay:.3s"></div>
+              <div class="w-2 h-2 bg-amber-500/30 rounded-full pulse-dot" style="animation-delay:.6s"></div>
+            </div>
+            <span class="text-xs text-amber-600">En revisión</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ESTADO: aprobado -->
+      <div id="estado-aprobado" class="hidden fade-in">
+        <div class="p-4 bg-emerald-950/30 border border-emerald-700/50 rounded-xl">
+          <div class="flex items-center gap-2">
+            <svg class="w-5 h-5 text-emerald-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-sm font-semibold text-emerald-300">¡Participación aprobada!</span>
+          </div>
+          <p class="text-xs text-emerald-500/80 mt-2 ml-7">
+            Has sido seleccionado(a) para participar en este evento. Revisa tu correo
+            para los detalles de tu espacio y logística.
+          </p>
+          <div class="mt-3 ml-7 p-3 bg-emerald-950/40 border border-emerald-800/30 rounded-lg text-xs text-emerald-400/80 space-y-1">
+            <p class="font-semibold text-emerald-300">¿Qué sigue?</p>
+            <p>• Recibirás un correo con la confirmación oficial</p>
+            <p>• Se te indicará el número y ubicación de tu espacio</p>
+            <p>• Fecha: 15 sep 2026, 09:00 — Mérida, Yuc.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ESTADO: rechazado -->
+      <div id="estado-rechazado" class="hidden fade-in">
+        <div class="p-4 bg-red-950/20 border border-red-800/40 rounded-xl space-y-3">
+          <div class="flex items-center gap-2">
+            <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <span class="text-sm font-semibold text-red-300">Tu solicitud no fue seleccionada</span>
+          </div>
+          <p class="text-xs text-red-400/80 ml-6">
+            Agradecemos tu interés. En esta edición no fue posible asignarte un espacio.
+          </p>
+          <div class="ml-6 p-3 bg-red-950/40 border border-red-800/20 rounded-lg">
+            <p class="text-xs text-red-300 font-semibold mb-1">Ver mi evaluación</p>
+            <p class="text-xs text-red-400/70 mb-2">
+              Puedes consultar tu calificación por criterio para saber en qué áreas mejorar.
+            </p>
+            <button onclick="abrirEvaluacion()"
+              class="px-3 py-1.5 bg-guinda-800 hover:bg-guinda-700 text-white text-xs font-semibold rounded-lg transition-colors">
+              Ver cómo fui evaluado(a) →
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- FLUJO VISUAL paso a paso -->
+    <div class="mt-6 bg-gray-900 border border-gray-800 rounded-2xl p-5">
+      <p class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Flujo completo del usuario</p>
+
+      <div class="space-y-0">
+        <!-- Paso 1 -->
+        <div class="flex gap-3">
+          <div class="flex flex-col items-center">
+            <div class="w-8 h-8 rounded-full bg-guinda-800 border-2 border-guinda-600 flex items-center justify-center text-xs font-bold text-white shrink-0">1</div>
+            <div class="w-0.5 bg-gray-800 flex-1 my-1" style="min-height:32px"></div>
+          </div>
+          <div class="pb-6">
+            <p class="text-sm font-semibold text-white">Usuario entra al Dashboard</p>
+            <p class="text-xs text-gray-400 mt-0.5">Ve la card del evento activo tipo Bazar. <em class="text-gray-500">Sin timeline de fases, sin ventanas de proveedores/compradores.</em></p>
+          </div>
+        </div>
+
+        <!-- Paso 2 -->
+        <div class="flex gap-3">
+          <div class="flex flex-col items-center">
+            <div class="w-8 h-8 rounded-full bg-guinda-800 border-2 border-guinda-600 flex items-center justify-center text-xs font-bold text-white shrink-0">2</div>
+            <div class="w-0.5 bg-gray-800 flex-1 my-1" style="min-height:32px"></div>
+          </div>
+          <div class="pb-6">
+            <p class="text-sm font-semibold text-white">Hace clic en "Solicitar participación"</p>
+            <p class="text-xs text-gray-400 mt-0.5">Un solo botón, sin distinción de rol. Cualquier usuario autenticado puede aplicar.</p>
+          </div>
+        </div>
+
+        <!-- Paso 3 -->
+        <div class="flex gap-3">
+          <div class="flex flex-col items-center">
+            <div class="w-8 h-8 rounded-full bg-guinda-800 border-2 border-guinda-600 flex items-center justify-center text-xs font-bold text-white shrink-0">3</div>
+            <div class="w-0.5 bg-gray-800 flex-1 my-1" style="min-height:32px"></div>
+          </div>
+          <div class="pb-6">
+            <p class="text-sm font-semibold text-white">Modal de confirmación</p>
+            <p class="text-xs text-gray-400 mt-0.5">Lee y acepta la convocatoria. Confirma para enviar la solicitud.</p>
+            <button onclick="abrirModal()"
+              class="mt-2 text-xs text-guinda-400 hover:text-guinda-300 underline transition-colors">Ver modal →</button>
+          </div>
+        </div>
+
+        <!-- Paso 4 -->
+        <div class="flex gap-3">
+          <div class="flex flex-col items-center">
+            <div class="w-8 h-8 rounded-full bg-guinda-800 border-2 border-guinda-600 flex items-center justify-center text-xs font-bold text-white shrink-0">4</div>
+            <div class="w-0.5 bg-gray-800 flex-1 my-1" style="min-height:32px"></div>
+          </div>
+          <div class="pb-6">
+            <p class="text-sm font-semibold text-white">Estado: Pendiente de revisión</p>
+            <p class="text-xs text-gray-400 mt-0.5">La card muestra "Solicitud enviada — pendiente de revisión". El admin recibe una notificación.</p>
+          </div>
+        </div>
+
+        <!-- Paso 5 — bifurcación -->
+        <div class="flex gap-3">
+          <div class="flex flex-col items-center">
+            <div class="w-8 h-8 rounded-full bg-gray-700 border-2 border-gray-600 flex items-center justify-center text-xs font-bold text-gray-300 shrink-0">5</div>
+          </div>
+          <div class="pb-2">
+            <p class="text-sm font-semibold text-gray-300">Admin evalúa y decide</p>
+            <div class="mt-3 grid grid-cols-2 gap-3">
+              <div class="p-3 bg-emerald-950/30 border border-emerald-800/40 rounded-xl">
+                <p class="text-xs font-bold text-emerald-400 mb-1">✓ Aprobado</p>
+                <p class="text-xs text-gray-400">Usuario recibe correo de aprobación con detalles. La card muestra "¡Participación aprobada!"</p>
+              </div>
+              <div class="p-3 bg-red-950/20 border border-red-800/30 rounded-xl">
+                <p class="text-xs font-bold text-red-400 mb-1">✕ No seleccionado</p>
+                <p class="text-xs text-gray-400">Usuario recibe correo con link "Ver mi evaluación" donde ve sus puntajes por criterio.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL DE CONFIRMACIÓN
+══════════════════════════════════ -->
+<div id="modal-registro" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this) cerrarModal()">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-md w-full p-6 shadow-2xl fade-in">
+    <h3 class="text-lg font-bold text-white mb-2">Antes de continuar</h3>
+    <p class="text-sm text-gray-400 mb-4">
+      Para solicitar tu participación en
+      <strong class="text-white">Bazar Artesanal Yucatán 2026</strong>
+      debes haber leído la convocatoria oficial del evento.
+    </p>
+    <a href="#" onclick="return false"
+      class="flex items-center justify-center gap-2 w-full mb-4 px-4 py-2 border border-guinda-700 text-guinda-400 text-sm font-semibold rounded-xl hover:bg-guinda-950/30 transition-colors">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+      </svg>
+      Leer la convocatoria
+    </a>
+    <label class="flex items-start gap-2 mb-5 cursor-pointer select-none">
+      <input type="checkbox" id="check-convocatoria" class="mt-0.5 accent-guinda-700"
+        onchange="document.getElementById('btn-confirmar').disabled = !this.checked; document.getElementById('btn-confirmar').classList.toggle('opacity-40', !this.checked);" />
+      <span class="text-sm text-gray-300">He leído la convocatoria del evento.</span>
+    </label>
+    <div class="flex gap-3">
+      <button onclick="cerrarModal()"
+        class="flex-1 px-4 py-2.5 text-sm font-semibold rounded-xl border border-gray-700 text-gray-300 hover:bg-gray-800 transition-colors">
+        Cancelar
+      </button>
+      <button id="btn-confirmar" disabled onclick="confirmarRegistro()"
+        class="flex-1 px-4 py-2.5 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 text-white transition-colors opacity-40 cursor-not-allowed">
+        Confirmar solicitud
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     MODAL EVALUACIÓN PÚBLICA
+══════════════════════════════════ -->
+<div id="modal-evaluacion" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-black/70"
+  onclick="if(event.target===this) cerrarEvaluacion()">
+  <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-lg w-full p-6 shadow-2xl fade-in">
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <p class="text-xs text-guinda-400 font-semibold uppercase tracking-wider">Evaluación de participación</p>
+        <h3 class="text-base font-bold text-white mt-0.5">Bazar Artesanal Yucatán 2026</h3>
+      </div>
+      <button onclick="cerrarEvaluacion()"
+        class="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 transition-colors">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+
+    <p class="text-xs text-gray-400 mb-5">Hola <strong class="text-gray-200">María Hernández</strong>, esta es la evaluación de tu solicitud para participar en el evento.</p>
+
+    <div class="space-y-3 mb-5">
+      <!-- Criterio 1 -->
+      <div class="bg-gray-800/60 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-semibold text-gray-200">Grado de innovación</span>
+          <div class="text-right">
+            <span class="text-xs text-gray-400">Ponderación: <strong class="text-gray-300">30%</strong></span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex-1 bg-gray-700 rounded-full h-2">
+            <div class="bg-amber-500 h-2 rounded-full" style="width:64%"></div>
+          </div>
+          <span class="text-xs font-bold text-amber-400 w-16 text-right">64 / 100</span>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">Puntaje ponderado: <span class="text-gray-400 font-semibold">19.2 / 30</span></p>
+      </div>
+
+      <!-- Criterio 2 -->
+      <div class="bg-gray-800/60 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-semibold text-gray-200">Capacidad de producción</span>
+          <div class="text-right">
+            <span class="text-xs text-gray-400">Ponderación: <strong class="text-gray-300">25%</strong></span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex-1 bg-gray-700 rounded-full h-2">
+            <div class="bg-amber-500 h-2 rounded-full" style="width:72%"></div>
+          </div>
+          <span class="text-xs font-bold text-amber-400 w-16 text-right">72 / 100</span>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">Puntaje ponderado: <span class="text-gray-400 font-semibold">18 / 25</span></p>
+      </div>
+
+      <!-- Criterio 3 -->
+      <div class="bg-gray-800/60 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-semibold text-gray-200">Presentación del producto</span>
+          <div class="text-right">
+            <span class="text-xs text-gray-400">Ponderación: <strong class="text-gray-300">25%</strong></span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex-1 bg-gray-700 rounded-full h-2">
+            <div class="bg-red-500 h-2 rounded-full" style="width:52%"></div>
+          </div>
+          <span class="text-xs font-bold text-red-400 w-16 text-right">52 / 100</span>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">Puntaje ponderado: <span class="text-gray-400 font-semibold">13 / 25</span></p>
+      </div>
+
+      <!-- Criterio 4 -->
+      <div class="bg-gray-800/60 rounded-xl p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-xs font-semibold text-gray-200">Documentación completa</span>
+          <div class="text-right">
+            <span class="text-xs text-gray-400">Ponderación: <strong class="text-gray-300">20%</strong></span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="flex-1 bg-gray-700 rounded-full h-2">
+            <div class="bg-amber-500 h-2 rounded-full" style="width:60%"></div>
+          </div>
+          <span class="text-xs font-bold text-amber-400 w-16 text-right">60 / 100</span>
+        </div>
+        <p class="text-[10px] text-gray-500 mt-1">Puntaje ponderado: <span class="text-gray-400 font-semibold">12 / 20</span></p>
+      </div>
+    </div>
+
+    <!-- Total -->
+    <div class="flex items-center justify-between p-4 bg-gray-800 rounded-xl mb-4">
+      <span class="text-sm font-semibold text-gray-300">Puntaje total</span>
+      <div class="text-right">
+        <span class="text-xl font-black text-amber-400">62.2</span>
+        <span class="text-sm text-gray-500"> / 100</span>
+      </div>
+    </div>
+
+    <p class="text-xs text-gray-400 text-center">
+      Te invitamos a mejorar en las áreas señaladas y participar en próximas ediciones de Impulsate.
+    </p>
+  </div>
+</div>
+
+<script>
+  const estados = ['sin_registro', 'pendiente', 'aprobado', 'rechazado'];
+  let estadoActual = 'sin_registro';
+
+  function setEstado(estado) {
+    estadoActual = estado;
+    estados.forEach(e => {
+      const el = document.getElementById('estado-' + e);
+      const btn = document.getElementById('btn-' + e);
+      if (e === estado) {
+        el.classList.remove('hidden');
+        el.classList.add('fade-in');
+        btn.className = 'estado-btn px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors bg-guinda-800 border-guinda-700 text-white';
+      } else {
+        el.classList.add('hidden');
+        el.classList.remove('fade-in');
+        btn.className = 'estado-btn px-3 py-1.5 text-xs font-semibold rounded-xl border transition-colors bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600';
+      }
+    });
+  }
+
+  function abrirModal() {
+    const m = document.getElementById('modal-registro');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+    document.getElementById('check-convocatoria').checked = false;
+    const btn = document.getElementById('btn-confirmar');
+    btn.disabled = true;
+    btn.classList.add('opacity-40', 'cursor-not-allowed');
+  }
+
+  function cerrarModal() {
+    const m = document.getElementById('modal-registro');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+  }
+
+  function confirmarRegistro() {
+    cerrarModal();
+    setEstado('pendiente');
+  }
+
+  function abrirEvaluacion() {
+    const m = document.getElementById('modal-evaluacion');
+    m.classList.remove('hidden');
+    m.classList.add('flex');
+  }
+
+  function cerrarEvaluacion() {
+    const m = document.getElementById('modal-evaluacion');
+    m.classList.add('hidden');
+    m.classList.remove('flex');
+  }
+
+  // Inicializar
+  setEstado('sin_registro');
+</script>
+</body>
+</html>

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Mockup — Mi Perfil · Impulsate</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css"/>
+<style>
+:root{--g:#8B1028;--gl:#a8192f;--gs:#f9e8eb;--gss:#f3d0d6;--surface:#fff;--surface1:#f8f8f6;--surface2:#f1f0ed;--border:#e5e5e2;--border2:#d1d0cc;--text:#1a1a18;--text2:#555552;--text3:#888885}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--text);background:#f0eeea;min-height:100vh;padding:24px 16px}
+.app{max-width:900px;margin:0 auto}
+.topbar{background:var(--g);color:#fff;border-radius:12px;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.topbar h1{font-size:16px;font-weight:600}
+.topbar span{font-size:12px;opacity:.75}
+.demo-bar{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.demo-label{font-size:11px;color:var(--text3);margin-bottom:4px}
+.pill-toggle{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px;gap:2px}
+.pill-toggle button{border:none;background:transparent;padding:5px 16px;border-radius:16px;font-size:13px;font-weight:500;cursor:pointer;color:var(--text2);transition:all .15s}
+.pill-toggle button.active{background:var(--g);color:#fff}
+.progress-wrap{text-align:right}
+.progress-bar{height:5px;border-radius:3px;background:var(--border);overflow:hidden;width:150px;margin:4px 0 0 auto}
+.progress-fill{height:100%;background:var(--g);border-radius:3px;transition:width .4s}
+.prog-label{font-size:11px;color:var(--g);font-weight:600}
+.ambos-switch{background:var(--gs);border:1px solid var(--gss);border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:13px;color:var(--g)}
+.ambos-switch .btns{display:flex;gap:6px}
+.ambos-switch button{border:1px solid var(--g);padding:4px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;transition:all .15s}
+.ambos-switch button.active{background:var(--g);color:#fff}
+.ambos-switch button:not(.active){background:transparent;color:var(--g)}
+.layout{display:flex;gap:16px;align-items:flex-start}
+.sidenav{width:172px;flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:8px;position:sticky;top:24px}
+.sidenav button{display:flex;align-items:center;gap:8px;width:100%;border:none;background:transparent;padding:8px 10px;border-radius:8px;font-size:13px;color:var(--text2);cursor:pointer;text-align:left;transition:background .12s}
+.sidenav button:hover{background:var(--surface2)}
+.sidenav button.active{background:var(--gs);color:var(--g);font-weight:600}
+.sidenav button i{font-size:16px}
+.main{flex:1;min-width:0}
+.section-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:14px}
+.section-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding-bottom:10px}
+.section-title i{font-size:18px;color:var(--g)}
+.field-row{margin-bottom:13px}
+.field-row label{display:block;font-size:12px;font-weight:500;color:var(--text2);margin-bottom:5px}
+.field-row input,.field-row select,.field-row textarea{width:100%;border:1px solid var(--border2);border-radius:8px;padding:8px 11px;font-size:13px;background:var(--surface);color:var(--text);outline:none;transition:border-color .15s;font-family:inherit}
+.field-row input:focus,.field-row select:focus,.field-row textarea:focus{border-color:var(--g)}
+.field-row input:disabled{opacity:.55;background:var(--surface2)}
+.field-row textarea{resize:vertical;min-height:72px;line-height:1.5}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.radio-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.radio-pill{display:flex;align-items:center;gap:6px;padding:6px 13px;border:1px solid var(--border2);border-radius:8px;cursor:pointer;font-size:13px;transition:all .12s;user-select:none}
+.radio-pill:hover{border-color:var(--g)}
+.radio-pill.selected{border-color:var(--g);background:var(--gs);color:var(--g);font-weight:600}
+.radio-pill i{font-size:14px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)}
+.toggle-row:last-child{border-bottom:none}
+.toggle-row span{font-size:13px}
+.toggle-sw{width:36px;height:20px;border-radius:10px;border:none;background:var(--border2);cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;outline:none}
+.toggle-sw.on{background:var(--g)}
+.toggle-sw::after{content:'';position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle-sw.on::after{left:19px}
+.cond-box{background:var(--surface1);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:10px}
+.cond-box .section-subtitle{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;text-transform:uppercase;letter-spacing:.04em}
+.info-box{background:var(--gs);border:1px solid var(--gss);border-radius:8px;padding:10px 13px;font-size:12px;color:var(--g);margin-bottom:14px;display:flex;align-items:flex-start;gap:7px}
+.info-box i{font-size:16px;flex-shrink:0;margin-top:1px}
+.badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;border:1px solid}
+.badge-ok{background:#dcfce7;color:#166534;border-color:#bbf7d0}
+.badge-warn{background:#fef3c7;color:#92400e;border-color:#fde68a}
+.badge-pend{background:#e0f2fe;color:#075985;border-color:#bae6fd}
+.doc-row{display:flex;align-items:center;justify-content:space-between;background:var(--surface1);border:1px solid var(--border);border-radius:8px;padding:11px 14px;margin-bottom:8px}
+.doc-row-left{display:flex;align-items:center;gap:11px}
+.doc-row-left i{font-size:22px;color:var(--g)}
+.doc-name{font-size:13px;font-weight:500}
+.doc-sub{font-size:11px;color:var(--text3);margin-top:2px}
+.upload-zone{border:1.5px dashed var(--border2);border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:border-color .15s;margin-top:10px}
+.upload-zone:hover{border-color:var(--g)}
+.upload-zone i{font-size:28px;color:var(--text3);display:block;margin-bottom:6px}
+.upload-zone p{font-size:13px;color:var(--text2)}
+.upload-zone small{font-size:11px;color:var(--text3)}
+.tag{display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:12px;color:var(--text2);margin:2px;cursor:default}
+.tag-add{color:var(--g);border-color:var(--g);background:var(--gs);cursor:pointer}
+.prod-item{display:flex;align-items:center;gap:8px;background:var(--surface1);border:1px solid var(--border);border-radius:8px;padding:8px 11px;margin-bottom:6px}
+.prod-item span{font-size:13px;flex:1}
+.prod-item button{border:none;background:transparent;cursor:pointer;color:var(--text3);font-size:18px;line-height:1}
+.prod-add{border:1px dashed var(--border2);background:transparent;border-radius:8px;width:100%;padding:8px;font-size:12px;color:var(--text2);cursor:pointer;transition:border-color .15s}
+.prod-add:hover{border-color:var(--g);color:var(--g)}
+.btn-row{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+.btn-save{background:var(--g);color:#fff;border:none;padding:9px 22px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
+.btn-save:hover{background:var(--gl)}
+.btn-cancel{background:transparent;border:1px solid var(--border2);color:var(--text);padding:9px 18px;border-radius:8px;font-size:13px;cursor:pointer}
+.req{color:#dc2626}
+.opt{color:var(--text3);font-weight:400;font-size:11px}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="topbar">
+  <h1><i class="ti ti-user-circle"></i> Mi perfil</h1>
+  <span>impulsate.iyemyucatan.com/user/profile</span>
+</div>
+
+<div class="demo-bar">
+  <div>
+    <p class="demo-label">Vista de demostración — selecciona el rol</p>
+    <div class="pill-toggle" id="roleToggle">
+      <button class="active" onclick="setRole('comprador')">Comprador</button>
+      <button onclick="setRole('proveedor')">Proveedor</button>
+      <button onclick="setRole('ambos')">Ambos</button>
+    </div>
+  </div>
+  <div class="progress-wrap">
+    <p class="demo-label">Completitud del perfil</p>
+    <div class="progress-bar"><div class="progress-fill" id="pFill" style="width:60%"></div></div>
+    <p class="prog-label" id="pLabel">60% completado</p>
+  </div>
+</div>
+
+<div id="ambosBar" style="display:none">
+  <div class="ambos-switch">
+    <span><i class="ti ti-arrows-exchange" style="vertical-align:-2px;margin-right:4px"></i> Estás registrado como Comprador y Proveedor. Viendo:</span>
+    <div class="btns">
+      <button class="active" id="ab-c" onclick="setAmbos('comprador')">Comprador</button>
+      <button id="ab-p" onclick="setAmbos('proveedor')">Proveedor</button>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+  <nav class="sidenav" id="sidenav"></nav>
+  <div class="main" id="mainContent"></div>
+</div>
+
+</div>
+
+<script>
+let role='comprador', ambosView='comprador', sec=0;
+const prog={comprador:60,proveedor:42,ambos:51};
+
+const navs={
+  comprador:[
+    {icon:'ti-user',label:'Datos personales'},
+    {icon:'ti-building',label:'Mi empresa'},
+    {icon:'ti-checklist',label:'Necesidades'},
+    {icon:'ti-file-certificate',label:'Documentos bazar'},
+  ],
+  proveedor:[
+    {icon:'ti-building-store',label:'Mi negocio'},
+    {icon:'ti-package',label:'Productos y servicios'},
+    {icon:'ti-truck',label:'Entrega y pago'},
+    {icon:'ti-phone',label:'Contacto y redes'},
+    {icon:'ti-file-certificate',label:'Documentos bazar'},
+  ]
+};
+
+function eff(){return role==='ambos'?ambosView:role;}
+
+function setRole(r){
+  role=r; sec=0;
+  document.querySelectorAll('#roleToggle button').forEach((b,i)=>b.classList.toggle('active',['comprador','proveedor','ambos'][i]===r));
+  document.getElementById('ambosBar').style.display=r==='ambos'?'block':'none';
+  document.getElementById('pFill').style.width=prog[r]+'%';
+  document.getElementById('pLabel').textContent=prog[r]+'% completado';
+  render();
+}
+function setAmbos(v){
+  ambosView=v; sec=0;
+  document.getElementById('ab-c').classList.toggle('active',v==='comprador');
+  document.getElementById('ab-p').classList.toggle('active',v==='proveedor');
+  render();
+}
+function goSec(i){sec=i;render();}
+function toggleSw(el){el.classList.toggle('on');}
+function pill(group,val){
+  document.querySelectorAll('[data-g="'+group+'"]').forEach(p=>p.classList.toggle('selected',p.dataset.v===val));
+}
+function pillCond(group,val,condId,showVals){
+  pill(group,val);
+  if(condId){
+    const show=showVals.includes(val);
+    const el=document.getElementById(condId);
+    if(el)el.style.display=show?'block':'none';
+  }
+}
+function condToggle(sw,condId){
+  toggleSw(sw);
+  const el=document.getElementById(condId);
+  if(el)el.style.display=sw.classList.contains('on')?'block':'none';
+}
+
+function render(){
+  const e=eff();
+  const items=navs[e];
+  document.getElementById('sidenav').innerHTML=items.map((n,i)=>
+    `<button class="${i===sec?'active':''}" onclick="goSec(${i})"><i class="ti ${n.icon}"></i>${n.label}</button>`
+  ).join('');
+  const fns=[sPersonal,sEmpresa,sNecesidades,sDocsBazar];
+  const fnsp=[sNegocio,sProductos,sEntrega,sContacto,sDocsBazar];
+  const fn=e==='comprador'?fns[sec]:fnsp[sec];
+  document.getElementById('mainContent').innerHTML=fn?fn():'';
+}
+
+// ── SECCIONES COMPRADOR ──────────────────────────
+
+function sPersonal(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-user"></i>Información personal</div>
+  <div class="grid2">
+    <div class="field-row"><label>Nombre completo</label><input value="María García López"/></div>
+    <div class="field-row"><label>Correo electrónico</label><input value="maria@gmail.com" disabled/></div>
+    <div class="field-row"><label>Teléfono <span class="req">*</span></label><input value="9991234567" type="tel"/></div>
+    <div class="field-row"><label>Municipio <span class="req">*</span></label>
+      <select><option>Mérida</option><option>Valladolid</option><option>Tizimín</option><option>Progreso</option></select>
+    </div>
+    <div class="field-row"><label>CURP <span class="opt">(opcional)</span></label><input placeholder="XXXX000000XXXXXXXX" style="text-transform:uppercase"/></div>
+    <div class="field-row"><label>RFC <span class="opt">(opcional)</span></label><input placeholder="XXXX000000XXX" style="text-transform:uppercase"/></div>
+  </div>
+  <div class="field-row"><label>Género</label>
+    <div class="radio-row">
+      ${['Femenino','Masculino','Prefiero no decir'].map((g,i)=>`<div class="radio-pill${i===0?' selected':''}" data-g="gen" data-v="${g}" onclick="pill('gen','${g}')">${g}</div>`).join('')}
+    </div>
+  </div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+function sEmpresa(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-building"></i>Datos de empresa</div>
+  <div class="field-row"><label>Nombre de empresa <span class="req">*</span></label><input value="Restaurante El Mesón"/></div>
+  <div class="field-row"><label>¿Pertenece a alguna cámara o asociación? <span class="req">*</span></label>
+    <div class="radio-row">
+      <div class="radio-pill selected" data-g="cam" data-v="CANIRAC" onclick="pillCond('cam','CANIRAC','estab-box',['CANIRAC'])">CANIRAC</div>
+      <div class="radio-pill" data-g="cam" data-v="Ninguna" onclick="pillCond('cam','Ninguna','estab-box',['CANIRAC'])">Ninguna</div>
+    </div>
+  </div>
+  <div id="estab-box" class="cond-box">
+    <div class="cond-box" style="background:transparent;border:none;padding:0;margin:0">
+      <div class="field-row" style="margin-bottom:0"><label>Nombre del restaurante / establecimiento <span class="req">*</span></label>
+        <input value="Restaurante El Mesón de San Juan"/>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-tools-kitchen-2"></i>¿Eres restaurantero?</div>
+  <div style="display:flex;align-items:flex-start;gap:13px;padding:4px 0">
+    <button class="toggle-sw on" onclick="toggleSw(this)" style="margin-top:2px"></button>
+    <div>
+      <p style="font-size:13px;font-weight:600;color:var(--g)">Soy dueño o encargado de un restaurante o establecimiento de alimentos</p>
+      <p style="font-size:12px;color:var(--text2);margin-top:5px;line-height:1.5">Activa esta opción para poder participar en los eventos y agendar citas con proveedores.</p>
+    </div>
+  </div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+function sNecesidades(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-checklist"></i>Mis necesidades de compra</div>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:14px">Describe qué productos o servicios buscas. Esto ayuda a los proveedores a encontrarte.</p>
+  <div class="field-row"><label>¿Qué necesitas? <span class="req">*</span></label>
+    <textarea>Busco proveedores de salsas artesanales, embutidos y productos orgánicos certificados para mi restaurante.</textarea>
+  </div>
+  <div class="field-row"><label>Categorías de interés</label>
+    <div style="margin-top:5px">
+      <span class="tag">Alimentos y Bebidas ×</span>
+      <span class="tag">Orgánicos ×</span>
+      <span class="tag">Salsas y condimentos ×</span>
+      <span class="tag">Vinos y licores ×</span>
+      <span class="tag tag-add">+ Agregar categoría</span>
+    </div>
+  </div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+function sDocsBazar(){return`
+<div class="section-card">
+  <div class="info-box"><i class="ti ti-info-circle"></i>Estos documentos son necesarios para participar como expositor en el bazar. No son obligatorios para acceder a la plataforma.</div>
+  <div class="section-title"><i class="ti ti-file-certificate"></i>Documentos para bazar</div>
+  <div class="doc-row">
+    <div class="doc-row-left"><i class="ti ti-id-badge-2"></i><div><p class="doc-name">INE / Identificación oficial</p><p class="doc-sub">Frente y reverso</p></div></div>
+    <span class="badge badge-ok"><i class="ti ti-check" style="font-size:11px"></i> Subido</span>
+  </div>
+  <div class="doc-row">
+    <div class="doc-row-left"><i class="ti ti-file-certificate"></i><div><p class="doc-name">Constancia de Situación Fiscal (CSF)</p><p class="doc-sub">Máximo 3 meses de antigüedad</p></div></div>
+    <span class="badge badge-warn"><i class="ti ti-clock" style="font-size:11px"></i> Pendiente</span>
+  </div>
+  <div class="upload-zone" onclick="this.style.borderColor='var(--g)'">
+    <i class="ti ti-upload"></i>
+    <p>Arrastra o haz clic para subir tu CSF</p>
+    <small>PDF · máx. 5 MB</small>
+  </div>
+  <div class="field-row" style="margin-top:13px"><label>Fecha de emisión de la CSF <span class="req">*</span></label><input type="date"/></div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+// ── SECCIONES PROVEEDOR ──────────────────────────
+
+function sNegocio(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-building-store"></i>Información del negocio</div>
+  <div class="grid2">
+    <div class="field-row"><label>Nombre del negocio <span class="req">*</span></label><input value="Salsas Yucatán S.A."/></div>
+    <div class="field-row"><label>Razón social</label><input value="Salsas Yucatán S.A. de C.V."/></div>
+    <div class="field-row"><label>RFC</label><input value="SYU900101XX3" style="text-transform:uppercase"/></div>
+    <div class="field-row"><label>Municipio <span class="req">*</span></label>
+      <select><option>Mérida</option><option>Valladolid</option><option>Progreso</option></select>
+    </div>
+    <div class="field-row"><label>Nombre del representante</label><input value="Juan Pérez Sosa"/></div>
+    <div class="field-row"><label>Número de empleados</label><input type="number" value="12"/></div>
+    <div class="field-row"><label>Fecha de inicio de operaciones</label><input type="date" value="2009-03-15"/></div>
+    <div class="field-row"><label>Categoría principal <span class="req">*</span></label>
+      <select><option>Alimentos y Bebidas</option><option>Tecnología</option><option>Salud y Bienestar</option><option>Comercio</option></select>
+    </div>
+  </div>
+  <div class="field-row"><label>Descripción del negocio <span class="req">*</span></label>
+    <textarea>Productores de salsas artesanales yucatecas con más de 15 años de experiencia en el mercado local y nacional.</textarea>
+  </div>
+  <div class="field-row"><label>Mercado meta</label>
+    <textarea rows="2">Restaurantes de cocina yucateca, tiendas gourmet y supermercados regionales.</textarea>
+  </div>
+  <div class="toggle-row"><span>Domicilio fiscal en Yucatán</span><button class="toggle-sw on" onclick="toggleSw(this)"></button></div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+function chkGroup(name,labels){
+  return labels.map(l=>`<label style="display:flex;align-items:center;gap:7px;font-size:13px;padding:4px 0;cursor:pointer"><input type="checkbox" style="accent-color:var(--g);width:15px;height:15px;flex-shrink:0"/>${l}</label>`).join('');
+}
+
+const CERTS=['Tabla Nutrimental','Etiquetado de acuerdo a la NOM','Código de barras','Registro de marca','Certificados de calidad/inocuidad'];
+
+function selectTipoOferta(val){
+  document.querySelectorAll('[data-g="tipo"]').forEach(p=>p.classList.toggle('selected',p.dataset.v===val));
+  const pf=document.getElementById('prod-fields');
+  const sf=document.getElementById('serv-fields');
+  if(pf)pf.style.display=(['Producto','Ambos'].includes(val))?'block':'none';
+  if(sf)sf.style.display=(['Servicio','Ambos'].includes(val))?'block':'none';
+}
+
+function selectCertProd(val){
+  document.querySelectorAll('[data-g="certprod"]').forEach(p=>p.classList.toggle('selected',p.dataset.v===val));
+  const cumple=document.getElementById('cert-si-box');
+  const apoyo=document.getElementById('apoyo-box');
+  if(cumple)cumple.style.display=val==='Si'?'block':'none';
+  if(apoyo)apoyo.style.display='block';
+}
+
+function selectCertServ(val){
+  document.querySelectorAll('[data-g="certserv"]').forEach(p=>p.classList.toggle('selected',p.dataset.v===val));
+  const box=document.getElementById('certserv-si-box');
+  if(box)box.style.display=val==='Si'?'block':'none';
+}
+
+function sProductos(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-package"></i>Tipo de oferta</div>
+  <div class="field-row">
+    <label>Seleccione si lo que ofrece es un Producto o Servicio <span class="req">*</span></label>
+    <div class="radio-row" style="margin-top:8px">
+      <div class="radio-pill selected" data-g="tipo" data-v="Producto" onclick="selectTipoOferta('Producto')" style="padding:8px 22px;font-size:14px">
+        <i class="ti ti-box"></i> Productos
+      </div>
+      <div class="radio-pill" data-g="tipo" data-v="Servicio" onclick="selectTipoOferta('Servicio')" style="padding:8px 22px;font-size:14px">
+        <i class="ti ti-tools"></i> Servicios
+      </div>
+      <div class="radio-pill" data-g="tipo" data-v="Ambos" onclick="selectTipoOferta('Ambos')" style="padding:8px 22px;font-size:14px">
+        <i class="ti ti-arrows-exchange"></i> Ambos
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BLOQUE PRODUCTO ──────────────────────── -->
+  <div id="prod-fields" class="cond-box" style="margin-top:14px">
+    <p style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Propiedades del producto</p>
+
+    <div class="field-row">
+      <label>Tiempo de vida en anaquel <span class="opt">(si aplica)</span></label>
+      <input placeholder="Ej: Vasos 365 días, Mermelada 180 días"/>
+    </div>
+
+    <!-- Certificaciones producto -->
+    <div class="field-row" style="margin-top:6px">
+      <label style="font-size:13px;font-weight:600;color:var(--text)">¿Su producto cuenta con las certificaciones y normativas correspondientes a su giro?</label>
+      <div class="radio-row" style="margin-top:8px">
+        <div class="radio-pill" data-g="certprod" data-v="Si" onclick="selectCertProd('Si')" style="padding:7px 20px">Sí</div>
+        <div class="radio-pill" data-g="certprod" data-v="No" onclick="selectCertProd('No')" style="padding:7px 20px">No</div>
+      </div>
+    </div>
+
+    <!-- SI tiene certificaciones -->
+    <div id="cert-si-box" style="display:none;margin-top:10px">
+      <div class="cond-box" style="background:#f0fdf4;border-color:#bbf7d0">
+        <p style="font-size:12px;font-weight:700;color:#166534;margin-bottom:10px">Marque los que <u>aplica</u> según su categoría de producto:</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px">
+          ${chkGroup('cumple_certs',CERTS)}
+        </div>
+        <div class="field-row" style="margin-top:12px;margin-bottom:0">
+          <label>En caso de otros, favor de especificar cuáles son las certificaciones y normativas con las que cumple su producto:</label>
+          <textarea rows="2" placeholder="Especifique aquí..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Apoyo IYEM — aparece siempre al seleccionar Sí o No -->
+    <div id="apoyo-box" style="display:none;margin-top:10px">
+      <div class="cond-box" style="background:#eff6ff;border-color:#bfdbfe">
+        <p style="font-size:12px;font-weight:700;color:#1e40af;margin-bottom:10px">¿En qué temas requiere apoyo del IYEM?</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px">
+          ${chkGroup('apoyo_certs',CERTS)}
+        </div>
+        <div class="field-row" style="margin-top:12px;margin-bottom:0">
+          <label>En caso de otros, favor de especificar cuáles son las certificaciones y normativas con las que requiere apoyo del IYEM:</label>
+          <textarea rows="2" placeholder="Especifique aquí..."></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Refrigeración y congelación -->
+    <div class="grid2" style="margin-top:14px">
+      <div class="field-row" style="margin-bottom:0">
+        <label>¿Requiere refrigeración?</label>
+        <select><option>No</option><option>Sí</option></select>
+      </div>
+      <div class="field-row" style="margin-bottom:0">
+        <label>¿Requiere congelación (-4° o menos)?</label>
+        <select><option>No</option><option>Sí</option></select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BLOQUE SERVICIO ──────────────────────── -->
+  <div id="serv-fields" class="cond-box" style="display:none;margin-top:14px">
+    <p style="font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Propiedades del servicio</p>
+
+    <div class="field-row">
+      <label style="font-size:13px;font-weight:600;color:var(--text)">¿Sus servicios cuentan con las certificaciones y normativas correspondientes a su giro?</label>
+      <div class="radio-row" style="margin-top:8px">
+        <div class="radio-pill" data-g="certserv" data-v="Si" onclick="selectCertServ('Si')" style="padding:7px 20px">Sí</div>
+        <div class="radio-pill" data-g="certserv" data-v="No" onclick="selectCertServ('No')" style="padding:7px 20px">No</div>
+      </div>
+    </div>
+
+    <!-- SI tiene certificaciones de servicio -->
+    <div id="certserv-si-box" style="display:none;margin-top:10px">
+      <div class="cond-box" style="background:#f0fdf4;border-color:#bbf7d0">
+        <p style="font-size:12px;font-weight:700;color:#166534;margin-bottom:10px">Favor de especificar cuáles son las certificaciones y normativas con las que cuentan sus servicios:</p>
+        <textarea rows="3" placeholder="Especifique aquí..."></textarea>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;font-size:12px;color:#92400e">
+      <i class="ti ti-info-circle" style="vertical-align:-2px;margin-right:5px"></i>
+      Si no cuenta con certificaciones, continúa en la sección <strong>Contacto y redes</strong> (Imagen del negocio).
+    </div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-star"></i>Productos / servicios destacados</div>
+  <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Hasta 5 que mejor representen tu oferta.</p>
+  <div class="prod-item"><span>Salsa habanera artesanal</span><button>×</button></div>
+  <div class="prod-item"><span>X'ich salsa de chile max</span><button>×</button></div>
+  <button class="prod-add">+ Agregar producto o servicio</button>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+function sEntrega(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-truck"></i>Entrega</div>
+  <div class="toggle-row"><span>Entrega a domicilio</span><button class="toggle-sw on" onclick="condToggle(this,'cob-fields')"></button></div>
+  <div id="cob-fields" class="cond-box">
+    <div class="field-row"><label>Cobertura de entrega</label>
+      <select><option>Local (Mérida)</option><option>Estatal (Yucatán)</option><option>Nacional</option></select>
+    </div>
+    <div class="field-row" style="margin-bottom:0"><label>Forma de entrega</label>
+      <input value="Transporte propio y paquetería" placeholder="Transporte propio, paquetería, etc."/>
+    </div>
+  </div>
+</div>
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-credit-card"></i>Condiciones de pago</div>
+  <div class="toggle-row"><span>Pago contra entrega</span><button class="toggle-sw on" onclick="toggleSw(this)"></button></div>
+  <div class="toggle-row"><span>Factura disponible</span><button class="toggle-sw on" onclick="toggleSw(this)"></button></div>
+  <div class="toggle-row"><span>Acepta crédito a clientes</span><button class="toggle-sw" onclick="condToggle(this,'cred-fields')"></button></div>
+  <div id="cred-fields" style="display:none" class="cond-box">
+    <div class="grid2">
+      <div class="field-row"><label>Monto máximo de crédito ($)</label><input type="number" placeholder="0.00"/></div>
+      <div class="field-row"><label>Plazo</label>
+        <div style="display:flex;gap:6px">
+          <input type="number" placeholder="30" style="width:70px"/>
+          <select style="flex:1"><option>días</option><option>semanas</option><option>meses</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="toggle-row"><span>Plazo a negociar</span><button class="toggle-sw" onclick="toggleSw(this)"></button></div>
+  </div>
+  <div class="field-row" style="margin-top:12px"><label>Régimen fiscal</label>
+    <select><option>Persona Física</option><option>Persona Moral</option><option>Régimen Simplificado de Confianza (RESICO)</option></select>
+  </div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+function sContacto(){return`
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-phone"></i>Contacto</div>
+  <div class="grid2">
+    <div class="field-row"><label>Teléfono <span class="req">*</span></label><input value="9991234567" type="tel"/></div>
+    <div class="field-row"><label>Sitio web</label><input value="https://salsasyucatan.mx" type="url"/></div>
+  </div>
+  <div class="field-row"><label>Dirección</label><input value="Calle 60 #120, Col. Centro, Mérida, Yucatán"/></div>
+</div>
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-share"></i>Redes sociales</div>
+  <div class="grid2">
+    <div class="field-row"><label><i class="ti ti-brand-facebook" style="vertical-align:-2px"></i> Facebook</label><input placeholder="facebook.com/tunegocio"/></div>
+    <div class="field-row"><label><i class="ti ti-brand-instagram" style="vertical-align:-2px"></i> Instagram</label><input value="@salsasyucatan"/></div>
+    <div class="field-row"><label><i class="ti ti-brand-tiktok" style="vertical-align:-2px"></i> TikTok</label><input placeholder="@usuario"/></div>
+    <div class="field-row"><label><i class="ti ti-brand-linkedin" style="vertical-align:-2px"></i> LinkedIn</label><input placeholder="linkedin.com/company/..."/></div>
+  </div>
+</div>
+<div class="section-card">
+  <div class="section-title"><i class="ti ti-photo"></i>Imagen y logo</div>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end">
+    <div style="text-align:center">
+      <div style="width:88px;height:88px;border-radius:12px;background:var(--surface2);border:1.5px dashed var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:5px">
+        <i class="ti ti-upload" style="font-size:24px;color:var(--text3)"></i>
+      </div>
+      <p style="font-size:11px;color:var(--text3)">Logo<br><span style="color:var(--text3)">PNG / JPG · 1:1</span></p>
+    </div>
+    <div style="text-align:center">
+      <div style="width:140px;height:88px;border-radius:12px;background:var(--surface2);border:1.5px dashed var(--border2);display:flex;align-items:center;justify-content:center;cursor:pointer;margin-bottom:5px">
+        <i class="ti ti-upload" style="font-size:24px;color:var(--text3)"></i>
+      </div>
+      <p style="font-size:11px;color:var(--text3)">Foto del negocio<br><span style="color:var(--text3)">JPG · 16:9 recomendado</span></p>
+    </div>
+  </div>
+</div>
+<div class="btn-row"><button class="btn-cancel">Cancelar</button><button class="btn-save">Guardar cambios</button></div>
+`;}
+
+render();
+</script>
+</body>
+</html>

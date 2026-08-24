@@ -2,7 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue';
 import TabEventos from '@/Components/TabEventos.vue';
 import EventosSidebar from '@/Components/EventosSidebar.vue';
-import { Link, router, usePage, useForm } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import { ref, computed, onMounted } from 'vue';
 import FullCalendar from '@fullcalendar/vue3';
 import dayGridPlugin from '@fullcalendar/daygrid';
@@ -25,7 +25,8 @@ const page = usePage();
 const historialAbierto = ref(false);
 const MAX_CITAS = computed(() => props.evento?.max_citas_por_comprador ?? 3);
 const activeTab = ref('lista');
-const mainTab = ref('citas');
+const paramsIniciales = new URLSearchParams(window.location.search);
+const mainTab = ref(paramsIniciales.get('tab') === 'eventos' ? 'eventos' : 'citas');
 
 const estadoConfig = {
     pendiente:  { label: 'Pendiente',  class: 'bg-guinda-500/15 text-guinda-600 dark:text-guinda-400 border-guinda-500/20' },
@@ -93,27 +94,6 @@ const calendarOptions = computed(() => ({
     nowIndicator: true,
     businessHours: { daysOfWeek: [1, 2, 3, 4, 5], startTime: '09:00', endTime: '16:00' },
 }));
-
-// ── Perfil del comprador ─────────────────────────────────────
-const showPerfilModal = ref(false);
-const formPerfil = useForm({
-    name:                   page.props.auth.user?.name || '',
-    telefono:               page.props.auth.user?.telefono || '',
-    curp:                   page.props.auth.user?.curp || '',
-    rfc:                    page.props.auth.user?.rfc || '',
-    municipio:              page.props.auth.user?.municipio || '',
-    nombre_empresa:         page.props.auth.user?.nombre_empresa || '',
-    sitio_web:              page.props.auth.user?.sitio_web || '',
-    necesidades:            page.props.auth.user?.necesidades || '',
-    camara_asociacion:      page.props.auth.user?.camara_asociacion || '',
-    nombre_establecimiento: page.props.auth.user?.nombre_establecimiento || '',
-    es_restaurantero:       page.props.auth.user?.es_restaurantero ?? false,
-});
-const submitPerfil = () => {
-    formPerfil.post(route('perfil.comprador.actualizar'), {
-        onSuccess: () => { showPerfilModal.value = false; },
-    });
-};
 
 const iniciales = (nombre) => {
     if (!nombre) return '?';
@@ -300,7 +280,7 @@ const guardarNota = (citaId) => {
 
             <!-- ── TAB EVENTOS ──────────────────────────────────────── -->
             <div v-if="mainTab === 'eventos'">
-                <TabEventos :eventos="eventos" @open-perfil-modal="showPerfilModal = true" />
+                <TabEventos :eventos="eventos" />
             </div>
 
             <!-- ── TAB CITAS ────────────────────────────────────────── -->
@@ -375,10 +355,10 @@ const guardarNota = (citaId) => {
                                 class="inline-flex items-center px-2 py-0.5 bg-guinda-50 dark:bg-guinda-950/30 text-guinda-700 dark:text-guinda-400 text-xs font-medium rounded-full border border-guinda-200 dark:border-guinda-900">
                                 {{ campo }}
                             </span>
-                            <button @click="showPerfilModal = true"
+                            <Link :href="route('user.perfil')"
                                 class="ml-auto shrink-0 px-3 py-1.5 bg-guinda-800 hover:bg-guinda-700 text-white text-xs font-bold rounded-xl transition-colors">
                                 Completar perfil
-                            </button>
+                            </Link>
                         </div>
                     </div>
                 </div>
@@ -394,10 +374,10 @@ const guardarNota = (citaId) => {
                     <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">Tenemos una pregunta nueva para ti</p>
                     <p class="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
                         ¿Perteneces a alguna cámara o asociación (CANIRAC u otra)?
-                        <button @click="showPerfilModal = true"
+                        <Link :href="route('user.perfil')"
                             class="ml-1 font-semibold underline hover:no-underline">
                             Actualizar mi perfil →
-                        </button>
+                        </Link>
                     </p>
                 </div>
             </div>
@@ -496,13 +476,13 @@ const guardarNota = (citaId) => {
                             Completa tu perfil y cuéntanos qué buscas — te mostraremos proveedores relevantes
                         </p>
                     </div>
-                    <button @click="showPerfilModal = true"
+                    <Link :href="route('user.perfil')"
                         class="text-xs font-semibold text-guinda-700 dark:text-guinda-400 hover:underline flex items-center gap-1">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
                         </svg>
                         Editar perfil
-                    </button>
+                    </Link>
                 </div>
                 <!-- Resumen de datos -->
                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
@@ -529,10 +509,10 @@ const guardarNota = (citaId) => {
                     <p v-if="$page.props.auth.user?.necesidades" class="text-sm text-gray-700 dark:text-gray-300">
                         {{ $page.props.auth.user.necesidades }}
                     </p>
-                    <button v-else @click="showPerfilModal = true"
+                    <Link v-else :href="route('user.perfil')"
                         class="text-sm text-guinda-600 dark:text-guinda-400 italic">
                         Escribe qué tipo de proveedores buscas para recibir sugerencias personalizadas →
-                    </button>
+                    </Link>
                     <!-- Keywords detectadas -->
                     <div v-if="keywordsDetectadas.length > 0" class="mt-2 flex flex-wrap gap-1.5">
                         <span class="text-xs text-guinda-500 dark:text-guinda-500 font-medium">Palabras clave:</span>
@@ -854,145 +834,6 @@ const guardarNota = (citaId) => {
         </div><!-- /flex-1 -->
         </div><!-- /flex -->
         </div><!-- /max-w-7xl -->
-
-        <!-- Modal Perfil Comprador -->
-        <Teleport to="body">
-            <div v-if="showPerfilModal" class="fixed inset-0 z-50 flex items-center justify-center p-4"
-                 style="background:rgba(0,0,0,0.5)" @click.self="showPerfilModal = false">
-                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
-                    <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800">
-                        <h2 class="text-lg font-bold text-gray-900 dark:text-white">Editar mi perfil</h2>
-                        <button @click="showPerfilModal = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-white p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                        </button>
-                    </div>
-                    <form @submit.prevent="submitPerfil" class="px-6 py-5 space-y-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre completo</label>
-                                <input v-model="formPerfil.name" type="text" required
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                <p v-if="formPerfil.errors.name" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.name }}</p>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Teléfono</label>
-                                <input v-model="formPerfil.telefono" type="tel" maxlength="10" placeholder="9991234567"
-                                    @input="formPerfil.telefono = formPerfil.telefono.replace(/\D/g, '').slice(0, 10)"
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Correo electrónico</label>
-                                <input :value="$page.props.auth.user?.email" type="email" disabled
-                                    class="w-full text-sm bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 text-gray-400 rounded-xl px-3 py-2.5 cursor-not-allowed" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Empresa <span class="text-red-500">*</span></label>
-                                <input v-model="formPerfil.nombre_empresa" type="text" maxlength="200" required placeholder="Mi Empresa S.A. de C.V."
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Municipio <span class="text-gray-400 font-normal">(opcional)</span></label>
-                                <input v-model="formPerfil.municipio" type="text" maxlength="100" placeholder="Mérida"
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">RFC <span class="text-gray-400 font-normal">(opcional)</span></label>
-                                <input v-model="formPerfil.rfc" type="text" maxlength="13" placeholder="XXXX000000XXX"
-                                    @input="formPerfil.rfc = formPerfil.rfc.replace(/[^a-zA-ZñÑ&0-9]/g,'').toUpperCase().slice(0,13)"
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 uppercase" />
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Página web <span class="text-gray-400 font-normal">(opcional)</span></label>
-                                <input v-model="formPerfil.sitio_web" type="url" placeholder="https://..."
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                <p v-if="formPerfil.errors.sitio_web" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.sitio_web }}</p>
-                            </div>
-                        </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                ¿Qué necesidades tienes?
-                                <span class="text-xs text-guinda-600 dark:text-guinda-400 font-normal ml-1">— Usamos esto para sugerirte proveedores relevantes</span>
-                            </label>
-                            <textarea v-model="formPerfil.necesidades" rows="4"
-                                placeholder="Ej: busco proveedores de vasos plásticos, servicios de catering, tecnología para mi empresa..."
-                                class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500 resize-none" />
-                        </div>
-                        <!-- Cámara o asociación -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                                ¿Pertenece a alguna cámara o asociación? <span class="text-red-500">*</span>
-                            </label>
-                            <div class="flex flex-col sm:flex-row gap-3">
-                                <label v-for="opcion in ['CANIRAC', 'Ninguna']" :key="opcion"
-                                    class="flex items-center gap-2.5 cursor-pointer px-3 py-2.5 rounded-xl border transition-all text-sm"
-                                    :class="formPerfil.camara_asociacion === opcion
-                                        ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-500/10 dark:border-guinda-500'
-                                        : 'border-gray-200 dark:border-gray-700 hover:border-guinda-300 dark:hover:border-guinda-600'">
-                                    <input type="radio" :value="opcion" v-model="formPerfil.camara_asociacion" class="accent-guinda-700" />
-                                    <span class="font-medium text-gray-800 dark:text-gray-200">{{ opcion }}</span>
-                                </label>
-                            </div>
-                            <p v-if="formPerfil.errors.camara_asociacion" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.camara_asociacion }}</p>
-                        </div>
-
-                        <!-- Nombre del establecimiento (solo si CANIRAC) -->
-                        <Transition name="fade">
-                            <div v-if="formPerfil.camara_asociacion === 'CANIRAC'">
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                                    Nombre del restaurante / establecimiento <span class="text-red-500">*</span>
-                                </label>
-                                <input v-model="formPerfil.nombre_establecimiento" type="text"
-                                    placeholder="Ej. Restaurante El Mesón de San Juan"
-                                    class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 focus:outline-none focus:border-guinda-500" />
-                                <p v-if="formPerfil.errors.nombre_establecimiento" class="text-xs text-red-500 mt-1">{{ formPerfil.errors.nombre_establecimiento }}</p>
-                            </div>
-                        </Transition>
-
-                        <!-- ¿Eres restaurantero? -->
-                        <div class="border-2 rounded-2xl p-4 transition-colors"
-                            :class="formPerfil.es_restaurantero
-                                ? 'border-guinda-500 bg-guinda-50 dark:bg-guinda-900/10'
-                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'">
-                            <label class="flex items-start gap-3 cursor-pointer">
-                                <input type="checkbox" v-model="formPerfil.es_restaurantero"
-                                    class="accent-guinda-700 w-5 h-5 mt-0.5 flex-shrink-0" />
-                                <div>
-                                    <p class="text-sm font-bold text-gray-800 dark:text-gray-200">
-                                        ¿Eres restaurantero?
-                                    </p>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                                        Soy dueño o encargado de un restaurante, cafetería, hotel u otro
-                                        establecimiento de alimentos. Al activar esta opción, podré participar
-                                        en el evento y agendar citas con proveedores.
-                                    </p>
-                                    <Transition name="fade">
-                                        <p v-if="formPerfil.es_restaurantero && !page.props.auth.user?.es_restaurantero"
-                                            class="mt-2 text-xs font-semibold text-green-700 dark:text-green-400">
-                                            ✅ Al guardar, quedarás registrado en el evento activo.
-                                        </p>
-                                        <p v-else-if="formPerfil.es_restaurantero && page.props.auth.user?.es_restaurantero"
-                                            class="mt-2 text-xs text-green-600 dark:text-green-400">
-                                            ✅ Ya estás registrado como restaurantero.
-                                        </p>
-                                    </Transition>
-                                </div>
-                            </label>
-                        </div>
-
-                        <div class="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-                            <button type="button" @click="showPerfilModal = false"
-                                class="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl">
-                                Cancelar
-                            </button>
-                            <button type="submit" :disabled="formPerfil.processing"
-                                class="px-5 py-2 text-sm font-bold text-white bg-guinda-800 hover:bg-guinda-700 disabled:opacity-60 rounded-xl">
-                                {{ formPerfil.processing ? 'Guardando...' : 'Guardar cambios' }}
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </Teleport>
 
         <!-- Banner: invitación a ser proveedor -->
         <div v-if="!$page.props.auth.user?.is_restaurantero"

@@ -110,6 +110,7 @@ class RestauranteroPanelController extends Controller
                     'nombre'                        => $ev->nombre,
                     'sector_economico'              => $ev->sector_economico,
                     'activa'                        => $ev->activa,
+                    'tipo_evento'                   => $ev->tipo_evento ?? 'encuentro_negocios',
                     'convocatoria_url'              => $ev->convocatoria_url,
                     'fecha_hora_inicio'             => $ev->fecha_hora_inicio?->toISOString(),
                     'fecha_hora_fin'                => $ev->fecha_hora_fin?->toISOString(),
@@ -126,6 +127,7 @@ class RestauranteroPanelController extends Controller
                     'mi_registro' => [
                         'comprador' => $registro->firstWhere('tipo', 'comprador'),
                         'proveedor' => $registro->firstWhere('tipo', 'proveedor'),
+                        'expositor' => $registro->firstWhere('tipo', 'expositor'),
                     ],
                 ];
             });

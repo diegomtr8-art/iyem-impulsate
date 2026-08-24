@@ -162,6 +162,13 @@ HTML;
                 '{{nombre_evento}}' => 'Nombre del evento',
                 '{{motivo_rechazo}}' => 'Motivo del rechazo ingresado por el administrador',
             ],
+            'bazar_solicitud_recibida', 'bazar_seleccionado' => [
+                '{{nombre_evento}}' => 'Nombre del evento',
+            ],
+            'bazar_rechazado' => [
+                '{{nombre_evento}}' => 'Nombre del evento',
+                '{{url_evaluacion}}' => 'Link a la página pública con el detalle de la evaluación',
+            ],
             default => [],
         };
 

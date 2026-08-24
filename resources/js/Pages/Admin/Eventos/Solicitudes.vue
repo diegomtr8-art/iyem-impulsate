@@ -12,19 +12,23 @@ const props = defineProps({
     todosCompradores: { type: Array, default: () => [] },
 });
 
+const esBazar = computed(() => props.evento.tipo_evento === 'bazar_exposicion');
+
 const tabActiva = ref('pendientes');
 
 const pendientesProveedores = computed(() => props.pendientes.filter(s => s.tipo === 'proveedor'));
 const pendientesCompradores = computed(() => props.pendientes.filter(s => s.tipo === 'comprador'));
+const pendientesExpositores = computed(() => props.pendientes.filter(s => s.tipo === 'expositor'));
 
 // Filtro de tipo para las tablas de Aprobados / Rechazados
 const filtroAprobados = ref('todos');
 const filtroRechazados = ref('todos');
 
 const filtrarPorTipo = (lista, filtro) => {
-    if (filtro === 'proveedor') return lista.filter(s => s.tipo === 'proveedor');
-    if (filtro === 'comprador') return lista.filter(s => s.tipo === 'comprador');
-    if (filtro === 'canirac')   return lista.filter(s => s.user?.camara_asociacion === 'CANIRAC');
+    if (filtro === 'proveedor')  return lista.filter(s => s.tipo === 'proveedor');
+    if (filtro === 'comprador')  return lista.filter(s => s.tipo === 'comprador');
+    if (filtro === 'expositor')  return lista.filter(s => s.tipo === 'expositor');
+    if (filtro === 'canirac')    return lista.filter(s => s.user?.camara_asociacion === 'CANIRAC');
     return lista;
 };
 
@@ -97,8 +101,8 @@ const confirmarAprobar = (solicitud) => {
 const cancelarAprobar = () => { confirmandoId.value = null; };
 
 const aprobarTodos = (tipo) => {
-    const tipoLabel = tipo === 'proveedor' ? 'proveedores' : 'compradores';
-    if (!confirm(`¿Aprobar todas las solicitudes pendientes de ${tipoLabel}?`)) return;
+    const labels = { proveedor: 'proveedores', comprador: 'compradores', expositor: 'expositores' };
+    if (!confirm(`¿Aprobar todas las solicitudes pendientes de ${labels[tipo] ?? tipo}?`)) return;
     router.post(
         route('admin.eventos.solicitudes.aprobar-todos', props.evento.id),
         { tipo },
@@ -152,7 +156,7 @@ const confirmarEliminar = () => {
     );
 };
 
-// Alta manual (sin solicitud previa)
+// Alta manual (sin solicitud previa) — solo para encuentro_negocios
 const formAgregarProveedor = useForm({ restaurantero_id: '' });
 const formAgregarComprador = useForm({ user_id: '' });
 
@@ -179,6 +183,15 @@ const formatFechaCorta = (fecha) => {
     if (!fecha) return '—';
     return new Date(fecha).toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
 };
+
+// CSF vigente (≤ 3 meses)
+const csfVigente = (csf_fecha) => {
+    if (!csf_fecha) return false;
+    const fecha = new Date(csf_fecha);
+    const limite = new Date();
+    limite.setMonth(limite.getMonth() - 3);
+    return fecha >= limite;
+};
 </script>
 
 <template>
@@ -195,6 +208,10 @@ const formatFechaCorta = (fecha) => {
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <h1 class="text-xl font-bold text-gray-900 dark:text-white truncate">{{ evento.nombre }}</h1>
+                        <span v-if="esBazar"
+                            class="px-2 py-0.5 text-xs font-semibold rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
+                            Bazar / Exposición
+                        </span>
                         <span v-if="evento.activa"
                             class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -244,8 +261,8 @@ const formatFechaCorta = (fecha) => {
                 </div>
             </div>
 
-            <!-- ── ALTA MANUAL (sin solicitud previa) ─────────────── -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <!-- ── ALTA MANUAL — solo para encuentro_negocios ─────────── -->
+            <div v-if="!esBazar" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5">
                     <h3 class="text-sm font-black text-guinda-800 dark:text-guinda-400 mb-3">➕ Agregar proveedor al evento</h3>
                     <form @submit.prevent="agregarProveedor" class="flex gap-2 items-start">
@@ -298,7 +315,82 @@ const formatFechaCorta = (fecha) => {
                 </div>
 
                 <div v-else class="space-y-6">
-                    <!-- Proveedores pendientes -->
+
+                    <!-- Expositores pendientes (bazar) -->
+                    <div v-if="pendientesExpositores.length > 0">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                            <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-violet-500"></span>
+                                Expositores pendientes ({{ pendientesExpositores.length }})
+                            </h3>
+                            <button @click="aprobarTodos('expositor')"
+                                class="px-4 py-2 min-h-[40px] bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-colors">
+                                Aprobar todos los expositores
+                            </button>
+                        </div>
+                        <div class="space-y-3">
+                            <div v-for="s in pendientesExpositores" :key="s.id"
+                                class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4">
+                                <div class="flex flex-col sm:flex-row gap-4">
+                                    <div class="flex items-start gap-3 flex-1 min-w-0">
+                                        <div class="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
+                                            <span class="text-sm font-black text-violet-700 dark:text-violet-400">
+                                                {{ (s.user?.name || '?').charAt(0).toUpperCase() }}
+                                            </span>
+                                        </div>
+                                        <div class="min-w-0 flex-1">
+                                            <p class="font-bold text-gray-900 dark:text-white text-sm">{{ s.user?.name }}</p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400">{{ s.user?.email }}</p>
+                                            <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                                                <span v-if="s.user?.telefono" class="text-gray-500 dark:text-gray-400">{{ s.user.telefono }}</span>
+                                                <span v-if="s.user?.nombre_empresa" class="text-gray-500 dark:text-gray-400">{{ s.user.nombre_empresa }}</span>
+                                                <!-- Indicadores de documentos -->
+                                                <span v-if="s.user?.ine_path"
+                                                    class="text-emerald-600 dark:text-emerald-400 font-medium">✓ INE</span>
+                                                <span v-else
+                                                    class="text-red-500 dark:text-red-400 font-medium">✗ Sin INE</span>
+                                                <span v-if="s.user?.csf_path && csfVigente(s.user?.csf_fecha)"
+                                                    class="text-emerald-600 dark:text-emerald-400 font-medium">✓ CSF vigente</span>
+                                                <span v-else-if="s.user?.csf_path"
+                                                    class="text-amber-600 dark:text-amber-400 font-medium">⚠ CSF vencida</span>
+                                                <span v-else
+                                                    class="text-red-500 dark:text-red-400 font-medium">✗ Sin CSF</span>
+                                                <span class="text-gray-300 dark:text-gray-700">{{ new Date(s.created_at).toLocaleDateString('es-MX', { month: 'short', day: 'numeric' }) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Acciones -->
+                                    <div class="flex items-center gap-2 sm:flex-col sm:items-end sm:justify-center shrink-0">
+                                        <button @click="abrirPerfil(s)"
+                                            class="px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">
+                                            Ver perfil y docs
+                                        </button>
+                                        <div v-if="confirmandoId === s.id" class="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-2 py-1">
+                                            <span class="text-xs text-emerald-700 dark:text-emerald-400 font-medium">¿Confirmar?</span>
+                                            <button @click="confirmarAprobar(s)" :disabled="procesandoId === s.id"
+                                                class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50">
+                                                {{ procesandoId === s.id ? '...' : 'Sí' }}
+                                            </button>
+                                            <button @click="cancelarAprobar" class="px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">No</button>
+                                        </div>
+                                        <div v-else class="flex gap-2">
+                                            <button @click="iniciarAprobar(s)" :disabled="procesandoId === s.id"
+                                                class="px-3 py-2 min-h-[36px] bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors">
+                                                <span v-if="procesandoId === s.id">...</span>
+                                                <span v-else>Aprobar</span>
+                                            </button>
+                                            <button @click="abrirModalRechazo(s)" :disabled="procesandoId === s.id"
+                                                class="px-3 py-2 min-h-[36px] bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-colors">
+                                                Rechazar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Proveedores pendientes (encuentro_negocios) -->
                     <div v-if="pendientesProveedores.length > 0">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                             <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -314,7 +406,6 @@ const formatFechaCorta = (fecha) => {
                             <div v-for="s in pendientesProveedores" :key="s.id"
                                 class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4">
                                 <div class="flex flex-col sm:flex-row gap-4">
-                                    <!-- Info -->
                                     <div class="flex items-start gap-3 flex-1 min-w-0">
                                         <div class="w-10 h-10 rounded-xl bg-guinda-100 dark:bg-guinda-900/30 border border-guinda-200 dark:border-guinda-800 flex items-center justify-center shrink-0 overflow-hidden">
                                             <img v-if="s.restaurantero?.logo_path" :src="'/storage/' + s.restaurantero.logo_path" class="w-full h-full object-contain" />
@@ -336,13 +427,11 @@ const formatFechaCorta = (fecha) => {
                                             </div>
                                         </div>
                                     </div>
-                                    <!-- Acciones -->
                                     <div class="flex items-center gap-2 sm:flex-col sm:items-end sm:justify-center shrink-0">
                                         <button @click="abrirPerfil(s)"
                                             class="px-3 py-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-xl transition-colors">
                                             Ver perfil
                                         </button>
-                                        <!-- Mini-confirm aprobar -->
                                         <div v-if="confirmandoId === s.id" class="flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-2 py-1">
                                             <span class="text-xs text-emerald-700 dark:text-emerald-400 font-medium">¿Confirmar?</span>
                                             <button @click="confirmarAprobar(s)" :disabled="procesandoId === s.id"
@@ -373,7 +462,7 @@ const formatFechaCorta = (fecha) => {
                         </div>
                     </div>
 
-                    <!-- Compradores pendientes -->
+                    <!-- Compradores pendientes (encuentro_negocios) -->
                     <div v-if="pendientesCompradores.length > 0">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                             <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -435,6 +524,7 @@ const formatFechaCorta = (fecha) => {
                             </div>
                         </div>
                     </div>
+
                 </div>
             </div>
 
@@ -446,12 +536,10 @@ const formatFechaCorta = (fecha) => {
                 </div>
                 <template v-else>
                     <div class="flex flex-wrap gap-2 mb-4">
-                        <button v-for="opt in [
-                                { value: 'todos', label: 'Todos' },
-                                { value: 'proveedor', label: 'Proveedores' },
-                                { value: 'comprador', label: 'Compradores' },
-                                { value: 'canirac', label: 'CANIRAC' },
-                            ]" :key="opt.value"
+                        <button v-for="opt in (esBazar
+                            ? [{ value: 'todos', label: 'Todos' }, { value: 'expositor', label: 'Expositores' }]
+                            : [{ value: 'todos', label: 'Todos' }, { value: 'proveedor', label: 'Proveedores' }, { value: 'comprador', label: 'Compradores' }, { value: 'canirac', label: 'CANIRAC' }]
+                        )" :key="opt.value"
                             @click="filtroAprobados = opt.value"
                             :class="filtroAprobados === opt.value
                                 ? 'bg-guinda-800 text-white border-guinda-800'
@@ -503,8 +591,7 @@ const formatFechaCorta = (fecha) => {
                                 class="px-3 py-1.5 text-xs font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-colors">
                                 Rechazar
                             </button>
-                            <button
-                                @click="abrirModalEliminar(s)"
+                            <button @click="abrirModalEliminar(s)"
                                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
                                        bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400
                                        border border-red-200 dark:border-red-800
@@ -529,12 +616,10 @@ const formatFechaCorta = (fecha) => {
                 </div>
                 <template v-else>
                     <div class="flex flex-wrap gap-2 mb-4">
-                        <button v-for="opt in [
-                                { value: 'todos', label: 'Todos' },
-                                { value: 'proveedor', label: 'Proveedores' },
-                                { value: 'comprador', label: 'Compradores' },
-                                { value: 'canirac', label: 'CANIRAC' },
-                            ]" :key="opt.value"
+                        <button v-for="opt in (esBazar
+                            ? [{ value: 'todos', label: 'Todos' }, { value: 'expositor', label: 'Expositores' }]
+                            : [{ value: 'todos', label: 'Todos' }, { value: 'proveedor', label: 'Proveedores' }, { value: 'comprador', label: 'Compradores' }, { value: 'canirac', label: 'CANIRAC' }]
+                        )" :key="opt.value"
                             @click="filtroRechazados = opt.value"
                             :class="filtroRechazados === opt.value
                                 ? 'bg-guinda-800 text-white border-guinda-800'
@@ -646,11 +731,8 @@ const formatFechaCorta = (fecha) => {
                  @click.self="cerrarModalEliminar">
                 <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md">
                     <div class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-                        <h3 class="text-base font-bold text-gray-900 dark:text-white">
-                            Eliminar del evento
-                        </h3>
-                        <button @click="cerrarModalEliminar"
-                                class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                        <h3 class="text-base font-bold text-gray-900 dark:text-white">Eliminar del evento</h3>
+                        <button @click="cerrarModalEliminar" class="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                             <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -661,55 +743,38 @@ const formatFechaCorta = (fecha) => {
                             Vas a eliminar a
                             <strong>{{ solicitudAEliminar?.user?.name }}</strong>
                             del evento como
-                            <strong>{{ solicitudAEliminar?.tipo === 'proveedor' ? 'proveedor' : 'comprador' }}</strong>.
+                            <strong>{{ solicitudAEliminar?.tipo === 'proveedor' ? 'proveedor' : solicitudAEliminar?.tipo === 'expositor' ? 'expositor' : 'comprador' }}</strong>.
                             El usuario podrá volver a postularse.
                         </p>
-
                         <div v-if="solicitudAEliminar?.citas_activas > 0"
-                             class="flex gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20
-                                    border border-amber-200 dark:border-amber-700">
-                            <svg class="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"
-                                 fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round"
-                                      d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
+                             class="flex gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+                            <svg class="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/>
                             </svg>
                             <div>
                                 <p class="text-sm font-semibold text-amber-800 dark:text-amber-300">
                                     Este usuario tiene {{ solicitudAEliminar.citas_activas }} cita{{ solicitudAEliminar.citas_activas !== 1 ? 's' : '' }} activa{{ solicitudAEliminar.citas_activas !== 1 ? 's' : '' }}.
                                 </p>
-                                <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                                    Al eliminar al usuario, sus citas serán canceladas automáticamente.
-                                </p>
+                                <p class="text-xs text-amber-700 dark:text-amber-400 mt-0.5">Al eliminar al usuario, sus citas serán canceladas automáticamente.</p>
                             </div>
                         </div>
-
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                                 Motivo de eliminación <span class="text-red-500">*</span>
                             </label>
-                            <textarea
-                                v-model="motivoEliminacion"
-                                rows="3"
+                            <textarea v-model="motivoEliminacion" rows="3"
                                 placeholder="Escribe el motivo por el que se elimina al usuario del evento..."
-                                class="w-full rounded-xl border border-gray-300 dark:border-gray-600
-                                       bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                                       px-4 py-2.5 text-sm
-                                       focus:ring-2 focus:ring-[#8b1028] focus:border-transparent
-                                       placeholder:text-gray-400 resize-none">
+                                class="w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#8b1028] focus:border-transparent placeholder:text-gray-400 resize-none">
                             </textarea>
                         </div>
                     </div>
                     <div class="flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
                         <button @click="cerrarModalEliminar"
-                                class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600
-                                       text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+                                class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                             Cancelar
                         </button>
-                        <button @click="confirmarEliminar"
-                                :disabled="!motivoEliminacion.trim() || procesando"
-                                class="px-4 py-2 text-sm font-semibold rounded-lg
-                                       bg-red-600 hover:bg-red-700 text-white transition-colors
-                                       disabled:opacity-50 disabled:cursor-not-allowed">
+                        <button @click="confirmarEliminar" :disabled="!motivoEliminacion.trim() || procesando"
+                                class="px-4 py-2 text-sm font-semibold rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {{ procesando && procesandoId === solicitudAEliminar?.id ? 'Eliminando...' : 'Eliminar del evento' }}
                         </button>
                     </div>
@@ -731,9 +796,125 @@ const formatFechaCorta = (fecha) => {
                         </button>
                     </div>
                     <div class="px-6 py-5 space-y-5">
-                        <!-- Proveedor -->
-                        <template v-if="solicitudPreview.tipo === 'proveedor' && solicitudPreview.restaurantero">
 
+                        <!-- ── EXPOSITOR ── -->
+                        <template v-if="solicitudPreview.tipo === 'expositor'">
+                            <div class="flex items-center gap-4">
+                                <div class="w-14 h-14 rounded-full bg-violet-100 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-800 flex items-center justify-center shrink-0">
+                                    <span class="text-xl font-black text-violet-700 dark:text-violet-400">
+                                        {{ solicitudPreview.user?.name?.charAt(0).toUpperCase() }}
+                                    </span>
+                                </div>
+                                <div>
+                                    <h3 class="font-bold text-gray-900 dark:text-white text-lg">{{ solicitudPreview.user?.name }}</h3>
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">{{ solicitudPreview.user?.email }}</p>
+                                    <span class="inline-block mt-1 px-2.5 py-0.5 text-xs font-semibold rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400">
+                                        Expositor de Bazar
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div v-if="solicitudPreview.user?.telefono">
+                                    <p class="text-xs text-gray-400 dark:text-gray-600">Teléfono</p>
+                                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ solicitudPreview.user.telefono }}</p>
+                                </div>
+                                <div v-if="solicitudPreview.user?.nombre_empresa">
+                                    <p class="text-xs text-gray-400 dark:text-gray-600">Empresa</p>
+                                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ solicitudPreview.user.nombre_empresa }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 dark:text-gray-600">Registro en plataforma</p>
+                                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ formatFechaCorta(solicitudPreview.user?.created_at) }}</p>
+                                </div>
+                                <div>
+                                    <p class="text-xs text-gray-400 dark:text-gray-600">Solicitud enviada</p>
+                                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ formatFechaCorta(solicitudPreview.created_at) }}</p>
+                                </div>
+                            </div>
+
+                            <!-- Documentos legales -->
+                            <div class="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
+                                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+                                    Documentos legales
+                                </p>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <!-- INE -->
+                                    <div class="flex flex-col gap-2">
+                                        <div class="flex items-center gap-2">
+                                            <span v-if="solicitudPreview.user?.ine_path"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+                                                       bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                                                ✓ INE subida
+                                            </span>
+                                            <span v-else
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+                                                       bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                                                ✗ Sin INE
+                                            </span>
+                                        </div>
+                                        <a v-if="solicitudPreview.user?.ine_path"
+                                           :href="'/storage/' + solicitudPreview.user.ine_path"
+                                           target="_blank"
+                                           class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold
+                                                  bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400
+                                                  border border-guinda-200 dark:border-guinda-800 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                            </svg>
+                                            Ver / Descargar INE
+                                        </a>
+                                    </div>
+
+                                    <!-- CSF -->
+                                    <div class="flex flex-col gap-2">
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <span v-if="solicitudPreview.user?.csf_path && csfVigente(solicitudPreview.user?.csf_fecha)"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+                                                       bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                                                ✓ CSF vigente
+                                            </span>
+                                            <span v-else-if="solicitudPreview.user?.csf_path"
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+                                                       bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                                                ⚠ CSF vencida
+                                            </span>
+                                            <span v-else
+                                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
+                                                       bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400">
+                                                ✗ Sin CSF
+                                            </span>
+                                            <span v-if="solicitudPreview.user?.csf_fecha"
+                                                class="text-xs text-gray-500 dark:text-gray-400">
+                                                Emitida: {{ formatFechaCorta(solicitudPreview.user.csf_fecha) }}
+                                            </span>
+                                        </div>
+                                        <a v-if="solicitudPreview.user?.csf_path"
+                                           :href="'/storage/' + solicitudPreview.user.csf_path"
+                                           target="_blank"
+                                           class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold
+                                                  bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400
+                                                  border border-guinda-200 dark:border-guinda-800 hover:bg-guinda-100 dark:hover:bg-guinda-900/40 transition-colors">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                            </svg>
+                                            Ver / Descargar CSF
+                                        </a>
+                                    </div>
+                                </div>
+
+                                <!-- Alerta si documentos incompletos/vencidos -->
+                                <div v-if="!solicitudPreview.user?.ine_path || !solicitudPreview.user?.csf_path || !csfVigente(solicitudPreview.user?.csf_fecha)"
+                                     class="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
+                                    <p class="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                                        ⚠ Los documentos de este expositor están incompletos o vencidos. Revisa antes de aprobar.
+                                    </p>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- ── PROVEEDOR ── -->
+                        <template v-else-if="solicitudPreview.tipo === 'proveedor' && solicitudPreview.restaurantero">
                             <!-- Badges de estado del perfil -->
                             <div class="flex flex-wrap gap-2 mb-4">
                                 <span v-if="solicitudPreview.restaurantero.perfil_completo"
@@ -749,18 +930,14 @@ const formatFechaCorta = (fecha) => {
                                     ⚠ Perfil incompleto
                                 </span>
                                 <span v-if="solicitudPreview.restaurantero.aprobado"
-                                    class="px-2 py-0.5 text-xs font-semibold rounded-full
-                                           bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
+                                    class="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                                     ✓ Aprobado globalmente
                                 </span>
                                 <span v-else
-                                    class="px-2 py-0.5 text-xs font-semibold rounded-full
-                                           bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                                    class="px-2 py-0.5 text-xs font-semibold rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
                                     ⚠ Pendiente aprobación global
                                 </span>
                             </div>
-
-                            <!-- Hero: Logo -->
                             <div class="aspect-video w-full rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 mb-4 flex items-center justify-center">
                                 <img v-if="solicitudPreview.restaurantero.logo_path"
                                      :src="'/storage/' + solicitudPreview.restaurantero.logo_path"
@@ -773,31 +950,18 @@ const formatFechaCorta = (fecha) => {
                                     <span class="text-xs">Sin logo cargado</span>
                                 </div>
                             </div>
-
-                            <!-- Nombre y descripción -->
                             <div class="flex flex-wrap gap-1.5 mb-2">
                                 <span v-if="solicitudPreview.restaurantero.municipio"
-                                    class="text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400
-                                           border border-guinda-200 dark:border-guinda-500/20 px-3 py-1 rounded-full">
+                                    class="text-xs font-medium bg-guinda-50 dark:bg-guinda-500/10 text-guinda-700 dark:text-guinda-400 border border-guinda-200 dark:border-guinda-500/20 px-3 py-1 rounded-full">
                                     📍 {{ solicitudPreview.restaurantero.municipio }}, Yucatán
                                 </span>
                                 <span v-if="solicitudPreview.restaurantero.categoria"
-                                    class="text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400
-                                           border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full">
+                                    class="text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 px-3 py-1 rounded-full">
                                     {{ solicitudPreview.restaurantero.categoria }}
                                 </span>
                             </div>
-
-                            <h3 class="text-xl font-black text-gray-900 dark:text-white mb-2">
-                                {{ solicitudPreview.restaurantero.nombre_restaurante }}
-                            </h3>
-
-                            <p v-if="solicitudPreview.restaurantero.descripcion"
-                               class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-                                {{ solicitudPreview.restaurantero.descripcion }}
-                            </p>
-
-                            <!-- Grid de datos -->
+                            <h3 class="text-xl font-black text-gray-900 dark:text-white mb-2">{{ solicitudPreview.restaurantero.nombre_restaurante }}</h3>
+                            <p v-if="solicitudPreview.restaurantero.descripcion" class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">{{ solicitudPreview.restaurantero.descripcion }}</p>
                             <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm mb-4">
                                 <div v-if="solicitudPreview.restaurantero.telefono">
                                     <p class="text-xs text-gray-400 dark:text-gray-600">Teléfono</p>
@@ -810,147 +974,42 @@ const formatFechaCorta = (fecha) => {
                                 <div>
                                     <p class="text-xs text-gray-400 dark:text-gray-600">Domicilio fiscal</p>
                                     <p class="font-medium text-gray-800 dark:text-gray-200">
-                                        <span v-if="solicitudPreview.restaurantero.domicilio_en_yucatan === true"
-                                            class="text-emerald-600 dark:text-emerald-400 font-semibold">
-                                            ✓ Sí tiene domicilio fiscal en Yucatán
-                                        </span>
-                                        <span v-else-if="solicitudPreview.restaurantero.domicilio_en_yucatan === false"
-                                            class="text-red-500 dark:text-red-400">
-                                            ✗ No tiene domicilio fiscal en Yucatán
-                                        </span>
+                                        <span v-if="solicitudPreview.restaurantero.domicilio_en_yucatan === true" class="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Sí tiene domicilio fiscal en Yucatán</span>
+                                        <span v-else-if="solicitudPreview.restaurantero.domicilio_en_yucatan === false" class="text-red-500 dark:text-red-400">✗ No tiene domicilio fiscal en Yucatán</span>
                                         <span v-else class="text-gray-400">No especificado</span>
                                     </p>
                                 </div>
                                 <div v-if="solicitudPreview.restaurantero.sitio_web">
                                     <p class="text-xs text-gray-400 dark:text-gray-600">Sitio web</p>
-                                    <a :href="solicitudPreview.restaurantero.sitio_web" target="_blank"
-                                       class="font-medium text-guinda-700 dark:text-guinda-400 hover:underline truncate block max-w-full">
-                                        {{ solicitudPreview.restaurantero.sitio_web }}
-                                    </a>
+                                    <a :href="solicitudPreview.restaurantero.sitio_web" target="_blank" class="font-medium text-guinda-700 dark:text-guinda-400 hover:underline truncate block max-w-full">{{ solicitudPreview.restaurantero.sitio_web }}</a>
                                 </div>
                                 <div>
                                     <p class="text-xs text-gray-400 dark:text-gray-600">Historial plataforma</p>
-                                    <p class="font-medium text-gray-800 dark:text-gray-200">
-                                        {{ solicitudPreview.restaurantero.citas_count ?? 0 }} citas
-                                    </p>
+                                    <p class="font-medium text-gray-800 dark:text-gray-200">{{ solicitudPreview.restaurantero.citas_count ?? 0 }} citas</p>
                                 </div>
                             </div>
-
-                            <!-- Productos / Servicios -->
                             <div v-if="solicitudPreview.restaurantero.productos_top?.length" class="mb-4">
-                                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                                    Productos / Servicios
-                                </p>
+                                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Productos / Servicios</p>
                                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                     <div v-for="(prod, i) in solicitudPreview.restaurantero.productos_top" :key="i"
-                                         class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden
-                                                bg-white dark:bg-gray-900 shadow-sm">
+                                         class="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900 shadow-sm">
                                         <div v-if="prod.foto_path" class="w-full h-20 overflow-hidden bg-gray-100 dark:bg-gray-800">
-                                            <img :src="'/storage/' + prod.foto_path" class="w-full h-full object-cover"
-                                                 :alt="prod.nombre" />
+                                            <img :src="'/storage/' + prod.foto_path" class="w-full h-full object-cover" :alt="prod.nombre" />
                                         </div>
                                         <div v-else class="w-full h-12 bg-guinda-50 dark:bg-guinda-950/20 flex items-center justify-center">
                                             <span class="text-lg">📦</span>
                                         </div>
                                         <div class="p-2">
-                                            <p class="font-bold text-xs text-gray-900 dark:text-white">
-                                                {{ typeof prod === 'string' ? prod : (prod.nombre || '—') }}
-                                            </p>
-                                            <p v-if="typeof prod !== 'string' && prod.descripcion"
-                                               class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">
-                                                {{ prod.descripcion }}
-                                            </p>
-                                            <p v-if="prod.capacidad_cantidad"
-                                               class="text-xs text-guinda-600 dark:text-guinda-400 font-semibold mt-0.5">
-                                                📦 {{ Number(prod.capacidad_cantidad).toLocaleString('es-MX') }} {{ prod.capacidad_unidad }}/mes
-                                            </p>
+                                            <p class="font-bold text-xs text-gray-900 dark:text-white">{{ typeof prod === 'string' ? prod : (prod.nombre || '—') }}</p>
+                                            <p v-if="typeof prod !== 'string' && prod.descripcion" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{{ prod.descripcion }}</p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                            <div v-else class="mb-4 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-xl">
-                                <p class="text-xs text-amber-700 dark:text-amber-400 font-medium">
-                                    ⚠ Sin productos/servicios registrados
-                                </p>
-                            </div>
-
-                            <!-- Condiciones comerciales -->
-                            <div v-if="solicitudPreview.restaurantero.acepta_credito || solicitudPreview.restaurantero.pago_contraentrega || solicitudPreview.restaurantero.factura"
-                                 class="mb-4">
-                                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                                    Condiciones comerciales
-                                </p>
-                                <div class="flex flex-wrap gap-2">
-                                    <span v-if="solicitudPreview.restaurantero.acepta_credito"
-                                        class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold
-                                               bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
-                                               border border-emerald-200 dark:border-emerald-500/20">
-                                        ✓ Acepta crédito
-                                        <template v-if="solicitudPreview.restaurantero.credito_a_negociar">
-                                            <span class="opacity-70">· A negociar</span>
-                                        </template>
-                                        <template v-else>
-                                            <span v-if="solicitudPreview.restaurantero.credito_monto_maximo" class="opacity-70">
-                                                · máx. ${{ Number(solicitudPreview.restaurantero.credito_monto_maximo).toLocaleString('es-MX') }}
-                                            </span>
-                                            <span v-if="solicitudPreview.restaurantero.credito_tiempo_cantidad" class="opacity-70">
-                                                · {{ solicitudPreview.restaurantero.credito_tiempo_cantidad }}
-                                                {{ solicitudPreview.restaurantero.credito_tiempo_unidad }}
-                                            </span>
-                                        </template>
-                                    </span>
-                                    <span v-if="solicitudPreview.restaurantero.pago_contraentrega"
-                                        class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold
-                                               bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
-                                               border border-emerald-200 dark:border-emerald-500/20">
-                                        ✓ Pago contraentrega
-                                    </span>
-                                    <span v-if="solicitudPreview.restaurantero.factura"
-                                        class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold
-                                               bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
-                                               border border-emerald-200 dark:border-emerald-500/20">
-                                        ✓ Emite factura
-                                        <span v-if="solicitudPreview.restaurantero.regimen_fiscal" class="opacity-70">
-                                            · {{ solicitudPreview.restaurantero.regimen_fiscal }}
-                                        </span>
-                                    </span>
-                                </div>
-                            </div>
-
-                            <!-- Logística y Distribución -->
-                            <div v-if="solicitudPreview.restaurantero.entrega_domicilio !== null && solicitudPreview.restaurantero.entrega_domicilio !== undefined"
-                                 class="mb-4">
-                                <p class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                                    Logística y Distribución
-                                </p>
-                                <div class="flex flex-wrap gap-2">
-                                    <span v-if="solicitudPreview.restaurantero.entrega_domicilio"
-                                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
-                                               bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400
-                                               border border-emerald-200 dark:border-emerald-500/20">
-                                        🚚 Entrega a domicilio
-                                        <span v-if="solicitudPreview.restaurantero.cobertura_entrega" class="opacity-70 capitalize">
-                                            · {{ solicitudPreview.restaurantero.cobertura_entrega }}
-                                        </span>
-                                        <span v-if="solicitudPreview.restaurantero.forma_entrega" class="opacity-70 capitalize">
-                                            · {{ solicitudPreview.restaurantero.forma_entrega }}
-                                        </span>
-                                    </span>
-                                    <span v-else
-                                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold
-                                               bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400
-                                               border border-gray-200 dark:border-gray-700">
-                                        📦 Sin entrega a domicilio
-                                    </span>
-                                </div>
-                            </div>
-
-                            <p class="text-xs text-gray-400 dark:text-gray-600">
-                                Registrado en la plataforma: {{ formatFechaCorta(solicitudPreview.restaurantero.created_at) }}
-                            </p>
+                            <p class="text-xs text-gray-400 dark:text-gray-600">Registrado en la plataforma: {{ formatFechaCorta(solicitudPreview.restaurantero.created_at) }}</p>
                         </template>
 
-                        <!-- Comprador -->
+                        <!-- ── COMPRADOR ── -->
                         <template v-else>
                             <div class="flex items-center gap-4">
                                 <div class="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 flex items-center justify-center shrink-0">
@@ -970,10 +1029,7 @@ const formatFechaCorta = (fecha) => {
                                 </div>
                                 <div v-if="solicitudPreview.user?.sitio_web">
                                     <p class="text-xs text-gray-400 dark:text-gray-600">Sitio web</p>
-                                    <a :href="solicitudPreview.user.sitio_web" target="_blank"
-                                        class="font-medium text-guinda-700 dark:text-guinda-400 hover:underline truncate block max-w-full">
-                                        {{ solicitudPreview.user.sitio_web }}
-                                    </a>
+                                    <a :href="solicitudPreview.user.sitio_web" target="_blank" class="font-medium text-guinda-700 dark:text-guinda-400 hover:underline truncate block max-w-full">{{ solicitudPreview.user.sitio_web }}</a>
                                 </div>
                                 <div>
                                     <p class="text-xs text-gray-400 dark:text-gray-600">Historial</p>

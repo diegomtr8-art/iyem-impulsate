@@ -408,10 +408,46 @@ const pieOptions = (pregunta) => ({
                                 {{ resp.respuesta || '—' }}
                             </p>
                         </div>
+                        <div class="pt-2 flex justify-end">
+                            <button @click="confirmarEliminar(p.id, p.nombre)"
+                                class="text-xs px-3 py-1.5 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-800/40 text-red-600 dark:text-red-400 rounded-lg transition-colors border border-red-200 dark:border-red-500/20">
+                                🗑 Eliminar respuestas
+                            </button>
+                        </div>
                     </div>
                 </details>
             </div>
 
         </div>
+
+        <!-- Modal confirmar eliminar respuestas -->
+        <Teleport to="body">
+            <div v-if="modalEliminar"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                style="background:rgba(0,0,0,0.55)" @click.self="modalEliminar = false">
+                <div class="bg-white dark:bg-gray-900 border border-red-200 dark:border-red-500/30 rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+                    <p class="text-2xl mb-2 text-center">🗑</p>
+                    <h3 class="text-gray-900 dark:text-white font-bold text-lg text-center mb-2">¿Eliminar respuestas?</h3>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm text-center mb-6">
+                        Se borrarán todas las respuestas de
+                        <strong class="text-gray-900 dark:text-white">{{ eliminarNombre }}</strong>.
+                        Esta acción no se puede deshacer.<br />
+                        <span class="text-amber-600 dark:text-amber-400 text-xs mt-1 block">
+                            La persona podrá volver a recibir la encuesta.
+                        </span>
+                    </p>
+                    <div class="flex gap-3">
+                        <button @click="modalEliminar = false"
+                            class="flex-1 px-4 py-2 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 text-gray-700 dark:text-white rounded-lg text-sm font-medium transition-colors">
+                            Cancelar
+                        </button>
+                        <button @click="ejecutarEliminar"
+                            class="flex-1 px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition-colors">
+                            Sí, eliminar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AdminLayout>
 </template>

@@ -25,7 +25,7 @@ class EncuestasExport implements FromCollection, WithHeadings, WithStyles, WithT
     {
         $preguntas = config('encuestas.preguntas');
 
-        $query = EncuestaSatisfaccion::with(['evento', 'user', 'respuestas'])
+        $query = EncuestaSatisfaccion::with(['evento', 'user.roles', 'respuestas'])
             ->whereNotNull('completada_at');
 
         if ($this->eventoId) {
@@ -35,11 +35,16 @@ class EncuestasExport implements FromCollection, WithHeadings, WithStyles, WithT
         return $query->orderBy('evento_id')->orderBy('tipo')->get()->map(function ($enc) use ($preguntas) {
             $respuestasMap = $enc->respuestas->pluck('respuesta', 'pregunta');
 
+            // Fuente de verdad: rol Spatie del usuario, no el campo tipo almacenado.
+            $tipoReal = $enc->user?->hasRole('restaurantero')
+                ? 'Proveedor'
+                : ($enc->user?->hasRole('cliente') && !$enc->user->hasRole('admin') ? 'Comprador' : ucfirst($enc->tipo));
+
             $row = [
                 'Evento'        => $enc->evento?->nombre ?? '—',
                 'Participante'  => $enc->user?->name ?? '—',
                 'Email'         => $enc->user?->email ?? '—',
-                'Tipo'          => ucfirst($enc->tipo),
+                'Tipo'          => $tipoReal,
                 'Fecha respuesta' => $enc->completada_at?->format('d/m/Y H:i'),
             ];
 

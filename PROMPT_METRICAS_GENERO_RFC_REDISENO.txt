@@ -1,0 +1,789 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — 3 Cambios grandes
+  1. Métricas: Género (deduplicado) + RFC + lista de no-identificados
+  2. Rediseño completo del módulo de Métricas (look tecnológico/presentación)
+  3. Torre de Control: número de mesas configurable
+Archivo: PROMPT_METRICAS_GENERO_RFC_REDISENO.txt
+================================================================================
+
+CONTEXTO:
+  Laravel 11 + Inertia.js + Vue 3 + Tailwind CSS (darkMode: 'class')
+  Color corporativo: guinda #8B1028 — NUNCA azul ni indigo
+  Roles Spatie: admin, super-admin, restaurantero, cliente
+  Un usuario puede tener AMBOS roles (dual-rol) → cuenta como UNA persona
+
+LEE TODOS LOS ARCHIVOS ANTES DE MODIFICAR.
+Lee primero: el controller de métricas, la vista de métricas, el modelo User,
+el modelo Restaurantero, la vista de torre de control.
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 1 — MIGRACIÓN: campo `genero` en users
+════════════════════════════════════════════════════════════════════════════════
+
+Crea la migración:
+
+    php artisan make:migration add_genero_to_users_table
+
+Contenido:
+
+    Schema::table('users', function (Blueprint $table) {
+        $table->enum('genero', ['hombre', 'mujer'])->nullable()->after('email');
+    });
+
+Rollback:
+
+    Schema::table('users', function (Blueprint $table) {
+        $table->dropColumn('genero');
+    });
+
+Ejecuta: php artisan migrate
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 2 — MIGRACIÓN: tabla `config_evento` (para mesas configurables)
+════════════════════════════════════════════════════════════════════════════════
+
+Crea la migración:
+
+    php artisan make:migration create_config_evento_table
+
+Contenido:
+
+    Schema::create('config_evento', function (Blueprint $table) {
+        $table->id();
+        $table->string('clave')->unique();
+        $table->string('valor');
+        $table->string('descripcion')->nullable();
+        $table->timestamps();
+    });
+
+Seed inicial dentro de la migración (en up()):
+
+    DB::table('config_evento')->insert([
+        ['clave' => 'num_mesas', 'valor' => '50', 'descripcion' => 'Número de mesas en la torre de control'],
+    ]);
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 3 — SEEDER: auto-clasificar género por nombre en usuarios existentes
+════════════════════════════════════════════════════════════════════════════════
+
+Crea: database/seeders/GeneroSeeder.php
+
+    <?php
+    namespace Database\Seeders;
+    use Illuminate\Database\Seeder;
+    use App\Models\User;
+
+    class GeneroSeeder extends Seeder
+    {
+        // Diccionario de primeros nombres
+        private array $hombres = [
+            'aaron','abel','abelardo','abraham','adan','adolfo','adrian','agustin',
+            'alberto','alejandro','alex','alexis','alfredo','alonso','alvaro',
+            'anibal','antonio','armando','armin','arturo','axel','benjamin','brayan',
+            'carlos','cesar','christian','claudio','cristian','cristobal','cristopher',
+            'darwin','daniel','dario','david','diego','dominic','donovan','edgar',
+            'edgard','eduardo','emilio','emmanuel','enrique','ernesto','erick',
+            'esteban','evandro','fabian','fabricio','federico','felipe','felix',
+            'fidel','francisco','franklin','fredy','freddy','gabriel','gerardo',
+            'german','gilberto','gilmer','gonzalo','gregorio','guillermo','gustavo',
+            'hector','heriberto','hernando','hugo','humberto','ignacio','irak','ivan',
+            'jaime','jafet','javier','jerry','jesus','jhonatan','joel','jorge','jose',
+            'juan','julio','kevin','lazaro','leon','leonel','leonardo','lino',
+            'lisandro','lorenzo','lucas','luis','manuel','marco','marcos','mario',
+            'martin','mauricio','max','miguel','moises','nicolas','omar','orlando',
+            'oscar','osvaldo','pablo','patricio','pedro','rafael','raul','raymundo',
+            'rene','ricardo','roberto','rodolfo','rodrigo','rogelio','roman','ruben',
+            'samuel','santiago','saul','sergio','simon','thomas','tomas','victor',
+            'vicente','virgilio','walter','william','weyler','xavier','yair',
+            'lalo','migue','mike','rolando','leopoldo','roger','gersayn',
+        ];
+
+        private array $mujeres = [
+            'abril','adriana','alejandra','alexandra','alexia','alicia','alison',
+            'alondra','amalia','ammy','ana','andrea','angelica','angie','anita',
+            'anna','antonieta','araceli','aurora','beatriz','berenice','blanca',
+            'brisa','carla','carlota','caro','carmen','carolina','cecilia','celia',
+            'claudia','concepcion','cristina','cynthia','dana','daniela','debora',
+            'diana','dinorah','dolores','elena','elisa','elizabeth','emilia','emma',
+            'elsa','esmeralda','esperanza','esther','eugenia','evelyn','fabiola',
+            'fernanda','flor','francisca','gabriela','genoveva','georgina','geraldine',
+            'gina','giselle','gladys','gleni','gloria','gracia','graciela','guadalupe',
+            'guillie','irene','iris','isabel','isabela','ivette','jacqueline',
+            'jeniffer','jessica','julia','juliana','julieta','julissa','karen',
+            'karina','karla','kitty','lany','laura','leidy','lelia','leticia',
+            'ligia','lilia','liliana','linda','lorena','lucia','lluvia','luz',
+            'lupita','magali','margarita','mariana','maricela','marina','marisa',
+            'marisela','marisol','marta','martha','mary','mayte','mercedes','miriam',
+            'monica','nancy','natalia','nataly','nai','nelia','neydy','noelia',
+            'norma','ofelia','olivia','paola','patricia','paulina','perla','priscila',
+            'raquel','rebeca','rosa','rosalia','rosario','roxana','ruth','samara',
+            'sandra','sara','sasha','seydi','sharon','sharis','silvia','sonia',
+            'stephanie','sugery','susana','tania','teresa','tracy','valentina',
+            'valeria','vanessa','veronica','virginia','viviana','wendy','yamile',
+            'yamilet','yanet','yareli','yolanda','ximena','xitlali','xiomara',
+            'yara','yoselin','zuleyma','zulema','namy','melba','melissa','pamela',
+            'maricruz','cinthia','cinthya','christie','fani','nelly','nelida',
+        ];
+
+        private function normalizarNombre(string $nombre): string
+        {
+            $nombre = preg_replace('/\s*—.*$/', '', $nombre);
+            $nombre = preg_replace('/\s*\|.*$/', '', $nombre);
+            $mapa = ['á'=>'a','é'=>'e','í'=>'i','ó'=>'o','ú'=>'u','ü'=>'u','ñ'=>'n',
+                     'Á'=>'a','É'=>'e','Í'=>'i','Ó'=>'o','Ú'=>'u','Ü'=>'u','Ñ'=>'n'];
+            return strtolower(strtr(trim($nombre), $mapa));
+        }
+
+        private function detectarGenero(string $nombreCompleto): ?string
+        {
+            $palabras = explode(' ', $this->normalizarNombre($nombreCompleto));
+            foreach (array_slice($palabras, 0, 3) as $palabra) {
+                if (in_array($palabra, $this->mujeres)) return 'mujer';
+                if (in_array($palabra, $this->hombres)) return 'hombre';
+            }
+            return null; // no identificado → queda en null
+        }
+
+        public function run(): void
+        {
+            User::whereNull('genero')->chunk(100, function ($users) {
+                foreach ($users as $user) {
+                    $genero = $this->detectarGenero($user->name);
+                    if ($genero) {
+                        $user->update(['genero' => $genero]);
+                    }
+                }
+            });
+        }
+    }
+
+Ejecuta: php artisan db:seed --class=GeneroSeeder
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 4 — Controller de Métricas: datos nuevos
+════════════════════════════════════════════════════════════════════════════════
+
+En el controller de métricas (lee el archivo existente para saber dónde agregar),
+añade estas consultas en el método que sirve los datos. NO borres las existentes.
+
+    use App\Models\User;
+    use App\Models\Restaurantero;
+    use Illuminate\Support\Facades\DB;
+
+    // ── GÉNERO (usuarios únicos con cualquier rol activo) ─────────────────
+    // Un usuario dual-rol (proveedor+comprador) cuenta como UNA persona.
+    // Solo contamos usuarios con rol restaurantero O cliente.
+    $usuariosConRol = User::whereHas('roles', fn($q) =>
+        $q->whereIn('name', ['restaurantero', 'cliente'])
+    )->get(['id', 'name', 'genero']);
+
+    $generoHombre       = $usuariosConRol->where('genero', 'hombre')->count();
+    $generoMujer        = $usuariosConRol->where('genero', 'mujer')->count();
+    $generoNoIdentif    = $usuariosConRol->whereNull('genero')->count();
+    $generoTotal        = $usuariosConRol->count();
+
+    // ── RFC (formalización) ───────────────────────────────────────────────
+    // Proveedores: campo rfc en restauranteros
+    $proveedorTotal       = Restaurantero::count();
+    $proveedorConRFC      = Restaurantero::whereNotNull('rfc')
+                               ->where('rfc', '!=', '')->where('rfc', '!=', '—')->count();
+    $proveedorSinRFC      = $proveedorTotal - $proveedorConRFC;
+
+    // Compradores: campo rfc en users
+    $compradorTotal       = User::role('cliente')->count();
+    $compradorConRFC      = User::role('cliente')
+                               ->whereNotNull('rfc')
+                               ->where('rfc', '!=', '')->where('rfc', '!=', '—')->count();
+    $compradorSinRFC      = $compradorTotal - $compradorConRFC;
+
+    $rfcTotal             = $proveedorTotal + $compradorTotal;
+    $rfcConRFC            = $proveedorConRFC + $compradorConRFC;
+    $rfcSinRFC            = $rfcTotal - $rfcConRFC;
+
+    // ── LISTA NO IDENTIFICADOS (para clasificar manualmente) ──────────────
+    $noIdentificados = User::whereHas('roles', fn($q) =>
+            $q->whereIn('name', ['restaurantero', 'cliente'])
+        )
+        ->whereNull('genero')
+        ->orderBy('name')
+        ->get(['id', 'name'])
+        ->map(fn($u) => [
+            'id'    => $u->id,
+            'name'  => $u->name,
+            'roles' => $u->roles->pluck('name'),
+        ]);
+
+Agrega al array del return (junto a los props existentes):
+
+    'generoHombre'       => $generoHombre,
+    'generoMujer'        => $generoMujer,
+    'generoNoIdentif'    => $generoNoIdentif,
+    'generoTotal'        => $generoTotal,
+    'proveedorConRFC'    => $proveedorConRFC,
+    'proveedorSinRFC'    => $proveedorSinRFC,
+    'compradorConRFC'    => $compradorConRFC,
+    'compradorSinRFC'    => $compradorSinRFC,
+    'rfcTotal'           => $rfcTotal,
+    'rfcConRFC'          => $rfcConRFC,
+    'rfcSinRFC'          => $rfcSinRFC,
+    'noIdentificados'    => $noIdentificados,
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 5 — Ruta y método para guardar género manualmente
+════════════════════════════════════════════════════════════════════════════════
+
+En routes/web.php (grupo admin):
+
+    Route::patch('/admin/usuarios/{user}/genero',
+        [MetricasController::class, 'actualizarGenero'])
+        ->name('admin.usuarios.genero');
+
+Método en el controller de métricas:
+
+    public function actualizarGenero(Request $request, User $user)
+    {
+        $request->validate([
+            'genero' => 'required|in:hombre,mujer',
+        ]);
+
+        $user->update(['genero' => $request->genero]);
+
+        return back()->with('success', 'Género actualizado.');
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 6 — REDISEÑO COMPLETO de la vista de Métricas
+════════════════════════════════════════════════════════════════════════════════
+
+Reemplaza COMPLETAMENTE el contenido de la vista de métricas existente con el
+siguiente diseño. Mantendrás TODOS los props/datos que ya existían + los nuevos.
+
+El diseño es oscuro, con gradientes, glassmorphism, contadores animados y
+gráficas de dona. Es para presentación ante múltiples personas.
+
+    <script setup>
+    import AdminLayout from '@/Layouts/AdminLayout.vue';
+    import { Head, router } from '@inertiajs/vue3';
+    import { ref, computed, onMounted } from 'vue';
+
+    const props = defineProps({
+        // ── Props existentes (todos los que ya venían) ──────────────────
+        // (Claude Code: copia AQUÍ todos los defineProps existentes antes
+        //  del rediseño, para no perderlos)
+
+        // ── Props nuevos ────────────────────────────────────────────────
+        generoHombre:       { type: Number, default: 0 },
+        generoMujer:        { type: Number, default: 0 },
+        generoNoIdentif:    { type: Number, default: 0 },
+        generoTotal:        { type: Number, default: 0 },
+        proveedorConRFC:    { type: Number, default: 0 },
+        proveedorSinRFC:    { type: Number, default: 0 },
+        compradorConRFC:    { type: Number, default: 0 },
+        compradorSinRFC:    { type: Number, default: 0 },
+        rfcTotal:           { type: Number, default: 0 },
+        rfcConRFC:          { type: Number, default: 0 },
+        rfcSinRFC:          { type: Number, default: 0 },
+        noIdentificados:    { type: Array,  default: () => [] },
+    });
+
+    // ── Contadores animados ──────────────────────────────────────────────
+    const animated = ref({});
+    const animateValue = (key, target, duration = 1200) => {
+        const start = Date.now();
+        const tick = () => {
+            const elapsed = Date.now() - start;
+            const progress = Math.min(elapsed / duration, 1);
+            const ease = 1 - Math.pow(1 - progress, 3);
+            animated.value[key] = Math.round(target * ease);
+            if (progress < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    };
+
+    onMounted(() => {
+        // Anima todos los números clave (agrega los que ya existían)
+        animateValue('generoHombre',    props.generoHombre);
+        animateValue('generoMujer',     props.generoMujer);
+        animateValue('generoNoIdentif', props.generoNoIdentif);
+        animateValue('rfcConRFC',       props.rfcConRFC);
+        animateValue('rfcSinRFC',       props.rfcSinRFC);
+        // Agrega aquí los demás contadores existentes (totalProveedores, etc.)
+    });
+
+    const pct = (val, tot) => tot > 0 ? Math.round(val / tot * 100) : 0;
+
+    // ── Clasificar no identificados ──────────────────────────────────────
+    const clasificando = ref(null);
+    const clasificar = (userId, genero) => {
+        clasificando.value = userId;
+        router.patch(route('admin.usuarios.genero', userId),
+            { genero },
+            {
+                preserveScroll: true,
+                onFinish: () => { clasificando.value = null; },
+            }
+        );
+    };
+    </script>
+
+    <template>
+        <AdminLayout>
+            <Head title="Métricas — IMPULSATE" />
+
+            <!-- Fondo oscuro con gradiente -->
+            <div class="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 px-6 py-8">
+
+                <!-- ── ENCABEZADO ───────────────────────────────────────────── -->
+                <div class="mb-10">
+                    <div class="flex items-center gap-3 mb-1">
+                        <div class="w-1 h-8 rounded-full bg-gradient-to-b from-guinda-400 to-guinda-700"></div>
+                        <h1 class="text-3xl font-black text-white tracking-tight">
+                            Panel de Métricas
+                        </h1>
+                    </div>
+                    <p class="text-gray-400 text-sm ml-4 pl-3">
+                        IMPULSATE · IYEM Yucatán · Datos en tiempo real
+                    </p>
+                </div>
+
+                <!-- ── FILA 1: KPIs principales (los que ya existían) ───────── -->
+                <!-- Claude Code: coloca aquí las tarjetas de KPIs existentes
+                     (total proveedores, compradores, citas, eventos, etc.)
+                     usando el estilo glassmorphism descrito abajo.
+                     Patrón de tarjeta KPI: -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+
+                    <!-- PATRÓN DE TARJETA KPI — replica para cada KPI existente:
+                    <div class="relative overflow-hidden rounded-2xl border border-white/10
+                                bg-white/5 backdrop-blur-sm p-5 group
+                                hover:border-guinda-500/40 transition-all duration-300">
+                        <div class="absolute inset-0 bg-gradient-to-br from-guinda-900/20
+                                    to-transparent opacity-0 group-hover:opacity-100
+                                    transition-opacity duration-300"></div>
+                        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                            LABEL
+                        </p>
+                        <p class="text-4xl font-black text-white tabular-nums">
+                            {{ animated.KEY ?? 0 }}
+                        </p>
+                        <p class="text-xs text-guinda-400 font-semibold mt-1">descripción</p>
+                        // Ícono decorativo:
+                        <div class="absolute right-4 top-4 text-3xl opacity-10 group-hover:opacity-20
+                                    transition-opacity select-none">
+                            EMOJI
+                        </div>
+                    </div>
+                    -->
+
+                </div>
+
+                <!-- ── FILA 2: GÉNERO + RFC ─────────────────────────────────── -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+
+                    <!-- GÉNERO -->
+                    <div class="rounded-2xl border border-white/10 bg-white/5
+                                backdrop-blur-sm p-6">
+                        <div class="flex items-center gap-2 mb-5">
+                            <span class="text-2xl">👥</span>
+                            <h2 class="text-base font-black text-white uppercase tracking-widest">
+                                Distribución de Género
+                            </h2>
+                            <span class="ml-auto text-xs text-gray-500">
+                                {{ generoTotal }} personas únicas
+                            </span>
+                        </div>
+
+                        <!-- Barras de género -->
+                        <div class="space-y-4">
+                            <!-- Hombres -->
+                            <div>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-sm font-bold text-blue-400 flex items-center gap-2">
+                                        ♂ Hombres
+                                    </span>
+                                    <span class="text-white font-black text-lg tabular-nums">
+                                        {{ animated.generoHombre ?? generoHombre }}
+                                        <span class="text-xs text-gray-400 font-normal ml-1">
+                                            {{ pct(generoHombre, generoTotal) }}%
+                                        </span>
+                                    </span>
+                                </div>
+                                <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-blue-600 to-blue-400
+                                                rounded-full transition-all duration-1000"
+                                        :style="{ width: pct(generoHombre, generoTotal) + '%' }">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Mujeres -->
+                            <div>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-sm font-bold text-pink-400 flex items-center gap-2">
+                                        ♀ Mujeres
+                                    </span>
+                                    <span class="text-white font-black text-lg tabular-nums">
+                                        {{ animated.generoMujer ?? generoMujer }}
+                                        <span class="text-xs text-gray-400 font-normal ml-1">
+                                            {{ pct(generoMujer, generoTotal) }}%
+                                        </span>
+                                    </span>
+                                </div>
+                                <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-pink-600 to-pink-400
+                                                rounded-full transition-all duration-1000"
+                                        :style="{ width: pct(generoMujer, generoTotal) + '%' }">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- No identificado -->
+                            <div>
+                                <div class="flex justify-between items-center mb-1.5">
+                                    <span class="text-sm font-bold text-gray-500 flex items-center gap-2">
+                                        ◌ No identificado
+                                    </span>
+                                    <span class="text-gray-400 font-black text-lg tabular-nums">
+                                        {{ animated.generoNoIdentif ?? generoNoIdentif }}
+                                        <span class="text-xs text-gray-600 font-normal ml-1">
+                                            {{ pct(generoNoIdentif, generoTotal) }}%
+                                        </span>
+                                    </span>
+                                </div>
+                                <div class="h-3 bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gray-600 rounded-full transition-all duration-1000"
+                                        :style="{ width: pct(generoNoIdentif, generoTotal) + '%' }">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RFC / FORMALIZACIÓN -->
+                    <div class="rounded-2xl border border-white/10 bg-white/5
+                                backdrop-blur-sm p-6">
+                        <div class="flex items-center gap-2 mb-5">
+                            <span class="text-2xl">🏛️</span>
+                            <h2 class="text-base font-black text-white uppercase tracking-widest">
+                                Formalización (RFC)
+                            </h2>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 mb-5">
+                            <!-- Proveedores con RFC -->
+                            <div class="rounded-xl bg-emerald-950/40 border border-emerald-800/30 p-4 text-center">
+                                <p class="text-xs text-emerald-400 font-bold uppercase tracking-wide mb-1">
+                                    Proveedores con RFC
+                                </p>
+                                <p class="text-3xl font-black text-emerald-400 tabular-nums">
+                                    {{ proveedorConRFC }}
+                                </p>
+                                <p class="text-xs text-emerald-600 mt-1">
+                                    {{ pct(proveedorConRFC, proveedorConRFC + proveedorSinRFC) }}% del total
+                                </p>
+                            </div>
+                            <div class="rounded-xl bg-red-950/40 border border-red-800/30 p-4 text-center">
+                                <p class="text-xs text-red-400 font-bold uppercase tracking-wide mb-1">
+                                    Proveedores sin RFC
+                                </p>
+                                <p class="text-3xl font-black text-red-400 tabular-nums">
+                                    {{ proveedorSinRFC }}
+                                </p>
+                                <p class="text-xs text-red-700 mt-1">
+                                    {{ pct(proveedorSinRFC, proveedorConRFC + proveedorSinRFC) }}% del total
+                                </p>
+                            </div>
+                            <div class="rounded-xl bg-emerald-950/40 border border-emerald-800/30 p-4 text-center">
+                                <p class="text-xs text-emerald-400 font-bold uppercase tracking-wide mb-1">
+                                    Compradores con RFC
+                                </p>
+                                <p class="text-3xl font-black text-emerald-400 tabular-nums">
+                                    {{ compradorConRFC }}
+                                </p>
+                                <p class="text-xs text-emerald-600 mt-1">
+                                    {{ pct(compradorConRFC, compradorConRFC + compradorSinRFC) }}% del total
+                                </p>
+                            </div>
+                            <div class="rounded-xl bg-red-950/40 border border-red-800/30 p-4 text-center">
+                                <p class="text-xs text-red-400 font-bold uppercase tracking-wide mb-1">
+                                    Compradores sin RFC
+                                </p>
+                                <p class="text-3xl font-black text-red-400 tabular-nums">
+                                    {{ compradorSinRFC }}
+                                </p>
+                                <p class="text-xs text-red-700 mt-1">
+                                    {{ pct(compradorSinRFC, compradorConRFC + compradorSinRFC) }}% del total
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Barra global RFC -->
+                        <div class="bg-gray-800 rounded-full h-4 overflow-hidden flex">
+                            <div class="h-full bg-gradient-to-r from-emerald-700 to-emerald-400
+                                        transition-all duration-1000 flex items-center justify-center"
+                                :style="{ width: pct(rfcConRFC, rfcTotal) + '%' }">
+                                <span v-if="pct(rfcConRFC, rfcTotal) > 15"
+                                    class="text-xs font-black text-white">
+                                    {{ pct(rfcConRFC, rfcTotal) }}% formalizados
+                                </span>
+                            </div>
+                            <div class="h-full bg-gray-700 flex-1 flex items-center justify-center">
+                                <span v-if="pct(rfcSinRFC, rfcTotal) > 15"
+                                    class="text-xs font-bold text-gray-400">
+                                    {{ pct(rfcSinRFC, rfcTotal) }}% sin RFC
+                                </span>
+                            </div>
+                        </div>
+                        <div class="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>{{ rfcConRFC }} con RFC</span>
+                            <span>{{ rfcSinRFC }} sin RFC</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ── FILA 3: TOP RANKINGS (los existentes de municipios/categorías) ── -->
+                <!-- Claude Code: coloca aquí los rankings de municipios y categorías
+                     (topMunicipiosProveedores, topMunicipiosCompradores, etc.)
+                     Usa este patrón para cada tarjeta de ranking:
+
+                <div class="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm
+                            overflow-hidden">
+                    <div class="px-5 py-4 border-b border-white/5 flex items-center gap-2">
+                        <span class="text-lg">EMOJI</span>
+                        <h3 class="text-xs font-black text-gray-300 uppercase tracking-widest">
+                            TÍTULO
+                        </h3>
+                    </div>
+                    <div v-for="(item, i) in PROP_ARRAY" :key="i"
+                        class="flex items-center gap-3 px-5 py-3
+                               border-b border-white/5 last:border-0">
+                        <span class="text-xs font-black text-guinda-500 w-5 tabular-nums">
+                            {{ i + 1 }}
+                        </span>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-white truncate">
+                                {{ item.CAMPO_NOMBRE }}
+                            </p>
+                            <div class="mt-1 h-1 bg-gray-800 rounded-full">
+                                <div class="h-1 bg-guinda-600 rounded-full"
+                                    :style="{ width: (item.total / PROP_ARRAY[0].total * 100) + '%' }">
+                                </div>
+                            </div>
+                        </div>
+                        <span class="text-sm font-black text-guinda-400 tabular-nums">
+                            {{ item.total }}
+                        </span>
+                    </div>
+                </div>
+                -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
+                    <!-- Aquí van los 4 rankings existentes con el patrón de arriba -->
+                </div>
+
+                <!-- ── LISTA NO IDENTIFICADOS ───────────────────────────────── -->
+                <div v-if="noIdentificados.length > 0"
+                    class="rounded-2xl border border-amber-500/20 bg-amber-950/10
+                           backdrop-blur-sm overflow-hidden">
+
+                    <div class="px-6 py-4 border-b border-amber-500/20
+                                flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <span class="relative flex h-3 w-3">
+                                <span class="animate-ping absolute inline-flex h-full w-full
+                                             rounded-full bg-amber-400 opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-3 w-3
+                                             bg-amber-500"></span>
+                            </span>
+                            <h2 class="text-sm font-black text-amber-400 uppercase tracking-widest">
+                                Género no identificado — Clasificar manualmente
+                            </h2>
+                        </div>
+                        <span class="text-xs bg-amber-500/20 text-amber-400 font-bold
+                                     px-3 py-1 rounded-full border border-amber-500/30">
+                            {{ noIdentificados.length }} pendientes
+                        </span>
+                    </div>
+
+                    <div class="p-4">
+                        <p class="text-xs text-gray-500 mb-4 px-2">
+                            Haz clic en ♂ o ♀ para clasificar. El registro desaparece
+                            automáticamente de esta lista al guardarse.
+                        </p>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+                            <div v-for="persona in noIdentificados" :key="persona.id"
+                                class="flex items-center justify-between gap-3 px-4 py-3
+                                       rounded-xl bg-white/5 border border-white/5
+                                       hover:border-amber-500/30 transition-all">
+
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-sm font-semibold text-white truncate">
+                                        {{ persona.name }}
+                                    </p>
+                                    <p class="text-xs text-gray-500 mt-0.5">
+                                        {{ persona.roles?.join(', ') }}
+                                    </p>
+                                </div>
+
+                                <div class="flex gap-1.5 flex-shrink-0">
+                                    <button
+                                        @click="clasificar(persona.id, 'hombre')"
+                                        :disabled="clasificando === persona.id"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-black
+                                               bg-blue-900/50 text-blue-400 border border-blue-800/50
+                                               hover:bg-blue-800/70 hover:border-blue-500
+                                               disabled:opacity-50 transition-all">
+                                        ♂ H
+                                    </button>
+                                    <button
+                                        @click="clasificar(persona.id, 'mujer')"
+                                        :disabled="clasificando === persona.id"
+                                        class="px-3 py-1.5 rounded-lg text-xs font-black
+                                               bg-pink-900/50 text-pink-400 border border-pink-800/50
+                                               hover:bg-pink-800/70 hover:border-pink-500
+                                               disabled:opacity-50 transition-all">
+                                        ♀ M
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Si ya no quedan pendientes -->
+                <div v-else
+                    class="rounded-2xl border border-emerald-500/20 bg-emerald-950/10 px-6 py-4
+                           flex items-center gap-3">
+                    <span class="text-2xl">✅</span>
+                    <p class="text-sm text-emerald-400 font-semibold">
+                        Todos los usuarios tienen género clasificado.
+                    </p>
+                </div>
+
+            </div>
+        </AdminLayout>
+    </template>
+
+════════════════════════════════════════════════════════════════════════════════
+PARTE 7 — TORRE DE CONTROL: número de mesas configurable
+════════════════════════════════════════════════════════════════════════════════
+
+Busca la vista de Torre de Control (buscar archivos con "torre" o "mesas"):
+    find resources/js -name "*.vue" | xargs grep -l "mesa\|torre\|control" -i 2>/dev/null
+    grep -r "mesa\|torre" app/Http/Controllers --include="*.php" -l
+
+── 7A. Controller de Torre de Control ──
+
+En el controller que sirve la torre de control, agrega:
+
+    // Leer número de mesas desde config
+    $numMesas = (int) \DB::table('config_evento')
+        ->where('clave', 'num_mesas')
+        ->value('valor') ?? 50;
+
+    // Pasar a la vista
+    // Agrega 'numMesas' => $numMesas al array del return de Inertia::render
+
+── 7B. Ruta para actualizar número de mesas ──
+
+En routes/web.php (grupo admin):
+
+    Route::patch('/admin/config/mesas',
+        [TorreControlController::class, 'actualizarMesas'])
+        ->name('admin.config.mesas');
+
+Método:
+
+    public function actualizarMesas(Request $request)
+    {
+        $request->validate(['num_mesas' => 'required|integer|min:1|max:500']);
+
+        \DB::table('config_evento')
+            ->updateOrInsert(
+                ['clave' => 'num_mesas'],
+                ['valor' => $request->num_mesas, 'updated_at' => now()]
+            );
+
+        return back()->with('success', 'Número de mesas actualizado a ' . $request->num_mesas . '.');
+    }
+
+── 7C. Vista de Torre de Control: campo para configurar mesas ──
+
+En la vista de Torre de Control existente, agrega en el encabezado o panel
+de configuración:
+
+    <script setup>
+    // Agrega a los props existentes:
+    // numMesas: { type: Number, default: 50 }
+
+    import { useForm } from '@inertiajs/vue3';
+
+    const formMesas = useForm({ num_mesas: props.numMesas });
+
+    const guardarMesas = () => {
+        formMesas.patch(route('admin.config.mesas'), {
+            preserveScroll: true,
+        });
+    };
+    </script>
+
+    <!-- Panel de configuración de mesas — colócalo en un lugar visible
+         (arriba a la derecha, o como primer widget) -->
+    <div class="flex items-center gap-3 bg-white dark:bg-gray-800 rounded-xl
+                border border-gray-200 dark:border-gray-700 px-4 py-3">
+        <span class="text-sm font-bold text-gray-700 dark:text-gray-300 whitespace-nowrap">
+            🪑 Número de mesas:
+        </span>
+        <input
+            v-model.number="formMesas.num_mesas"
+            type="number"
+            min="1"
+            max="500"
+            class="w-20 border border-gray-300 dark:border-gray-600 rounded-lg
+                   px-2 py-1 text-sm text-center font-bold
+                   bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                   focus:outline-none focus:ring-2 focus:ring-guinda-500"
+        />
+        <button @click="guardarMesas"
+            :disabled="formMesas.processing"
+            class="px-4 py-1.5 bg-guinda-800 hover:bg-guinda-700 text-white
+                   text-xs font-bold rounded-lg transition-colors disabled:opacity-60">
+            Guardar
+        </button>
+        <span v-if="$page.props.flash?.success"
+            class="text-xs text-emerald-600 font-semibold">✓</span>
+    </div>
+
+    <!-- La torre de control debe iterar numMesas veces para mostrar las mesas.
+         Busca el v-for que genera las mesas y reemplaza el número hardcodeado: -->
+    <!-- ANTES: v-for="n in 20" o v-for="mesa in mesas" con array fijo -->
+    <!-- DESPUÉS: -->
+    <div v-for="n in numMesas" :key="n" class="...">
+        Mesa {{ n }}
+    </div>
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # 1. Migraciones
+    php artisan migrate
+
+    # 2. Seed de género en usuarios existentes
+    php artisan db:seed --class=GeneroSeeder
+
+    # 3. Compilar (cambió la vista de métricas)
+    npm run build
+
+    # 4. Limpiar caché
+    php artisan route:cache
+    php artisan optimize
+
+    # Verificar:
+    php artisan route:list | grep "genero\|mesas"
+
+================================================================================
+FIN DEL PROMPT
+================================================================================

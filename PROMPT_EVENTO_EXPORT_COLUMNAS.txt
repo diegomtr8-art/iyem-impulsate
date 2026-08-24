@@ -1,0 +1,116 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Agregar columnas en EventoCompletoExport
+Archivo: PROMPT_EVENTO_EXPORT_COLUMNAS.txt
+================================================================================
+
+ARCHIVO A MODIFICAR:
+  app/Exports/EventoCompletoExport.php
+
+CONTEXTO:
+  Este archivo contiene múltiples clases inline para las hojas del Excel de
+  /admin/exportar/evento. Las dos clases a modificar son:
+    - CompradoresEventoSheet  (Hoja 3 — compradores del evento)
+    - ProveedoresEventoSheet  (Hoja 2 — proveedores del evento)
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 1 — CompradoresEventoSheet: agregar columna Municipio
+════════════════════════════════════════════════════════════════════════════════
+
+En el método collection(), en el map(), AGREGAR 'Municipio' después de 'Teléfono':
+
+ANTES:
+    ->map(fn($u) => [
+        'Nombre'             => $u->name,
+        'Email'              => $u->email,
+        'Teléfono'           => $u->telefono ?? '—',
+        'CURP'               => $u->curp ?? '—',
+        'Total Citas'        => $u->total_citas,
+        'Citas Confirmadas'  => $u->confirmadas,
+        'Citas Pendientes'   => $u->pendientes,
+        'Estado en Evento'   => 'Aprobado',
+        'Registro'           => $u->created_at->format('d/m/Y'),
+    ]);
+
+DESPUÉS:
+    ->map(fn($u) => [
+        'Nombre'             => $u->name,
+        'Email'              => $u->email,
+        'Teléfono'           => $u->telefono ?? '—',
+        'Municipio'          => $u->municipio ?? '—',
+        'CURP'               => $u->curp ?? '—',
+        'Total Citas'        => $u->total_citas,
+        'Citas Confirmadas'  => $u->confirmadas,
+        'Citas Pendientes'   => $u->pendientes,
+        'Estado en Evento'   => 'Aprobado',
+        'Registro'           => $u->created_at->format('d/m/Y'),
+    ]);
+
+En el método headings(), AGREGAR 'Municipio' después de 'Teléfono':
+
+ANTES:
+    return ['Nombre', 'Email', 'Teléfono', 'CURP', 'Total Citas', 'Citas Confirmadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
+
+DESPUÉS:
+    return ['Nombre', 'Email', 'Teléfono', 'Municipio', 'CURP', 'Total Citas', 'Citas Confirmadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
+
+════════════════════════════════════════════════════════════════════════════════
+CAMBIO 2 — ProveedoresEventoSheet: agregar Razón Social y Nombre Propietario
+════════════════════════════════════════════════════════════════════════════════
+
+En el método collection(), en el map(), AGREGAR 'Razón Social' y 'Nombre Propietario'
+después de 'Empresa':
+
+ANTES:
+    ->map(fn($r) => [
+        'Empresa'            => $r->nombre_restaurante,
+        'Categoría'          => $r->categoria ?? '—',
+        'Municipio'          => $r->municipio ?? '—',
+        'RFC'                => $r->rfc ?? '—',
+        'Teléfono'           => $r->telefono ?? '—',
+        'Email'              => $r->user?->email ?? '—',
+        'Total Citas'        => $r->total_citas,
+        'Citas Aceptadas'    => $r->citas_aceptadas,
+        'Citas Pendientes'   => $r->citas_pendientes,
+        'Estado en Evento'   => 'Aprobado',
+        'Registro'           => $r->created_at->format('d/m/Y'),
+    ]);
+
+DESPUÉS:
+    ->map(fn($r) => [
+        'Empresa'             => $r->nombre_restaurante,
+        'Razón Social'        => $r->razon_social ?? '—',
+        'Nombre Propietario'  => $r->user?->name ?? '—',
+        'Categoría'           => $r->categoria ?? '—',
+        'Municipio'           => $r->municipio ?? '—',
+        'RFC'                 => $r->rfc ?? '—',
+        'Teléfono'            => $r->telefono ?? '—',
+        'Email'               => $r->user?->email ?? '—',
+        'Total Citas'         => $r->total_citas,
+        'Citas Aceptadas'     => $r->citas_aceptadas,
+        'Citas Pendientes'    => $r->citas_pendientes,
+        'Estado en Evento'    => 'Aprobado',
+        'Registro'            => $r->created_at->format('d/m/Y'),
+    ]);
+
+En el método headings(), AGREGAR 'Razón Social' y 'Nombre Propietario' después de 'Empresa':
+
+ANTES:
+    return ['Empresa', 'Categoría', 'Municipio', 'RFC', 'Teléfono', 'Email', 'Total Citas', 'Citas Aceptadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
+
+DESPUÉS:
+    return ['Empresa', 'Razón Social', 'Nombre Propietario', 'Categoría', 'Municipio', 'RFC', 'Teléfono', 'Email', 'Total Citas', 'Citas Aceptadas', 'Citas Pendientes', 'Estado en Evento', 'Registro'];
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Ir a /admin/exportar/evento → seleccionar el evento activo → descargar Excel
+2. Abrir la hoja "Compradores" → verificar que aparece columna "Municipio" entre Teléfono y CURP
+3. Abrir la hoja "Proveedores" → verificar columnas "Razón Social" y "Nombre Propietario"
+   después de "Empresa"
+4. Confirmar que los datos se llenan correctamente (no solo '—')
+
+================================================================================
+FIN DEL PROMPT — EventoCompletoExport: Municipio en Compradores + Razón Social
+y Nombre Propietario en Proveedores
+================================================================================

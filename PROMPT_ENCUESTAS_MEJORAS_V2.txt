@@ -1,0 +1,1019 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Mejoras Módulo Encuestas: Recordatorio + Reporte + Gráficas
+Archivo: PROMPT_ENCUESTAS_MEJORAS_V2.txt
+================================================================================
+
+OBJETIVO:
+  3 mejoras al módulo de encuestas sin romper nada existente:
+  1. Botón "Enviar Recordatorio" a quienes no han contestado
+  2. Descargar reporte PDF con gráficas de pastel (general + por persona)
+  3. Mejorar /admin/encuestas/graficas: gráficas de pastel + vista por persona
+
+════════════════════════════════════════════════════════════════════════════════
+MEJORA 1 — RECORDATORIO A PENDIENTES
+════════════════════════════════════════════════════════════════════════════════
+
+─ 1A. Nueva ruta en routes/web.php ─────────────────────────────────────────
+
+Agregar junto a las rutas de encuestas existentes:
+
+    Route::post('/encuestas/enviar-recordatorio', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'enviarRecordatorio'])->name('encuestas.enviar-recordatorio');
+
+─ 1B. Nuevo Mail: app/Mail/EncuestaRecordatorioMail.php ─────────────────────
+
+    php artisan make:mail EncuestaRecordatorioMail --markdown=mail.encuesta-recordatorio
+
+Contenido de la clase:
+
+<?php
+namespace App\Mail;
+
+use App\Models\EncuestaSatisfaccion;
+use Illuminate\Bus\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+
+class EncuestaRecordatorioMail extends Mailable
+{
+    use Queueable, SerializesModels;
+
+    public function __construct(public EncuestaSatisfaccion $encuesta) {}
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            subject: '⏰ Recordatorio: Tu opinión es importante para nosotros — Impúlsate',
+        );
+    }
+
+    public function content(): Content
+    {
+        return new Content(view: 'mail.encuesta-recordatorio');
+    }
+}
+
+Blade: resources/views/mail/encuesta-recordatorio.blade.php
+(Copiar la estructura de encuesta-satisfaccion.blade.php cambiando el mensaje
+de encabezado a "Te recordamos que aún no has respondido la encuesta" y
+manteniendo el mismo link con $encuesta->token)
+
+─ 1C. Nuevo Job: app/Jobs/SendRecordatorioJob.php ───────────────────────────
+
+    php artisan make:job SendRecordatorioJob
+
+<?php
+namespace App\Jobs;
+
+use App\Mail\EncuestaRecordatorioMail;
+use App\Models\EncuestaSatisfaccion;
+use App\Models\User;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Mail;
+
+class SendRecordatorioJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries = 3;
+    public int $timeout = 60;
+
+    public function __construct(public int $encuestaId) {}
+
+    public function handle(): void
+    {
+        $encuesta = EncuestaSatisfaccion::with(['evento', 'user', 'plantilla'])
+            ->find($this->encuestaId);
+
+        if (!$encuesta || $encuesta->completada_at) return;
+
+        $email = $encuesta->user?->email ?? $encuesta->email_prueba;
+        if (!$email) return;
+
+        Mail::to($email)->send(new EncuestaRecordatorioMail($encuesta));
+    }
+}
+
+─ 1D. Nuevo método en EncuestaAdminController ───────────────────────────────
+
+    public function enviarRecordatorio(Request $request)
+    {
+        $request->validate([
+            'evento_id' => 'required|exists:eventos,id',
+        ]);
+
+        // Buscar encuestas enviadas pero NO completadas
+        $pendientes = EncuestaSatisfaccion::where('evento_id', $request->evento_id)
+            ->where('es_prueba', false)
+            ->whereNull('completada_at')
+            ->get();
+
+        if ($pendientes->isEmpty()) {
+            return back()->with('info', 'Todos los participantes ya respondieron la encuesta. 🎉');
+        }
+
+        foreach ($pendientes as $encuesta) {
+            \App\Jobs\SendRecordatorioJob::dispatch($encuesta->id)
+                ->onQueue('encuestas');
+        }
+
+        return back()->with('success', "Recordatorio enviado a {$pendientes->count()} persona(s) que no han contestado.");
+    }
+
+─ 1E. Botón en Admin/Encuestas/Index.vue ────────────────────────────────────
+
+En el script setup, agregar:
+
+    const enviarRecordatorio = () => {
+        if (!eventoSeleccionado.value) {
+            alert('Selecciona un evento primero.');
+            return;
+        }
+        if (!confirm('¿Enviar recordatorio a todos los que NO han contestado aún?')) return;
+        router.post(route('admin.encuestas.enviar-recordatorio'), {
+            evento_id: eventoSeleccionado.value,
+        }, { preserveScroll: true });
+    };
+
+En el template, junto al botón de "Enviar a evento", agregar:
+
+    <button @click="enviarRecordatorio"
+            class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg
+                   text-sm font-medium transition flex items-center gap-2">
+        ⏰ Recordatorio a pendientes
+    </button>
+
+════════════════════════════════════════════════════════════════════════════════
+MEJORA 2 — REPORTE PDF CON GRÁFICAS DE PASTEL
+════════════════════════════════════════════════════════════════════════════════
+
+─ 2A. Instalar DomPDF ───────────────────────────────────────────────────────
+
+    composer require barryvdh/laravel-dompdf
+
+─ 2B. Nueva ruta ────────────────────────────────────────────────────────────
+
+    Route::get('/encuestas/reporte-pdf', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'reportePdf'])->name('encuestas.reporte-pdf');
+
+    IMPORTANTE: Esta ruta debe ir ANTES de /{encuesta}/ver para que Laravel
+    no interprete "reporte-pdf" como un ID.
+
+─ 2C. Método reportePdf en EncuestaAdminController ──────────────────────────
+
+    public function reportePdf(Request $request)
+    {
+        $eventoId    = $request->get('evento_id');
+        $plantillaId = $request->get('plantilla_id');
+
+        $plantilla = $plantillaId
+            ? EncuestaPlantilla::find($plantillaId)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        $evento = $eventoId ? Evento::find($eventoId) : null;
+
+        // Encuestas completadas
+        $encuestas = EncuestaSatisfaccion::with(['user', 'respuestas', 'evento'])
+            ->where('es_prueba', false)
+            ->whereNotNull('completada_at')
+            ->when($eventoId, fn($q) => $q->where('evento_id', $eventoId))
+            ->orderBy('tipo')
+            ->orderBy('completada_at')
+            ->get();
+
+        $totalEnviadas    = EncuestaSatisfaccion::where('es_prueba', false)
+            ->when($eventoId, fn($q) => $q->where('evento_id', $eventoId))
+            ->count();
+        $totalRespondidas = $encuestas->count();
+        $compradores      = $encuestas->where('tipo', 'comprador')->count();
+        $proveedores      = $encuestas->where('tipo', 'proveedor')->count();
+
+        // Agrupar respuestas por pregunta para gráficas generales
+        $encuestaIds = $encuestas->pluck('id');
+
+        $datosGenerales = EncuestaRespuesta::whereIn('encuesta_satisfaccion_id', $encuestaIds)
+            ->whereNotIn('tipo', ['texto']) // excluir texto libre de gráficas
+            ->selectRaw('pregunta, tipo, respuesta, COUNT(*) as total')
+            ->groupBy('pregunta', 'tipo', 'respuesta')
+            ->get()
+            ->groupBy('pregunta')
+            ->map(function($grupo) {
+                $totalResp = $grupo->sum('total');
+                return [
+                    'tipo'     => $grupo->first()->tipo,
+                    'total'    => $totalResp,
+                    'opciones' => $grupo->mapWithKeys(fn($r) => [
+                        $r->respuesta => [
+                            'count'      => $r->total,
+                            'porcentaje' => $totalResp > 0 ? round($r->total * 100 / $totalResp, 1) : 0,
+                        ]
+                    ]),
+                ];
+            });
+
+        // Respuestas por persona
+        $respuestasPorPersona = $encuestas->map(fn($enc) => [
+            'nombre'   => $enc->user?->name ?? $enc->email_prueba ?? '—',
+            'email'    => $enc->user?->email ?? '—',
+            'tipo'     => $enc->tipo,
+            'fecha'    => $enc->completada_at?->format('d/m/Y H:i'),
+            'respuestas' => $enc->respuestas->map(fn($r) => [
+                'pregunta'  => $r->pregunta,
+                'respuesta' => $r->respuesta,
+                'tipo'      => $r->tipo,
+            ])->values(),
+        ]);
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('exports.encuesta-reporte', [
+            'plantilla'           => $plantilla,
+            'evento'              => $evento,
+            'totalEnviadas'       => $totalEnviadas,
+            'totalRespondidas'    => $totalRespondidas,
+            'tasa'                => $totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0,
+            'compradores'         => $compradores,
+            'proveedores'         => $proveedores,
+            'datosGenerales'      => $datosGenerales,
+            'respuestasPorPersona'=> $respuestasPorPersona,
+            'fecha'               => now()->format('d/m/Y H:i'),
+        ])->setPaper('a4', 'portrait');
+
+        $filename = 'reporte-encuestas-' . now()->format('Y-m-d') . '.pdf';
+        return $pdf->download($filename);
+    }
+
+─ 2D. Blade: resources/views/exports/encuesta-reporte.blade.php ─────────────
+
+Crear el archivo. Usa SVG para las gráficas de pastel (compatible con DomPDF).
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: DejaVu Sans, sans-serif; font-size: 11px; color: #1f2937; }
+  .page-break { page-break-after: always; }
+  h1 { font-size: 22px; color: #8B1028; margin-bottom: 4px; }
+  h2 { font-size: 15px; color: #8B1028; margin: 16px 0 8px; border-bottom: 2px solid #8B1028; padding-bottom: 4px; }
+  h3 { font-size: 12px; color: #374151; margin: 12px 0 6px; }
+  .kpi-grid { display: flex; gap: 12px; margin: 16px 0; }
+  .kpi { flex: 1; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; text-align: center; }
+  .kpi-num { font-size: 28px; font-weight: bold; color: #8B1028; }
+  .kpi-label { font-size: 10px; color: #6b7280; margin-top: 2px; }
+  .pregunta-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+  .chart-row { display: flex; align-items: center; gap: 20px; }
+  .legend { flex: 1; }
+  .legend-item { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-size: 10px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .bar { height: 14px; border-radius: 4px; margin: 2px 0; display: flex; align-items: center; }
+  .persona-card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 10px; margin-bottom: 10px; }
+  .persona-header { background: #8B1028; color: white; padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; font-size: 11px; font-weight: bold; }
+  .resp-row { display: flex; gap: 8px; margin-bottom: 4px; padding: 4px 0; border-bottom: 1px solid #f3f4f6; }
+  .resp-q { flex: 0 0 55%; color: #6b7280; font-size: 10px; }
+  .resp-a { flex: 1; font-weight: bold; font-size: 10px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 9px; font-weight: bold; }
+  .badge-prov { background: #fce7eb; color: #8B1028; }
+  .badge-comp { background: #d1fae5; color: #065f46; }
+</style>
+</head>
+<body>
+
+{{-- ── PORTADA / KPIs ── --}}
+<h1>📊 Reporte de Encuestas de Satisfacción</h1>
+<p style="color:#6b7280; margin-bottom: 4px;">{{ $plantilla?->nombre ?? 'Encuesta de Satisfacción e Impacto' }}</p>
+@if($evento)<p style="color:#6b7280;">Evento: <strong>{{ $evento->nombre }}</strong></p>@endif
+<p style="color:#9ca3af; font-size:10px;">Generado: {{ $fecha }}</p>
+
+<div class="kpi-grid" style="margin-top: 16px;">
+  <div class="kpi"><div class="kpi-num">{{ $totalEnviadas }}</div><div class="kpi-label">Enviadas</div></div>
+  <div class="kpi"><div class="kpi-num" style="color:#059669;">{{ $totalRespondidas }}</div><div class="kpi-label">Respondidas</div></div>
+  <div class="kpi"><div class="kpi-num">{{ $tasa }}%</div><div class="kpi-label">Tasa respuesta</div></div>
+  <div class="kpi"><div class="kpi-num" style="color:#2563eb;">{{ $compradores }}</div><div class="kpi-label">Compradores</div></div>
+  <div class="kpi"><div class="kpi-num" style="color:#7c3aed;">{{ $proveedores }}</div><div class="kpi-label">Proveedores</div></div>
+</div>
+
+{{-- ── SECCIÓN GENERAL: gráficas pastel por pregunta ── --}}
+<div class="page-break"></div>
+<h2>Resultados Generales por Pregunta</h2>
+
+@php
+  $colores = ['#8B1028','#c2435d','#e8899a','#f3b8c3','#fce7eb','#374151','#6b7280','#9ca3af','#d1d5db','#f9fafb'];
+@endphp
+
+@foreach($datosGenerales as $preguntaTxt => $data)
+<div class="pregunta-card">
+  <h3>{{ $preguntaTxt }}</h3>
+  <div class="chart-row">
+    {{-- SVG Pie Chart --}}
+    @php
+      $cx = 70; $cy = 70; $r = 60;
+      $total = $data['total'];
+      $startAngle = -90;
+      $paths = [];
+      $colorIdx = 0;
+      foreach($data['opciones'] as $opcion => $stat) {
+          $pct = $stat['porcentaje'];
+          $angle = ($pct / 100) * 360;
+          $endAngle = $startAngle + $angle;
+          $largeArc = $angle > 180 ? 1 : 0;
+          $x1 = $cx + $r * cos(deg2rad($startAngle));
+          $y1 = $cy + $r * sin(deg2rad($startAngle));
+          $x2 = $cx + $r * cos(deg2rad($endAngle));
+          $y2 = $cy + $r * sin(deg2rad($endAngle));
+          $paths[] = [
+              'path'   => "M {$cx},{$cy} L {$x1},{$y1} A {$r},{$r} 0 {$largeArc},1 {$x2},{$y2} Z",
+              'color'  => $colores[$colorIdx % count($colores)],
+              'opcion' => $opcion,
+              'pct'    => $pct,
+              'count'  => $stat['count'],
+          ];
+          $startAngle = $endAngle;
+          $colorIdx++;
+      }
+    @endphp
+    <svg width="140" height="140" viewBox="0 0 140 140">
+      @foreach($paths as $p)
+        @if($total > 0 && count($data['opciones']) === 1)
+          <circle cx="{{ $cx }}" cy="{{ $cy }}" r="{{ $r }}" fill="{{ $p['color'] }}"/>
+        @else
+          <path d="{{ $p['path'] }}" fill="{{ $p['color'] }}" stroke="white" stroke-width="1"/>
+        @endif
+      @endforeach
+    </svg>
+    {{-- Leyenda --}}
+    <div class="legend">
+      @foreach($paths as $idx => $p)
+      <div class="legend-item">
+        <div class="legend-dot" style="background:{{ $p['color'] }};"></div>
+        <span>{{ Str::limit($p['opcion'], 45) }} — <strong>{{ $p['pct'] }}%</strong> ({{ $p['count'] }})</span>
+      </div>
+      @endforeach
+      <p style="color:#9ca3af; font-size:9px; margin-top:4px;">Total respuestas: {{ $total }}</p>
+    </div>
+  </div>
+</div>
+@endforeach
+
+{{-- ── SECCIÓN POR PERSONA ── --}}
+<div class="page-break"></div>
+<h2>Respuestas por Persona ({{ $respuestasPorPersona->count() }} respondientes)</h2>
+
+@foreach($respuestasPorPersona as $persona)
+<div class="persona-card">
+  <div class="persona-header">
+    {{ $persona['nombre'] }}
+    &nbsp;&nbsp;|&nbsp;&nbsp;{{ $persona['email'] }}
+    &nbsp;&nbsp;
+    <span class="badge {{ $persona['tipo'] === 'proveedor' ? 'badge-prov' : 'badge-comp' }}">
+      {{ ucfirst($persona['tipo']) }}
+    </span>
+    &nbsp;&nbsp;{{ $persona['fecha'] }}
+  </div>
+  @foreach($persona['respuestas'] as $resp)
+  <div class="resp-row">
+    <div class="resp-q">{{ $resp['pregunta'] }}</div>
+    <div class="resp-a">{{ $resp['respuesta'] ?: '—' }}</div>
+  </div>
+  @endforeach
+</div>
+@if(!$loop->last && $loop->iteration % 4 === 0)<div class="page-break"></div>@endif
+@endforeach
+
+</body>
+</html>
+
+─ 2E. Botón de descarga en Graficas.vue y en Index.vue ──────────────────────
+
+En Graficas.vue, junto al botón "← Volver", agregar:
+
+    <a :href="urlReporte"
+       target="_blank"
+       class="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-lg
+              text-sm font-medium transition flex items-center gap-2">
+      📥 Descargar PDF con gráficas
+    </a>
+
+Y en el script setup de Graficas.vue:
+
+    import { computed } from 'vue'
+
+    const urlReporte = computed(() => {
+        const params = new URLSearchParams()
+        if (filtros.value.evento_id)    params.set('evento_id', filtros.value.evento_id)
+        if (filtros.value.plantilla_id) params.set('plantilla_id', filtros.value.plantilla_id)
+        return route('admin.encuestas.reporte-pdf') + '?' + params.toString()
+    })
+
+════════════════════════════════════════════════════════════════════════════════
+MEJORA 3 — /admin/encuestas/graficas: PASTELES + VISTA POR PERSONA
+════════════════════════════════════════════════════════════════════════════════
+
+─ 3A. Pasar lista de respondientes desde el controller (método graficas) ────
+
+En el método graficas() de EncuestaAdminController, agregar al return de Inertia:
+
+    'respondientes' => EncuestaSatisfaccion::with(['user', 'respuestas'])
+        ->where('es_prueba', false)
+        ->whereNotNull('completada_at')
+        ->when($eventoId,  fn($q) => $q->where('evento_id', $eventoId))
+        ->when($segmento,  fn($q) => $q->where('tipo', $segmento))
+        ->when($desde,     fn($q) => $q->whereDate('completada_at', '>=', $desde))
+        ->when($hasta,     fn($q) => $q->whereDate('completada_at', '<=', $hasta))
+        ->orderBy('tipo')
+        ->orderBy('completada_at', 'desc')
+        ->get()
+        ->map(fn($enc) => [
+            'id'        => $enc->id,
+            'nombre'    => $enc->user?->name ?? '—',
+            'email'     => $enc->user?->email ?? '—',
+            'tipo'      => $enc->tipo,
+            'fecha'     => $enc->completada_at?->format('d/m/Y H:i'),
+            'respuestas'=> $enc->respuestas->map(fn($r) => [
+                'pregunta'  => $r->pregunta,
+                'respuesta' => $r->respuesta,
+                'tipo'      => $r->tipo,
+            ])->values(),
+        ]),
+
+─ 3B. Reescribir Graficas.vue con tabs + pasteles + por persona ─────────────
+
+Modificar el archivo existente resources/js/Pages/Admin/Encuestas/Graficas.vue.
+Mantener todo el script setup existente y AGREGAR:
+
+En el script setup, agregar imports y estados nuevos:
+
+    import { ref, computed, onMounted } from 'vue'
+
+    // Nueva prop
+    // Agregar 'respondientes: Array' en defineProps
+
+    const vistaActiva = ref('general') // 'general' | 'personas'
+    const tipoPastel  = ref(true)       // true = pastel, false = barras
+    const buscarPersona = ref('')
+    const personaAbierta = ref(null)
+
+    const respondientesFiltrados = computed(() => {
+        if (!buscarPersona.value) return props.respondientes ?? []
+        const q = buscarPersona.value.toLowerCase()
+        return (props.respondientes ?? []).filter(r =>
+            r.nombre.toLowerCase().includes(q) ||
+            r.email.toLowerCase().includes(q)
+        )
+    })
+
+    // Colores para pastel
+    const COLORES_PASTEL = [
+        '#8B1028','#c2435d','#e8899a','#059669','#34d399',
+        '#2563eb','#60a5fa','#7c3aed','#a78bfa','#d97706',
+    ]
+
+    // Función para dibujar un canvas pastel
+    function dibujarPastel(canvasId, datos) {
+        const canvas = document.getElementById(canvasId)
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')
+        const opciones = Object.entries(datos.opciones)
+        const total = opciones.reduce((s, [, v]) => s + v.count, 0)
+        let startAngle = -Math.PI / 2
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        const cx = canvas.width / 2
+        const cy = canvas.height / 2
+        const r  = Math.min(cx, cy) - 4
+        opciones.forEach(([, stat], idx) => {
+            const slice = (stat.count / total) * 2 * Math.PI
+            ctx.beginPath()
+            ctx.moveTo(cx, cy)
+            ctx.arc(cx, cy, r, startAngle, startAngle + slice)
+            ctx.closePath()
+            ctx.fillStyle = COLORES_PASTEL[idx % COLORES_PASTEL.length]
+            ctx.fill()
+            ctx.strokeStyle = '#1f2937'
+            ctx.lineWidth = 1
+            ctx.stroke()
+            startAngle += slice
+        })
+    }
+
+    // Dibujar todos los pasteles al montar y cuando cambien datos
+    import { watch, nextTick } from 'vue'
+    watch([tipoPastel, vistaActiva], async () => {
+        if (!tipoPastel.value || vistaActiva.value !== 'general') return
+        await nextTick()
+        if (props.plantilla) {
+            props.plantilla.preguntas.forEach((p, idx) => {
+                const d = props.datos?.[p.texto]
+                if (d && ['opciones','multiple','binario'].includes(p.tipo)) {
+                    dibujarPastel('pastel-' + idx, d)
+                }
+            })
+        }
+    }, { immediate: true })
+
+En el TEMPLATE, reemplazar el contenido actual por esta estructura:
+
+    <!-- Tabs General / Por Persona -->
+    <div class="flex gap-2 mb-8">
+      <button @click="vistaActiva = 'general'"
+              :class="vistaActiva === 'general'
+                ? 'bg-[#8B1028] text-white'
+                : 'bg-white/10 text-gray-300 hover:bg-white/20'"
+              class="px-5 py-2 rounded-lg text-sm font-medium transition">
+        📊 General
+      </button>
+      <button @click="vistaActiva = 'personas'"
+              :class="vistaActiva === 'personas'
+                ? 'bg-[#8B1028] text-white'
+                : 'bg-white/10 text-gray-300 hover:bg-white/20'"
+              class="px-5 py-2 rounded-lg text-sm font-medium transition">
+        👤 Por Persona ({{ respondientes?.length ?? 0 }})
+      </button>
+
+      <!-- Toggle barras / pastel (solo en General) -->
+      <div v-if="vistaActiva === 'general'" class="ml-auto flex items-center gap-2">
+        <span class="text-gray-400 text-sm">Vista:</span>
+        <button @click="tipoPastel = false"
+                :class="!tipoPastel ? 'bg-[#8B1028] text-white' : 'bg-white/10 text-gray-300'"
+                class="px-3 py-1.5 rounded-lg text-sm transition">
+          ▬ Barras
+        </button>
+        <button @click="tipoPastel = true"
+                :class="tipoPastel ? 'bg-[#8B1028] text-white' : 'bg-white/10 text-gray-300'"
+                class="px-3 py-1.5 rounded-lg text-sm transition">
+          ● Pastel
+        </button>
+      </div>
+    </div>
+
+    <!-- Vista GENERAL -->
+    <div v-if="vistaActiva === 'general'">
+      <!-- (mantener toda la sección actual de preguntas/graficas, pero dentro de este div) -->
+      <!-- Para BARRAS: mostrar el HTML actual (v-if="!tipoPastel") -->
+      <!-- Para PASTEL: mostrar canvas (v-if="tipoPastel") -->
+
+      <!-- En cada tarjeta de pregunta, cambiar la sección de "opciones/multiple/binario": -->
+
+      <!-- BARRAS (mantener código actual) -->
+      <div v-if="!tipoPastel && ['opciones','multiple','binario'].includes(pregunta.tipo)">
+        <!-- ... código de barras existente ... -->
+      </div>
+
+      <!-- PASTEL (nuevo) -->
+      <div v-if="tipoPastel && ['opciones','multiple','binario'].includes(pregunta.tipo)">
+        <div class="flex items-start gap-6">
+          <canvas :id="'pastel-' + idx" width="160" height="160"
+                  class="flex-shrink-0 rounded-full"></canvas>
+          <div class="flex-1 space-y-2">
+            <div v-for="(stat, opcion) in datos[pregunta.texto].opciones" :key="opcion"
+                 class="flex items-center gap-3 text-sm">
+              <span class="w-3 h-3 rounded-full flex-shrink-0"
+                    :style="{ background: COLORES_PASTEL[Object.keys(datos[pregunta.texto].opciones).indexOf(opcion) % COLORES_PASTEL.length] }">
+              </span>
+              <span class="text-gray-300 flex-1">{{ opcion }}</span>
+              <span class="text-white font-bold">{{ stat.porcentaje }}%</span>
+              <span class="text-gray-500 text-xs">({{ stat.count }})</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vista POR PERSONA -->
+    <div v-if="vistaActiva === 'personas'">
+      <!-- Buscador -->
+      <input v-model="buscarPersona" type="text"
+             placeholder="Buscar por nombre o correo..."
+             class="w-full bg-gray-800 border border-white/20 text-white rounded-xl
+                    px-4 py-3 mb-6 text-sm placeholder-gray-500 focus:outline-none focus:border-[#8B1028]" />
+
+      <div v-if="respondientesFiltrados.length === 0" class="text-center text-gray-500 py-16">
+        No hay respondientes con ese filtro.
+      </div>
+
+      <!-- Acordeón por persona -->
+      <div v-for="p in respondientesFiltrados" :key="p.id" class="mb-3">
+        <button @click="personaAbierta = personaAbierta === p.id ? null : p.id"
+                class="w-full flex items-center justify-between bg-white/5 hover:bg-white/10
+                       border border-white/10 rounded-xl px-5 py-4 text-left transition">
+          <div class="flex items-center gap-4">
+            <span class="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0"
+                  :class="p.tipo === 'proveedor'
+                    ? 'bg-[#8B1028]/30 text-[#c2435d]'
+                    : 'bg-emerald-900/30 text-emerald-400'">
+              {{ p.tipo === 'proveedor' ? '🏭' : '🛒' }} {{ p.tipo }}
+            </span>
+            <div>
+              <p class="text-white font-medium text-sm">{{ p.nombre }}</p>
+              <p class="text-gray-400 text-xs">{{ p.email }}</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 flex-shrink-0">
+            <span class="text-gray-500 text-xs">{{ p.fecha }}</span>
+            <span class="text-gray-400 text-lg">{{ personaAbierta === p.id ? '▲' : '▼' }}</span>
+          </div>
+        </button>
+
+        <!-- Respuestas expandidas -->
+        <div v-if="personaAbierta === p.id"
+             class="bg-white/3 border border-white/10 border-t-0 rounded-b-xl px-5 py-4 space-y-2">
+          <div v-for="(resp, i) in p.respuestas" :key="i"
+               class="flex gap-4 py-2 border-b border-white/5">
+            <p class="text-gray-400 text-xs flex-1">{{ resp.pregunta }}</p>
+            <p class="text-white text-xs font-medium text-right max-w-xs">
+              {{ resp.respuesta || '—' }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. RECORDATORIO:
+   a) En Admin → Encuestas, selecciona un evento con pendientes
+   b) Clic en "⏰ Recordatorio a pendientes"
+   c) Verificar que llega correo solo a quien NO ha contestado
+   d) Verificar que quien YA contestó no recibe el recordatorio
+
+2. PDF:
+   a) Ve a /admin/encuestas/graficas con un evento con respuestas
+   b) Clic en "📥 Descargar PDF con gráficas"
+   c) Verificar que descarga PDF con gráficas de pastel SVG por pregunta
+   d) Verificar que la sección "Por Persona" muestra todas las respuestas
+
+3. GRÁFICAS:
+   a) Ve a /admin/encuestas/graficas
+   b) Clic en "● Pastel" → las barras cambian a gráficas de pastel con canvas
+   c) Clic en "👤 Por Persona" → aparece la lista con buscador
+   d) Expandir un respondiente → ver todas sus respuestas
+   e) Buscar por nombre → filtra la lista
+
+════════════════════════════════════════════════════════════════════════════════
+MEJORA 4 — DESCARGA EXCEL CON MÚLTIPLES HOJAS (General + Por Persona)
+════════════════════════════════════════════════════════════════════════════════
+
+El Excel existente (EncuestasExport.php) usa config('encuestas.preguntas') que
+es el fallback antiguo. Se necesita reemplazarlo con un export de múltiples
+hojas que use la plantilla activa y tenga:
+  - Hoja 1 "Resumen": conteo y % por opción para cada pregunta
+  - Hoja 2 "Respuestas": tabla completa (una fila por persona, columnas por pregunta)
+  - Hoja 3 "Compradores": solo respuestas de compradores
+  - Hoja 4 "Proveedores": solo respuestas de proveedores
+
+─ 4A. Nueva ruta ────────────────────────────────────────────────────────────
+
+Agregar en routes/web.php junto a las rutas de encuestas:
+
+    Route::get('/encuestas/reporte-excel', [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'reporteExcel'])->name('encuestas.reporte-excel');
+
+    IMPORTANTE: Debe ir ANTES de /{encuesta}/ver.
+
+─ 4B. Nuevo método reporteExcel en EncuestaAdminController ─────────────────
+
+    public function reporteExcel(Request $request)
+    {
+        $eventoId    = $request->get('evento_id');
+        $plantillaId = $request->get('plantilla_id');
+
+        $plantilla = $plantillaId
+            ? EncuestaPlantilla::find($plantillaId)
+            : EncuestaPlantilla::where('activa', true)->first();
+
+        $filename = 'encuestas-' . now()->format('Y-m-d') . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\EncuestasReporteExport($eventoId, $plantilla),
+            $filename
+        );
+    }
+
+─ 4C. Crear app/Exports/EncuestasReporteExport.php ─────────────────────────
+
+<?php
+
+namespace App\Exports;
+
+use App\Models\EncuestaSatisfaccion;
+use App\Models\EncuestaPlantilla;
+use App\Models\EncuestaRespuesta;
+use Maatwebsite\Excel\Concerns\WithMultipleSheets;
+use Maatwebsite\Excel\Concerns\Exportable;
+
+class EncuestasReporteExport implements WithMultipleSheets
+{
+    use Exportable;
+
+    public function __construct(
+        private ?int $eventoId,
+        private ?EncuestaPlantilla $plantilla
+    ) {}
+
+    public function sheets(): array
+    {
+        return [
+            new EncuestasResumenSheet($this->eventoId, $this->plantilla),
+            new EncuestasDetalleSheet($this->eventoId, $this->plantilla, null),
+            new EncuestasDetalleSheet($this->eventoId, $this->plantilla, 'comprador'),
+            new EncuestasDetalleSheet($this->eventoId, $this->plantilla, 'proveedor'),
+        ];
+    }
+}
+
+─ 4D. Crear app/Exports/EncuestasResumenSheet.php ───────────────────────────
+
+<?php
+
+namespace App\Exports;
+
+use App\Models\EncuestaPlantilla;
+use App\Models\EncuestaRespuesta;
+use App\Models\EncuestaSatisfaccion;
+use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
+class EncuestasResumenSheet implements FromArray, WithStyles, WithTitle, WithColumnWidths
+{
+    public function __construct(
+        private ?int $eventoId,
+        private ?EncuestaPlantilla $plantilla
+    ) {}
+
+    public function title(): string { return 'Resumen'; }
+
+    public function columnWidths(): array
+    {
+        return ['A' => 55, 'B' => 35, 'C' => 12, 'D' => 12];
+    }
+
+    public function array(): array
+    {
+        $encuestaIds = EncuestaSatisfaccion::where('es_prueba', false)
+            ->whereNotNull('completada_at')
+            ->when($this->eventoId, fn($q) => $q->where('evento_id', $this->eventoId))
+            ->pluck('id');
+
+        $totalRespondidas   = $encuestaIds->count();
+        $totalEnviadas      = EncuestaSatisfaccion::where('es_prueba', false)
+            ->when($this->eventoId, fn($q) => $q->where('evento_id', $this->eventoId))
+            ->count();
+
+        $rows = [
+            ['REPORTE DE ENCUESTAS DE SATISFACCIÓN', '', '', ''],
+            ['Plantilla:', $this->plantilla?->nombre ?? '—', '', ''],
+            ['Total enviadas:', $totalEnviadas, '', ''],
+            ['Total respondidas:', $totalRespondidas, '', ''],
+            ['Tasa de respuesta:', ($totalEnviadas > 0 ? round($totalRespondidas * 100 / $totalEnviadas, 1) : 0) . '%', '', ''],
+            ['Generado:', now()->format('d/m/Y H:i'), '', ''],
+            ['', '', '', ''],
+            ['PREGUNTA', 'OPCIÓN DE RESPUESTA', 'CANTIDAD', '% DEL TOTAL'],
+        ];
+
+        $preguntas = $this->plantilla?->preguntas ?? [];
+
+        foreach ($preguntas as $pregunta) {
+            if ($pregunta['tipo'] === 'texto') {
+                // Para texto libre, listar las respuestas
+                $textos = EncuestaRespuesta::whereIn('encuesta_satisfaccion_id', $encuestaIds)
+                    ->where('pregunta', $pregunta['texto'])
+                    ->whereNotNull('respuesta')
+                    ->where('respuesta', '!=', '')
+                    ->pluck('respuesta');
+
+                $rows[] = [$pregunta['texto'], '(Texto libre — ' . $textos->count() . ' respuestas)', '', ''];
+                foreach ($textos as $txt) {
+                    $rows[] = ['', '  • ' . $txt, '', ''];
+                }
+                $rows[] = ['', '', '', ''];
+                continue;
+            }
+
+            $grupo = EncuestaRespuesta::whereIn('encuesta_satisfaccion_id', $encuestaIds)
+                ->where('pregunta', $pregunta['texto'])
+                ->selectRaw('respuesta, COUNT(*) as total')
+                ->groupBy('respuesta')
+                ->orderByDesc('total')
+                ->get();
+
+            $totalPregunta = $grupo->sum('total');
+            $primerRow = true;
+
+            foreach ($grupo as $g) {
+                $pct = $totalPregunta > 0 ? round($g->total * 100 / $totalPregunta, 1) : 0;
+                $rows[] = [
+                    $primerRow ? $pregunta['texto'] : '',
+                    $g->respuesta ?? '(sin respuesta)',
+                    $g->total,
+                    $pct . '%',
+                ];
+                $primerRow = false;
+            }
+
+            if ($grupo->isEmpty()) {
+                $rows[] = [$pregunta['texto'], '(sin respuestas)', 0, '0%'];
+            }
+
+            $rows[] = ['', '', '', ''];
+        }
+
+        return $rows;
+    }
+
+    public function styles(Worksheet $sheet): array
+    {
+        // Título principal
+        $sheet->mergeCells('A1:D1');
+        $sheet->getStyle('A1')->applyFromArray([
+            'font' => ['bold' => true, 'size' => 16, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '8B1028']],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+        ]);
+
+        // Encabezados de tabla (fila 8)
+        $sheet->getStyle('A8:D8')->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '8B1028']],
+        ]);
+
+        return [];
+    }
+}
+
+─ 4E. Crear app/Exports/EncuestasDetalleSheet.php ───────────────────────────
+
+<?php
+
+namespace App\Exports;
+
+use App\Models\EncuestaPlantilla;
+use App\Models\EncuestaSatisfaccion;
+use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
+
+class EncuestasDetalleSheet implements FromCollection, WithHeadings, WithStyles, WithTitle, WithColumnWidths
+{
+    public function __construct(
+        private ?int $eventoId,
+        private ?EncuestaPlantilla $plantilla,
+        private ?string $tipo  // null=todos, 'comprador', 'proveedor'
+    ) {}
+
+    public function title(): string
+    {
+        return match($this->tipo) {
+            'comprador' => 'Compradores',
+            'proveedor' => 'Proveedores',
+            default     => 'Todas las Respuestas',
+        };
+    }
+
+    public function columnWidths(): array
+    {
+        return ['A' => 25, 'B' => 30, 'C' => 14, 'D' => 20];
+    }
+
+    public function collection()
+    {
+        $preguntas = $this->plantilla?->preguntas ?? [];
+
+        $query = EncuestaSatisfaccion::with(['evento', 'user', 'respuestas'])
+            ->where('es_prueba', false)
+            ->whereNotNull('completada_at')
+            ->when($this->eventoId, fn($q) => $q->where('evento_id', $this->eventoId))
+            ->when($this->tipo, fn($q) => $q->where('tipo', $this->tipo))
+            ->orderBy('tipo')
+            ->orderBy('completada_at');
+
+        return $query->get()->map(function ($enc) use ($preguntas) {
+            $respuestasMap = $enc->respuestas->pluck('respuesta', 'pregunta');
+
+            $row = [
+                'Participante'    => $enc->user?->name ?? '—',
+                'Email'           => $enc->user?->email ?? '—',
+                'Tipo'            => ucfirst($enc->tipo),
+                'Fecha respuesta' => $enc->completada_at?->format('d/m/Y H:i'),
+            ];
+
+            foreach ($preguntas as $pregunta) {
+                $row[$pregunta['texto']] = $respuestasMap[$pregunta['texto']] ?? '—';
+            }
+
+            return $row;
+        });
+    }
+
+    public function headings(): array
+    {
+        $preguntas = $this->plantilla?->preguntas ?? [];
+        $base = ['Participante', 'Email', 'Tipo', 'Fecha respuesta'];
+        foreach ($preguntas as $p) {
+            $base[] = $p['texto'];
+        }
+        return $base;
+    }
+
+    public function styles(Worksheet $sheet): array
+    {
+        return [
+            1 => [
+                'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '8B1028']],
+            ],
+        ];
+    }
+}
+
+─ 4F. Agregar botón Excel en Graficas.vue ───────────────────────────────────
+
+Junto al botón "📥 Descargar PDF con gráficas", agregar:
+
+    <a :href="urlExcel"
+       target="_blank"
+       class="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg
+              text-sm font-medium transition flex items-center gap-2">
+      📊 Descargar Excel
+    </a>
+
+En el script setup de Graficas.vue, agregar computed:
+
+    const urlExcel = computed(() => {
+        const params = new URLSearchParams()
+        if (filtros.value.evento_id)    params.set('evento_id', filtros.value.evento_id)
+        if (filtros.value.plantilla_id) params.set('plantilla_id', filtros.value.plantilla_id)
+        return route('admin.encuestas.reporte-excel') + '?' + params.toString()
+    })
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN COMPLETA
+════════════════════════════════════════════════════════════════════════════════
+
+1. RECORDATORIO:
+   a) Admin → Encuestas → seleccionar evento con pendientes
+   b) Clic "⏰ Recordatorio a pendientes"
+   c) Solo quienes NO han contestado reciben el correo
+
+2. PDF:
+   a) /admin/encuestas/graficas → "📥 Descargar PDF con gráficas"
+   b) PDF descarga con: portada KPIs, pasteles SVG por pregunta, respuestas por persona
+
+3. EXCEL:
+   a) /admin/encuestas/graficas → "📊 Descargar Excel"
+   b) Excel con 4 hojas: Resumen (conteos + %), Todas las Respuestas, Compradores, Proveedores
+   c) Hoja Resumen: texto libre listado fila a fila, opciones con % correcto
+   d) Hojas de detalle: una columna por pregunta, una fila por persona
+
+4. GRÁFICAS:
+   a) Toggle "● Pastel" → pasteles canvas por pregunta
+   b) Tab "👤 Por Persona" → acordeón buscable con respuestas individuales
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY A PRODUCCIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+    ssh -p 65002 u489236361@195.35.38.222
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # 1. Bajar código nuevo
+    git pull origin main
+
+    # 2. Instalar DomPDF (si no está instalado)
+    composer require barryvdh/laravel-dompdf --no-interaction
+
+    # 3. Autoload de los nuevos Exports
+    composer dump-autoload --optimize
+
+    # 4. Compilar assets (Vue + Tailwind)
+    npm run build
+
+    # 5. Limpiar y regenerar caché
+    php artisan optimize
+    php artisan view:clear
+
+    # 6. Verificar que la tabla jobs existe (para la cola del recordatorio)
+    php artisan migrate --force
+
+    # 7. Confirmar que QUEUE_CONNECTION=database en .env
+    grep QUEUE_CONNECTION .env
+
+    # Si dice "sync", cambiarlo:
+    sed -i 's/QUEUE_CONNECTION=sync/QUEUE_CONNECTION=database/' .env
+    php artisan config:clear
+
+================================================================================
+FIN DEL PROMPT — Mejoras Encuestas: Recordatorio + PDF + Excel + Pasteles + Por Persona
+================================================================================

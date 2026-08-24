@@ -175,6 +175,11 @@ const googleAuthUrl = computed(() => {
                         <Link :href="route('aviso.privacidad')" target="_blank"
                             class="text-guinda-600 dark:text-guinda-400 underline hover:text-guinda-700">
                             Aviso de Privacidad
+                        </Link>
+                        y los
+                        <Link :href="route('terminos.condiciones')" target="_blank"
+                            class="text-guinda-600 dark:text-guinda-400 underline hover:text-guinda-700">
+                            Términos y Condiciones
                         </Link>.
                     </p>
                 </form>

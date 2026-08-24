@@ -1,0 +1,191 @@
+RESUMEN DE CAMBIOS
+==================
+1. Corregir el Error 500 al registrarse (SMTP sin catch)
+2. Corregir los correos del bazar que NO se envían (queue worker)
+3. Quitar el badge "Registrado" del sidebar (ya estaba en prompt anterior)
+
+
+─────────────────────────────────────────────────────────────
+DIAGNÓSTICO: POR QUÉ NO SE ENVÍAN LOS CORREOS DEL BAZAR
+─────────────────────────────────────────────────────────────
+
+El código usa Mail::to($email)->queue(...) en tres lugares:
+  - EventoRegistroController → registrarBazar() → correo "solicitud recibida"
+  - BazarEvaluacionController → enviarAprobacion() → correo "seleccionado"
+  - BazarEvaluacionController → enviarRechazo() → correo "no seleccionado"
+
+QUEUE_CONNECTION=database en .env → los correos se guardan en la tabla `jobs`
+y NUNCA se envían a menos que php artisan queue:work esté corriendo en el servidor.
+
+Si el proceso queue:work no está activo, los correos se acumulan en `jobs` sin salir.
+
+SOLUCIÓN INMEDIATA (sin cambiar código):
+En el servidor, ejecuta:
+    php artisan queue:work --tries=3
+
+SOLUCIÓN PERMANENTE (opción A — más simple para producción sin supervisor):
+Cambiar en .env de producción:
+    QUEUE_CONNECTION=sync
+
+Con sync, los correos se envían inmediatamente al ejecutar queue(), sin necesidad
+de un proceso externo. Más simple para servidores compartidos.
+
+SOLUCIÓN PERMANENTE (opción B — más robusta):
+Configurar un proceso supervisor en el servidor que mantenga queue:work activo.
+Requiere acceso root al servidor.
+
+
+─────────────────────────────────────────────────────────────
+ACCIÓN INMEDIATA — Tinker para enviar correos pendientes HOY
+─────────────────────────────────────────────────────────────
+
+Ejecuta en el servidor (ssh o panel de control → Terminal):
+
+    php artisan tinker
+
+Luego pega estos comandos uno a uno:
+
+--- Ver cuántos jobs están pendientes en la cola ---
+>>> DB::table('jobs')->count();
+>>> DB::table('failed_jobs')->count();
+
+--- Procesar todos los jobs pendientes ahora (equivale a queue:work una vez) ---
+>>> Artisan::call('queue:work', ['--once' => true, '--tries' => 3]);
+
+Si hay muchos jobs pendientes, repite el último comando varias veces hasta que
+DB::table('jobs')->count() llegue a 0.
+
+--- Alternativa: enviar correos bazar directamente desde tinker ---
+Si los jobs ya fallaron (están en failed_jobs), puedes reenviar manualmente:
+
+// Encontrar evento bazar activo
+$evento = App\Models\Evento::where('activa', true)->where('tipo_evento', 'bazar_exposicion')->first();
+echo $evento->nombre;
+
+// Ver quién no recibió correo de solicitud (no hay flag para este, solo revisar)
+// Ver quién está seleccionado y no recibió correo de aprobación
+$pendientes = DB::table('evento_usuario as eu')
+    ->join('users as u', 'u.id', 'eu.user_id')
+    ->where('eu.evento_id', $evento->id)
+    ->where('eu.tipo', 'expositor')
+    ->where('eu.seleccionado', true)
+    ->where('eu.correo_aprobacion_enviado', false)
+    ->select('eu.user_id', 'u.name', 'u.email')
+    ->get();
+echo $pendientes->count() . ' seleccionados sin correo de aprobación';
+$pendientes->each(fn($p) => echo $p->name . ' — ' . $p->email . "\n");
+
+// Ver quién NO fue seleccionado y no recibió correo
+$noSel = DB::table('evento_usuario as eu')
+    ->join('users as u', 'u.id', 'eu.user_id')
+    ->where('eu.evento_id', $evento->id)
+    ->where('eu.tipo', 'expositor')
+    ->where('eu.estado', 'aprobado')
+    ->where('eu.seleccionado', false)
+    ->where('eu.correo_rechazo_enviado', false)
+    ->select('eu.user_id', 'u.name', 'u.email')
+    ->get();
+echo $noSel->count() . ' no seleccionados sin correo de resultado';
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 1 — app/Actions/Fortify/CreateNewUser.php
+─────────────────────────────────────────────────────────────
+
+CAUSA DEL 500: Fortify dispara el evento `Registered` tras crear al usuario.
+El listener `SendEmailVerificationNotification` llama a SMTP. Si SMTP falla →
+excepción sin catch → HTTP 500.
+
+LA FIX: agregar `'email_verified_at' => now()` al User::create(). Esto hace que
+`$user->hasVerifiedEmail()` retorne true y el listener omite el envío del correo.
+
+Localiza el bloque User::create([...]) y agrega la línea marcada:
+
+        $user = User::create([
+            'name'             => $input['name'],
+            'email'            => $input['email'],
+            'password'         => Hash::make($input['password']),
+            'telefono'         => $input['telefono'] ?? null,
+            'curp'             => $input['curp'] ?? null,
+            'active_role'      => 'comprador',
+            'acepta_aviso_at'  => now(),
+            'email_verified_at'=> now(),   // ← AGREGAR ESTA LÍNEA
+        ]);
+
+NOTA: Con esto los usuarios quedan verificados al registrarse, igual que con Google.
+La pantalla /email/verify nunca se muestra a usuarios nuevos de todas formas
+(el middleware EnsureProfileComplete intercepta antes de que el middleware `verified`
+del route /dashboard corra).
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 2 — app/Models/User.php
+─────────────────────────────────────────────────────────────
+
+Red de seguridad: si SMTP falla en el botón "Reenviar correo de verificación",
+que no cause un 500. Dentro de la clase User, antes del cierre, agrega:
+
+    /**
+     * Envuelve el envío del correo de verificación en try/catch.
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        try {
+            parent::sendEmailVerificationNotification();
+        } catch (\Exception $e) {
+            \Log::error('Error correo verificación ' . $this->email . ': ' . $e->getMessage());
+        }
+    }
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 3 — .env de producción (en el servidor)
+─────────────────────────────────────────────────────────────
+
+Para que los correos se envíen sin necesitar queue:work corriendo:
+
+    QUEUE_CONNECTION=sync    ← cambiar de 'database' a 'sync'
+
+Después:
+    php artisan config:clear
+    php artisan cache:clear
+
+IMPORTANTE: con sync, si SMTP falla el error se lanza en el request.
+Por eso el try/catch del CAMBIO 2 y el CAMBIO 1 son importantes antes de este cambio.
+
+También verificar que estén correctos:
+    APP_URL=https://impulsate.iyemyucatan.com
+    SESSION_SECURE_COOKIE=true
+    SESSION_DOMAIN=impulsate.iyemyucatan.com
+
+
+─────────────────────────────────────────────────────────────
+DEPLOY (producción)
+─────────────────────────────────────────────────────────────
+
+git pull origin main
+composer install --no-dev --optimize-autoloader
+npm ci && npm run build
+php artisan config:clear
+php artisan cache:clear
+php artisan route:clear
+php artisan view:clear
+# No se requiere php artisan migrate
+
+Usuarios existentes con email_verified_at = null:
+    php artisan tinker
+    >>> App\Models\User::whereNull('email_verified_at')->update(['email_verified_at' => now()])
+
+
+─────────────────────────────────────────────────────────────
+RESUMEN DEL TESTING EN PRODUCCIÓN (2026-08-18)
+─────────────────────────────────────────────────────────────
+
+✅ POST /register → 200, sin 500 (SMTP funcionó en esta prueba)
+✅ Verificación de correo → email_verified_at se estableció hoy
+✅ Flujo /seleccionar-rol → /completar-perfil → correcto
+⚠️  El "409 en verificar correo" reportado = comportamiento normal de Inertia
+     (version mismatch al navegar), NO es un error de la app
+⚠️  /email/verify nunca se muestra a usuarios nuevos por orden de middleware:
+     EnsureProfileComplete intercepta antes de que `verified` corra
+❌  Correos bazar NO enviados → QUEUE_CONNECTION=database sin queue worker activo

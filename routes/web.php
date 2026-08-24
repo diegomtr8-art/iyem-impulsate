@@ -16,6 +16,8 @@ use App\Http\Controllers\Admin\AgendaController;
 use App\Http\Controllers\AgendaPublicaController;
 use App\Http\Controllers\Admin\EventoController;
 use App\Http\Controllers\Admin\EventoSolicitudesController;
+use App\Http\Controllers\Admin\BazarEvaluacionController;
+use App\Http\Controllers\BazarPublicoController;
 use App\Http\Controllers\Admin\TorreControlController;
 use App\Http\Controllers\Admin\SuperAdmin\UsuariosGestionController;
 use App\Http\Controllers\Admin\SuperAdmin\PlantillasCorreoController;
@@ -28,11 +30,13 @@ use App\Http\Controllers\Auth\SeleccionarRolController;
 use App\Http\Controllers\Auth\SwitchRoleController;
 use App\Http\Controllers\CompletarPerfilController;
 use App\Http\Controllers\AvisoPrivacidadController;
+use App\Http\Controllers\TerminosCondicionesController;
 use App\Http\Controllers\AvisoAceptacionController;
 use App\Http\Controllers\EncuestaController;
 use App\Http\Controllers\EventoRegistroController;
 use App\Http\Controllers\ProveedorPerfilController;
 use App\Http\Controllers\RestauranteroCitasController;
+use App\Http\Controllers\UserPerfilController;
 
 // Google OAuth
 Route::get('/auth/google',          [SocialAuthController::class, 'redirectToGoogle'])->name('auth.google');
@@ -54,6 +58,9 @@ Route::get('/api/tv/{token}/publico',  [\App\Http\Controllers\Admin\PantallaTvCo
 Route::get('/encuesta/{token}',  [EncuestaController::class, 'show'])->name('encuestas.responder');
 Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])->name('encuestas.responder.store');
 
+// Evaluación de bazar/exposición para el no seleccionado (sin autenticación — acceso por token)
+Route::get('/bazar/evaluacion/{token}', [BazarPublicoController::class, 'evaluacion'])->name('bazar.evaluacion');
+
 // Respuesta del proveedor a una propuesta de agenda (sin autenticación — acceso por token)
 Route::prefix('agenda')->name('agenda.')->group(function () {
     Route::get('/propuesta/{token}', [AgendaPublicaController::class, 'ver'])->name('ver');
@@ -74,6 +81,7 @@ Route::get('/demo-prueba/paid',   fn() => Inertia::render('Demo/Paid'))->name('d
 // Rutas públicas
 Route::get('/', [LandingController::class, 'index'])->name('home');
 Route::get('/aviso-de-privacidad', [AvisoPrivacidadController::class, 'index'])->name('aviso.privacidad');
+Route::get('/terminos-y-condiciones', [TerminosCondicionesController::class, 'index'])->name('terminos.condiciones');
 Route::get('/proveedores', [RestauranteroPublicoController::class, 'index'])->name('proveedores.index');
 Route::get('/proveedores/{restaurantero}', [RestauranteroPublicoController::class, 'show'])->name('proveedores.show');
 // Redirecciones 301 de URLs antiguas
@@ -100,16 +108,21 @@ Route::middleware([
     // Cambio de rol dual
     Route::post('/switch-role', SwitchRoleController::class)->name('switch.role');
 
+    // Perfil unificado (comprador y proveedor)
+    Route::get('/user/profile', [UserPerfilController::class, 'show'])->name('user.perfil');
+
     // Completar perfil (Feature 7)
     Route::get('/completar-perfil',  [CompletarPerfilController::class, 'create'])->name('perfil.completar');
     Route::post('/completar-perfil', [CompletarPerfilController::class, 'store'])->name('perfil.completar.store');
     Route::post('/mi-panel/necesidades', [CompletarPerfilController::class, 'necesidades'])->name('perfil.necesidades');
     Route::post('/mi-panel/perfil',      [CompletarPerfilController::class, 'actualizarComprador'])->name('perfil.comprador.actualizar');
     Route::post('/perfil/agregar-rol',   [CompletarPerfilController::class, 'agregarRol'])->name('perfil.agregar-rol');
+    Route::post('/perfil/documentos', [CompletarPerfilController::class, 'subirDocumentos'])->name('perfil.documentos.subir');
 
     // Registro al evento
     Route::post('/eventos/{evento}/registrar-comprador', [EventoRegistroController::class, 'registrarComprador'])->name('evento.registrar-comprador');
     Route::post('/eventos/{evento}/registrar-proveedor', [EventoRegistroController::class, 'registrarProveedor'])->name('evento.registrar-proveedor');
+    Route::post('/eventos/{evento}/registrar-bazar', [EventoRegistroController::class, 'registrarBazar'])->name('evento.registrar-bazar');
 
     // Rutas de usuario autenticado
     Route::get('/mi-panel', [CitaPublicaController::class, 'dashboard'])->name('user.dashboard');
@@ -166,6 +179,8 @@ Route::middleware([
         Route::delete('/usuarios/{user}', [UserAdminController::class, 'destroy'])->name('usuarios.destroy');
 
         Route::get('/metricas', [MetricasController::class, 'index'])->name('metricas');
+        Route::get('/metricas/exportar', [MetricasController::class, 'exportar'])->name('metricas.exportar');
+        Route::patch('/usuarios/{user}/genero', [MetricasController::class, 'actualizarGenero'])->name('usuarios.genero');
 
         Route::prefix('eventos')->name('eventos.')->group(function () {
             Route::get('/', [EventoController::class, 'index'])->name('index');
@@ -186,6 +201,18 @@ Route::middleware([
             Route::post('/{evento}/solicitudes/aprobar-todos', [EventoSolicitudesController::class, 'aprobarTodos'])->name('solicitudes.aprobar-todos');
             Route::post('/{evento}/solicitudes/agregar-proveedor', [EventoSolicitudesController::class, 'agregarProveedor'])->name('solicitudes.agregar-proveedor');
             Route::post('/{evento}/solicitudes/agregar-comprador', [EventoSolicitudesController::class, 'agregarComprador'])->name('solicitudes.agregar-comprador');
+
+            // Bazar/Exposición — evaluación y selección de expositores
+            Route::prefix('{evento}/bazar')->name('bazar.')->group(function () {
+                Route::get('/', [BazarEvaluacionController::class, 'index'])->name('index');
+                Route::post('/evaluar/{userId}', [BazarEvaluacionController::class, 'evaluar'])->name('evaluar');
+                Route::post('/toggle-seleccion', [BazarEvaluacionController::class, 'toggleSeleccion'])->name('toggle-seleccion');
+                Route::post('/enviar-aprobacion', [BazarEvaluacionController::class, 'enviarAprobacion'])->name('enviar-aprobacion');
+                Route::post('/enviar-rechazo', [BazarEvaluacionController::class, 'enviarRechazo'])->name('enviar-rechazo');
+                Route::post('/aprobar/{userId}', [BazarEvaluacionController::class, 'aprobar'])->name('aprobar');
+                Route::post('/rechazar/{userId}', [BazarEvaluacionController::class, 'rechazar'])->name('rechazar');
+                Route::post('/notas-rechazo/{userId}', [BazarEvaluacionController::class, 'guardarNotasRechazo'])->name('notas-rechazo');
+            });
         });
 
         // Agenda: propuestas de citas enviadas por correo al proveedor
@@ -193,6 +220,7 @@ Route::middleware([
             Route::get('/',            [AgendaController::class, 'index'])->name('index');
             Route::get('/crear',       [AgendaController::class, 'crear'])->name('crear');
             Route::post('/',           [AgendaController::class, 'store'])->name('store');
+            Route::get('/{agenda}',    [AgendaController::class, 'show'])->name('show');
             Route::post('/{agenda}/enviar',  [AgendaController::class, 'enviar'])->name('enviar');
             Route::delete('/{agenda}', [AgendaController::class, 'destroy'])->name('destroy');
         });
@@ -215,6 +243,7 @@ Route::middleware([
         Route::post('/torre/citas/{cita}/ausente',   [TorreControlController::class, 'ausente'])->name('torre.ausente');
         Route::post('/torre/citas/{cita}/retrasar',  [TorreControlController::class, 'retrasar'])->name('torre.retrasar');
         Route::post('/torre/citas/{cita}/mesa',      [TorreControlController::class, 'cambiarMesa'])->name('torre.mesa');
+        Route::patch('/config/mesas', [TorreControlController::class, 'actualizarMesas'])->name('config.mesas');
 
         // Encuestas de satisfacción (admin)
         Route::get('/encuestas',          [\App\Http\Controllers\Admin\EncuestaAdminController::class, 'index'])->name('encuestas.index');

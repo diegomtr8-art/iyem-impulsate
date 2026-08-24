@@ -1,0 +1,245 @@
+================================================================================
+PROMPT PARA CLAUDE CODE — Encuestas por Cola (Queue) para evitar timeout
+Archivo: PROMPT_ENCUESTAS_QUEUE.txt
+================================================================================
+
+PROBLEMA:
+  El método enviarParaEvento() usa un foreach síncrono que envía correos uno
+  por uno dentro del mismo request HTTP. En Hostinger shared hosting el límite
+  de ejecución PHP (~30-60s) mata el proceso a mitad del loop.
+  Resultado: de 227 participantes solo se enviaron 118 antes del corte.
+
+SOLUCIÓN:
+  Mover el envío de correos a Laravel Queue con driver "database".
+  Cada correo se despacha como un Job independiente.
+  Un cron job en Hostinger procesa la cola cada minuto sin límite de timeout.
+  El request HTTP del admin retorna inmediatamente con "enviando en segundo plano".
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 1 — Verificar que la tabla jobs existe
+════════════════════════════════════════════════════════════════════════════════
+
+    php artisan queue:table   # solo si la migración no existe
+    php artisan migrate
+
+Si ya existe la tabla `jobs` en la BD, omitir este paso.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 2 — Cambiar QUEUE_CONNECTION en .env de producción
+════════════════════════════════════════════════════════════════════════════════
+
+En /home/u489236361/domains/impulsate.iyemyucatan.com/public_html/.env
+cambiar:
+
+    QUEUE_CONNECTION=sync
+
+por:
+
+    QUEUE_CONNECTION=database
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 3 — Crear el Job: app/Jobs/SendEncuestaJob.php
+════════════════════════════════════════════════════════════════════════════════
+
+    php artisan make:job SendEncuestaJob
+
+Contenido completo del Job:
+
+<?php
+
+namespace App\Jobs;
+
+use App\Mail\EncuestaSatisfaccionMail;
+use App\Models\EncuestaSatisfaccion;
+use App\Models\EncuestaPlantilla;
+use App\Models\Evento;
+use App\Models\User;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+
+class SendEncuestaJob implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public int $tries   = 3;
+    public int $timeout = 60;
+
+    public function __construct(
+        public int $userId,
+        public int $eventoId,
+        public string $tipo,
+        public string $segmento,
+        public int $plantillaId,
+    ) {}
+
+    public function handle(): void
+    {
+        // Verificar que no se haya enviado ya (protección doble)
+        $existe = EncuestaSatisfaccion::where('evento_id', $this->eventoId)
+            ->where('user_id', $this->userId)
+            ->where('tipo', $this->tipo)
+            ->exists();
+
+        if ($existe) return;
+
+        $user = User::find($this->userId);
+        if (!$user?->email) return;
+
+        $plantilla = EncuestaPlantilla::find($this->plantillaId);
+        $evento    = Evento::find($this->eventoId);
+
+        $encuesta = EncuestaSatisfaccion::create([
+            'evento_id'             => $this->eventoId,
+            'user_id'               => $this->userId,
+            'tipo'                  => $this->tipo,
+            'segmento'              => $this->segmento,
+            'token'                 => Str::random(40),
+            'encuesta_plantilla_id' => $this->plantillaId,
+        ]);
+
+        Mail::to($user->email)->send(
+            new EncuestaSatisfaccionMail($encuesta->load(['evento', 'user', 'plantilla']))
+        );
+    }
+
+    public function failed(\Throwable $e): void
+    {
+        \Log::error("SendEncuestaJob failed para user {$this->userId}: " . $e->getMessage());
+    }
+}
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 4 — Modificar EncuestaEnvioService.php
+════════════════════════════════════════════════════════════════════════════════
+
+Reemplazar el método enviarParaEvento() completo:
+
+    public function enviarParaEvento(
+        Evento $evento,
+        EncuestaPlantilla $plantilla,
+        string $segmento = 'todos'
+    ): int {
+        $query = \DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('estado', 'aprobado');
+
+        match ($segmento) {
+            'proveedores', 'proveedores_evento' => $query->where('tipo', 'proveedor'),
+            'compradores', 'compradores_evento' => $query->where('tipo', 'comprador'),
+            default => null,
+        };
+
+        $participantes = $query->get();
+        $despachados   = 0;
+
+        foreach ($participantes as $p) {
+            // Solo despachar si no tiene encuesta ya
+            $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
+                ->where('user_id', $p->user_id)
+                ->where('tipo', $p->tipo)
+                ->exists();
+
+            if (!$existe) {
+                \App\Jobs\SendEncuestaJob::dispatch(
+                    $p->user_id,
+                    $evento->id,
+                    $p->tipo,
+                    $segmento,
+                    $plantilla->id,
+                )->onQueue('encuestas');
+
+                $despachados++;
+            }
+        }
+
+        return $despachados;
+    }
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 5 — Modificar EncuestaAdminController: mensaje de confirmación
+════════════════════════════════════════════════════════════════════════════════
+
+En el método enviarParaEvento() del controller, cambiar el mensaje de éxito:
+
+ANTES:
+    return back()->with('success', "Encuestas enviadas a {$enviados} participante(s).");
+
+DESPUÉS:
+    return back()->with('success', "{$enviados} encuesta(s) puestas en cola. Los correos se enviarán en los próximos minutos de forma automática.");
+
+Hacer lo mismo en enviarSeleccion() si ya existe.
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 6 — Configurar Cron Job en Hostinger
+════════════════════════════════════════════════════════════════════════════════
+
+En Hostinger → Panel de impulsate.iyemyucatan.com → Avanzado → Cron Jobs
+Agregar un nuevo cron job:
+
+  Frecuencia: cada minuto (*/1 * * * *)
+  Comando:
+    /usr/bin/php /home/u489236361/domains/impulsate.iyemyucatan.com/public_html/artisan queue:work --queue=encuestas --stop-when-empty --max-time=50 >> /dev/null 2>&1
+
+  Explicación:
+  - --queue=encuestas   → solo procesa la cola de encuestas
+  - --stop-when-empty   → el proceso termina cuando no hay más jobs (clave para shared hosting)
+  - --max-time=50       → para antes de 60s para no solaparse con el siguiente cron
+
+════════════════════════════════════════════════════════════════════════════════
+PASO 7 — Enviar los 109 pendientes ahora mismo
+════════════════════════════════════════════════════════════════════════════════
+
+Una vez desplegado el código:
+
+1. Ve a Admin → Encuestas
+2. Selecciona el evento y plantilla
+3. Segmento: Todos
+4. Clic en Enviar
+
+El sistema detectará que 118 ya tienen encuesta y SOLO despachará jobs para los
+109 restantes. En los próximos 1-2 minutos el cron los procesará y recibirán su correo.
+
+════════════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN
+════════════════════════════════════════════════════════════════════════════════
+
+1. Después de hacer clic en Enviar, verificar en phpMyAdmin:
+   SELECT COUNT(*) FROM jobs WHERE queue = 'encuestas';
+   → Debe mostrar ~109 jobs pendientes
+
+2. Esperar 1-2 minutos y verificar que se procesaron:
+   SELECT COUNT(*) FROM jobs WHERE queue = 'encuestas';
+   → Debe ser 0 (todos procesados)
+
+3. Verificar que llegaron:
+   SELECT COUNT(*) FROM encuestas_satisfaccion WHERE es_prueba = 0;
+   → Debe ser ~227
+
+4. Si algún job falló:
+   SELECT * FROM failed_jobs ORDER BY failed_at DESC LIMIT 10;
+
+════════════════════════════════════════════════════════════════════════════════
+DEPLOY
+════════════════════════════════════════════════════════════════════════════════
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # 1. Subir código nuevo
+    # 2. Asegurarse de que la tabla jobs existe
+    php artisan migrate --force
+
+    # 3. Actualizar .env: QUEUE_CONNECTION=database
+
+    # 4. Limpiar caché
+    php artisan optimize
+
+    # 5. Configurar el cron en Hostinger (Paso 6 arriba)
+
+================================================================================
+FIN DEL PROMPT — Queue para envío masivo de encuestas sin timeout
+================================================================================

@@ -7,7 +7,7 @@ const props = defineProps({
     eventos: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['open-perfil-modal']);
+const irAPerfil = () => router.visit(route('user.perfil'));
 
 const repostularse = (evento, tipo) => {
     if (!confirm(`¿Deseas volver a postularte al evento "${evento.nombre}"?`)) return;
@@ -465,7 +465,7 @@ const fases = [
                                         Actualiza tu perfil con lo indicado y vuelve a postularte:
                                     </p>
                                     <div class="flex flex-wrap gap-2">
-                                        <button @click="emit('open-perfil-modal')"
+                                        <button @click="irAPerfil()"
                                             class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
                                                    text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
                                             Actualizar mi perfil
@@ -534,7 +534,7 @@ const fases = [
                                         Actualiza tu perfil con lo indicado y vuelve a postularte:
                                     </p>
                                     <div class="flex flex-wrap gap-2">
-                                        <button @click="emit('open-perfil-modal')"
+                                        <button @click="irAPerfil()"
                                             class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
                                                    text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
                                             Actualizar mi perfil
@@ -586,7 +586,7 @@ const fases = [
                                         </span>
                                     </p>
                                     <div class="flex flex-wrap gap-2">
-                                        <button @click="emit('open-perfil-modal')"
+                                        <button @click="irAPerfil()"
                                             class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
                                                    text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
                                             Actualizar perfil
@@ -632,7 +632,7 @@ const fases = [
                                         </span>
                                     </p>
                                     <div class="flex flex-wrap gap-2">
-                                        <button @click="emit('open-perfil-modal')"
+                                        <button @click="irAPerfil()"
                                             class="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700
                                                    text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors">
                                             Actualizar perfil

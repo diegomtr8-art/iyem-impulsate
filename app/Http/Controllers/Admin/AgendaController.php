@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\PlantillaCorreoMail;
 use App\Models\AgendaPropuesta;
 use App\Models\AgendaPropuestaCita;
+use App\Models\Cita;
 use App\Models\Evento;
 use App\Models\PlantillaCorreo;
 use App\Models\Restaurantero;
@@ -78,10 +79,10 @@ class AgendaController extends Controller
         while ($inicio->lt($fin)) {
             $slots[] = [
                 'inicio' => $inicio->toIso8601String(),
-                'fin'    => $inicio->copy()->addMinutes(30)->toIso8601String(),
+                'fin'    => $inicio->copy()->addMinutes(10)->toIso8601String(),
                 'label'  => $inicio->format('H:i'),
             ];
-            $inicio->addMinutes(30);
+            $inicio->addMinutes(10);
         }
 
         return Inertia::render('Admin/Agenda/Crear', [
@@ -169,6 +170,29 @@ class AgendaController extends Controller
                 ($request->boolean('enviar') ? ' y enviada al comprador.' : '.'));
     }
 
+    public function show(AgendaPropuesta $agenda)
+    {
+        $agenda->load([
+            'comprador:id,name,nombre_empresa,email',
+            'evento:id,nombre,fecha_hora_inicio',
+            'citas.proveedor:id,nombre_restaurante,logo_path',
+        ]);
+
+        $citasConfirmadas = [];
+        if ($agenda->estado === 'aceptada') {
+            $citasConfirmadas = Cita::where('cliente_id', $agenda->user_id)
+                ->where('edicion_id', $agenda->evento_id)
+                ->with('restaurantero:id,nombre_restaurante,logo_path')
+                ->orderBy('inicio')
+                ->get();
+        }
+
+        return Inertia::render('Admin/Agenda/Show', [
+            'propuesta'        => $agenda,
+            'citasConfirmadas' => $citasConfirmadas,
+        ]);
+    }
+
     public function enviar(AgendaPropuesta $agenda)
     {
         if ($agenda->estado !== 'pendiente') {
@@ -182,11 +206,19 @@ class AgendaController extends Controller
 
     public function destroy(AgendaPropuesta $agenda)
     {
-        if ($agenda->estado === 'aceptada') {
-            return back()->withErrors(['error' => 'No puedes eliminar una propuesta ya aceptada.']);
-        }
-        $agenda->delete();
-        return back()->with('success', 'Propuesta eliminada.');
+        DB::transaction(function () use ($agenda) {
+            if ($agenda->estado === 'aceptada') {
+                Cita::where('cliente_id', $agenda->user_id)
+                    ->where('edicion_id', $agenda->evento_id)
+                    ->delete();
+            }
+
+            $agenda->citas()->delete();
+            $agenda->delete();
+        });
+
+        return redirect()->route('admin.agenda.index')
+            ->with('success', 'Propuesta de agenda eliminada correctamente.');
     }
 
     private function enviarCorreo(AgendaPropuesta $propuesta): void

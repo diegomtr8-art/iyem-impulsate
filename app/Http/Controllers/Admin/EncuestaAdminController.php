@@ -155,9 +155,7 @@ class EncuestaAdminController extends Controller
         if ($eventoId) {
             $base->where('evento_id', $eventoId);
         }
-        if ($segmento) {
-            $base->where('tipo', $segmento);
-        }
+        $this->aplicarFiltroSegmento($base, $segmento);
         if ($desde) {
             $base->whereDate('completada_at', '>=', $desde);
         }
@@ -170,20 +168,24 @@ class EncuestaAdminController extends Controller
         $totalRespondidas  = $encuestaIds->count();
 
         // Totales enviadas (sin filtro completada_at)
-        $totalEnviadas = EncuestaSatisfaccion::where('es_prueba', false)
-            ->when($eventoId, fn ($q) => $q->where('evento_id', $eventoId))
-            ->when($segmento, fn ($q) => $q->where('tipo', $segmento))
-            ->count();
+        $totalEnviadasQuery = EncuestaSatisfaccion::where('es_prueba', false)
+            ->when($eventoId, fn ($q) => $q->where('evento_id', $eventoId));
+        $this->aplicarFiltroSegmento($totalEnviadasQuery, $segmento);
+        $totalEnviadas = $totalEnviadasQuery->count();
 
-        $compradores = (clone $base)->where('tipo', 'comprador')->count();
-        $proveedores = (clone $base)->where('tipo', 'proveedor')->count();
+        // Fuente de verdad: rol Spatie del usuario, no el campo tipo (puede estar
+        // desactualizado en registros legacy) — evita descuadres con Correo Masivo.
+        $compradores = (clone $base)->whereHas('user.roles', fn ($q) => $q->where('name', 'cliente'))
+            ->whereDoesntHave('user.roles', fn ($q) => $q->where('name', 'admin'))
+            ->count();
+        $proveedores = (clone $base)->whereHas('user.roles', fn ($q) => $q->where('name', 'restaurantero'))->count();
         $caniracCount = (clone $base)->whereHas('user', fn ($q) => $q->where('camara_asociacion', 'CANIRAC'))->count();
 
         // Agrupar respuestas por pregunta
         $respuestasAgrupadas = $this->agruparRespuestasPorPregunta($encuestaIds);
 
         // Respondientes individuales (para vista "Por Persona")
-        $respondientes = (clone $base)->with(['user', 'respuestas'])
+        $respondientes = (clone $base)->with(['user.roles', 'respuestas'])
             ->orderBy('tipo')
             ->orderByDesc('completada_at')
             ->get()
@@ -191,7 +193,7 @@ class EncuestaAdminController extends Controller
                 'id'         => $e->id,
                 'nombre'     => $e->user?->name ?? $e->email_prueba ?? '—',
                 'email'      => $e->user?->email ?? $e->email_prueba ?? '—',
-                'tipo'       => $e->tipo,
+                'tipo'       => $this->tipoPorRol($e),
                 'fecha'      => $e->completada_at?->format('d/m/Y H:i'),
                 'respuestas' => $e->respuestas->map(fn ($r) => [
                     'pregunta'  => $r->pregunta,
@@ -274,6 +276,37 @@ class EncuestaAdminController extends Controller
             : EncuestaPlantilla::where('activa', true)->first();
     }
 
+    /**
+     * Filtra por segmento comprador/proveedor según el rol Spatie del usuario
+     * (fuente de verdad), no el campo tipo almacenado.
+     */
+    private function aplicarFiltroSegmento($query, ?string $segmento): void
+    {
+        if ($segmento === 'comprador') {
+            $query->whereHas('user.roles', fn ($q) => $q->where('name', 'cliente'))
+                ->whereDoesntHave('user.roles', fn ($q) => $q->where('name', 'admin'));
+        } elseif ($segmento === 'proveedor') {
+            $query->whereHas('user.roles', fn ($q) => $q->where('name', 'restaurantero'));
+        }
+    }
+
+    private function tipoPorRol(EncuestaSatisfaccion $encuesta): ?string
+    {
+        if (!$encuesta->user) {
+            return $encuesta->tipo;
+        }
+
+        if ($encuesta->user->hasRole('restaurantero')) {
+            return 'proveedor';
+        }
+
+        if ($encuesta->user->hasRole('cliente') && !$encuesta->user->hasRole('admin')) {
+            return 'comprador';
+        }
+
+        return $encuesta->tipo;
+    }
+
     private function aplicarFiltroCanirac($query, ?string $canirac): void
     {
         if ($canirac === 'si') {
@@ -314,21 +347,23 @@ class EncuestaAdminController extends Controller
         $totalEnviadas    = EncuestaSatisfaccion::where('es_prueba', false)
             ->when($eventoId, fn ($q) => $q->where('evento_id', $eventoId))
             ->count();
-        $compradores = (clone $base)->where('tipo', 'comprador')->count();
-        $proveedores = (clone $base)->where('tipo', 'proveedor')->count();
+        $compradores = (clone $base)->whereHas('user.roles', fn ($q) => $q->where('name', 'cliente'))
+            ->whereDoesntHave('user.roles', fn ($q) => $q->where('name', 'admin'))
+            ->count();
+        $proveedores = (clone $base)->whereHas('user.roles', fn ($q) => $q->where('name', 'restaurantero'))->count();
 
         $encuestaIds    = (clone $base)->pluck('id');
         $datosGenerales = $this->agruparRespuestasPorPregunta($encuestaIds)
             ->filter(fn ($d) => $d['tipo'] !== 'texto');
 
-        $respuestasPorPersona = (clone $base)->with(['user', 'respuestas'])
+        $respuestasPorPersona = (clone $base)->with(['user.roles', 'respuestas'])
             ->orderBy('tipo')
             ->orderByDesc('completada_at')
             ->get()
             ->map(fn ($e) => [
                 'nombre'     => $e->user?->name ?? $e->email_prueba ?? '—',
                 'email'      => $e->user?->email ?? $e->email_prueba ?? '—',
-                'tipo'       => $e->tipo,
+                'tipo'       => $this->tipoPorRol($e),
                 'fecha'      => $e->completada_at?->format('d/m/Y H:i'),
                 'respuestas' => $e->respuestas->map(fn ($r) => [
                     'pregunta'  => $r->pregunta,
@@ -559,7 +594,7 @@ class EncuestaAdminController extends Controller
     {
         $request->validate(['evento_id' => 'required|exists:eventos,id']);
 
-        $participantes = DB::table('evento_usuario')
+        $filas = DB::table('evento_usuario')
             ->join('users', 'users.id', '=', 'evento_usuario.user_id')
             ->leftJoin('restauranteros', 'restauranteros.user_id', '=', 'users.id')
             ->where('evento_usuario.evento_id', $request->evento_id)
@@ -568,22 +603,43 @@ class EncuestaAdminController extends Controller
                 'users.id',
                 'users.name',
                 'users.email',
-                'evento_usuario.tipo',
                 DB::raw("COALESCE(restauranteros.nombre_restaurante, users.name) as nombre_negocio"),
             ])
-            ->orderBy('evento_usuario.tipo')
             ->orderBy('users.name')
+            ->get();
+
+        // Fuente de verdad: rol Spatie del usuario, no evento_usuario.tipo
+        // (evita descuadres con Correo Masivo).
+        $usuariosPorId = User::whereIn('id', $filas->pluck('id'))
+            ->with('roles')
             ->get()
-            ->map(fn ($p) => [
-                'user_id'        => $p->id,
-                'name'           => $p->name,
-                'email'          => $p->email,
-                'tipo'           => $p->tipo,
-                'nombre_negocio' => $p->nombre_negocio,
-                'ya_enviada'     => EncuestaSatisfaccion::where('evento_id', $request->evento_id)
-                    ->where('user_id', $p->id)
-                    ->exists(),
-            ]);
+            ->keyBy('id');
+
+        $participantes = $filas
+            ->map(function ($p) use ($usuariosPorId, $request) {
+                $user = $usuariosPorId->get($p->id);
+                $tipo = $user?->hasRole('restaurantero')
+                    ? 'proveedor'
+                    : ($user?->hasRole('cliente') && !$user->hasRole('admin') ? 'comprador' : null);
+
+                if (!$tipo) {
+                    return null;
+                }
+
+                return [
+                    'user_id'        => $p->id,
+                    'name'           => $p->name,
+                    'email'          => $p->email,
+                    'tipo'           => $tipo,
+                    'nombre_negocio' => $p->nombre_negocio,
+                    'ya_enviada'     => EncuestaSatisfaccion::where('evento_id', $request->evento_id)
+                        ->where('user_id', $p->id)
+                        ->exists(),
+                ];
+            })
+            ->filter()
+            ->sortBy([['tipo', 'asc'], ['name', 'asc']])
+            ->values();
 
         return response()->json($participantes);
     }
@@ -604,31 +660,41 @@ class EncuestaAdminController extends Controller
             return back()->withErrors(['error' => 'No hay plantilla activa. Activa una primero.']);
         }
 
-        $participantes = DB::table('evento_usuario')
+        $userIds = DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
             ->where('estado', 'aprobado')
             ->whereIn('user_id', $request->user_ids)
-            ->get(['user_id', 'tipo']);
+            ->pluck('user_id');
+
+        // Fuente de verdad: rol Spatie del usuario, no evento_usuario.tipo.
+        $usuarios = User::whereIn('id', $userIds)->with('roles')->get();
 
         $enviados = 0;
-        foreach ($participantes as $p) {
+        foreach ($usuarios as $user) {
+            $tipo = $user->hasRole('restaurantero')
+                ? 'proveedor'
+                : ($user->hasRole('cliente') && !$user->hasRole('admin') ? 'comprador' : null);
+
+            if (!$tipo) {
+                continue;
+            }
+
             $existe = EncuestaSatisfaccion::where('evento_id', $evento->id)
-                ->where('user_id', $p->user_id)
-                ->where('tipo', $p->tipo)
+                ->where('user_id', $user->id)
+                ->where('tipo', $tipo)
                 ->exists();
 
             if (!$existe) {
                 $encuesta = EncuestaSatisfaccion::create([
                     'evento_id'             => $evento->id,
-                    'user_id'               => $p->user_id,
-                    'tipo'                  => $p->tipo,
-                    'segmento'              => $p->tipo === 'proveedor' ? 'proveedores' : 'compradores',
+                    'user_id'               => $user->id,
+                    'tipo'                  => $tipo,
+                    'segmento'              => $tipo === 'proveedor' ? 'proveedores' : 'compradores',
                     'token'                 => Str::random(40),
                     'encuesta_plantilla_id' => $plantilla->id,
                 ]);
 
-                $user = User::find($p->user_id);
-                if ($user?->email) {
+                if ($user->email) {
                     Mail::to($user->email)
                         ->send(new EncuestaSatisfaccionMail($encuesta->load(['evento', 'user', 'plantilla'])));
                     $enviados++;
