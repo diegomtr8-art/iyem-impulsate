@@ -1,5 +1,5 @@
 # ── Blindaje: nada de esto debe salir a internet ──────────────────
-<FilesMatch "^\.env|^\.env\..*|^\.git.*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|\.html?$|\.json$|\.ya?ml$|\.sh$|\.ini$|\.conf$|\.pem$|\.key$|\.crt$|\.cache$|^\.htpasswd$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$|^(vite|tailwind|postcss|jsconfig)\.(js|json)$">
+<FilesMatch "^\.env|^\.env\..*|^\.git.*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|\.html?$|\.json$|\.ya?ml$|\.sh$|\.ini$|\.conf$|\.pem$|\.key$|\.crt$|\.cache$|^\.htpasswd$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$|\.config\.(js|cjs|mjs|ts)$">
     Require all denied
 </FilesMatch>
 
