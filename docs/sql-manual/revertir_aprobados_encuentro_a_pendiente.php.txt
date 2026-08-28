@@ -1,3 +1,15 @@
+ARCHIVO DE REFERENCIA - NO ES UNA MIGRACION EJECUTABLE
+=======================================================
+Se le quito el prefijo de fecha y la extension .php a proposito: si volviera
+a database/migrations/ con su timestamp original (2026_08_26), seria ANTERIOR
+a las migraciones del 27 y el siguiente "migrate --force" del despliegue lo
+ejecutaria SOLO en produccion, des-aprobando a todos los inscritos de los
+eventos activos.
+
+Si algun dia hace falta correrlo, conviertelo antes en un comando artisan con
+--dry-run que imprima a quienes va a afectar y solo escriba con --force.
+=======================================================
+
 <?php
 
 use Illuminate\Database\Migrations\Migration;

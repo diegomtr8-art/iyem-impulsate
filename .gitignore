@@ -43,3 +43,8 @@ __pycache__/
 
 # ── Archivo con nombre corrupto (ruta de Windows aplanada) ──
 C:xampphtdocscitasdiag.py
+
+# ── Nunca revivir el directorio de migraciones manuales ──
+# Su contenido vive en docs/sql-manual/ como referencia .txt: un .php ahi
+# dentro con timestamp viejo lo ejecutaria "migrate --force" solo en produccion.
+/database/migrations-manual

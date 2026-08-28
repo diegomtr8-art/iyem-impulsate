@@ -1,5 +1,5 @@
 # ── Blindaje: nada de esto debe salir a internet ──────────────────
-<FilesMatch "^\.env|^\.env\..*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$">
+<FilesMatch "^\.env|^\.env\..*|^\.git.*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|\.html?$|\.json$|\.ya?ml$|\.sh$|\.ini$|\.conf$|\.pem$|\.key$|\.crt$|\.cache$|^\.htpasswd$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$|^(vite|tailwind|postcss|jsconfig)\.(js|json)$">
     Require all denied
 </FilesMatch>
 
@@ -8,6 +8,11 @@
 <Files "robots.txt">
     Require all granted
 </Files>
+
+# Respaldo del bloqueo de directorios, INDEPENDIENTE de mod_rewrite.
+# Si mod_rewrite se desactivara, el RewriteRule de abajo dejaria de
+# proteger .git/ y el historial completo quedaria descargable.
+RedirectMatch 404 ^/(\.git|\.github|vendor|database|bootstrap|config|app|resources|routes|tests|node_modules)(/|$)
 # ──────────────────────────────────────────────────────────────────
 
 Options -Indexes
