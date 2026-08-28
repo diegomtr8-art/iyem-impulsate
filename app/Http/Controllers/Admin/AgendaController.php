@@ -8,6 +8,7 @@ use App\Models\AgendaPropuesta;
 use App\Models\AgendaPropuestaCita;
 use App\Models\Cita;
 use App\Models\Evento;
+use App\Models\Notificacion;
 use App\Models\PlantillaCorreo;
 use App\Models\Restaurantero;
 use App\Models\User;
@@ -35,7 +36,7 @@ class AgendaController extends Controller
 
     public function crear()
     {
-        $evento = Evento::activo();
+        $evento = Evento::contextoAdmin();
 
         if (!$evento) {
             return redirect()->route('admin.agenda.index')
@@ -104,7 +105,7 @@ class AgendaController extends Controller
             'enviar'                     => 'boolean',
         ]);
 
-        $evento = Evento::activo();
+        $evento = Evento::contextoAdmin();
         if (!$evento) {
             return back()->withErrors(['error' => 'No hay un evento activo.']);
         }
@@ -206,11 +207,33 @@ class AgendaController extends Controller
 
     public function destroy(AgendaPropuesta $agenda)
     {
-        DB::transaction(function () use ($agenda) {
+        $canceladas = 0;
+
+        DB::transaction(function () use ($agenda, &$canceladas) {
             if ($agenda->estado === 'aceptada') {
-                Cita::where('cliente_id', $agenda->user_id)
-                    ->where('edicion_id', $agenda->evento_id)
-                    ->delete();
+                // SOLO las citas que salieron de esta propuesta, y se CANCELAN
+                // (no se borran) para conservar el historico y poder notificar.
+                $citaIds = $agenda->citas()->whereNotNull('cita_id')->pluck('cita_id');
+
+                $citas = Cita::whereIn('id', $citaIds)
+                    ->whereNotIn('estado', ['cancelada', 'completada'])
+                    ->with('restaurantero')
+                    ->get();
+
+                foreach ($citas as $cita) {
+                    $cita->update(['estado' => 'cancelada']);
+                    $canceladas++;
+
+                    if ($cita->restaurantero?->user_id) {
+                        Notificacion::crear(
+                            $cita->restaurantero->user_id,
+                            'cita_cancelada',
+                            'Cita cancelada',
+                            'Se cancelo tu cita del ' . $cita->inicio->format('d/m/Y H:i') .
+                            ' porque el administrador elimino la propuesta de agenda asociada.'
+                        );
+                    }
+                }
             }
 
             $agenda->citas()->delete();
@@ -218,7 +241,9 @@ class AgendaController extends Controller
         });
 
         return redirect()->route('admin.agenda.index')
-            ->with('success', 'Propuesta de agenda eliminada correctamente.');
+            ->with('success', $canceladas > 0
+                ? "Propuesta eliminada. Se cancelaron {$canceladas} cita(s) generadas por ella."
+                : 'Propuesta de agenda eliminada correctamente.');
     }
 
     private function enviarCorreo(AgendaPropuesta $propuesta): void

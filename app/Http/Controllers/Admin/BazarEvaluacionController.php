@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -53,8 +54,8 @@ class BazarEvaluacionController extends Controller
                 ]);
                 $s->evaluado = $criterios->count() > 0 && $evaluaciones->count() === $criterios->count();
 
-                $s->ine_url = $s->ine_path ? Storage::disk('public')->url($s->ine_path) : null;
-                $s->csf_url = $s->csf_path ? Storage::disk('public')->url($s->csf_path) : null;
+                $s->ine_url = $s->ine_path ? route('documentos.ver', ['user' => $s->user_id, 'tipo' => 'ine']) : null;
+                $s->csf_url = $s->csf_path ? route('documentos.ver', ['user' => $s->user_id, 'tipo' => 'csf']) : null;
 
                 $s->csf_vigente = false;
                 if ($s->csf_fecha) {
@@ -141,9 +142,16 @@ class BazarEvaluacionController extends Controller
     /** Evaluar por criterios (solo para estado='aprobado') */
     public function evaluar(Request $request, Evento $evento, int $userId)
     {
+        abort_if(!$evento->esBazar(), 404);
+
         $request->validate([
             'evaluaciones'               => 'required|array',
-            'evaluaciones.*.criterio_id' => 'required|exists:evento_criterios,id',
+            // El criterio debe pertenecer A ESTE evento: si no, se podria
+            // inyectar el porcentaje de otro evento y falsear el puntaje.
+            'evaluaciones.*.criterio_id' => [
+                'required',
+                Rule::exists('evento_criterios', 'id')->where('evento_id', $evento->id),
+            ],
             'evaluaciones.*.puntaje'     => 'required|numeric|min:0|max:100',
         ]);
 
@@ -161,6 +169,7 @@ class BazarEvaluacionController extends Controller
         DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
             ->where('user_id', $userId)
+            ->where('tipo', 'expositor')
             ->update(['puntaje_total' => round($puntajeTotal, 2)]);
 
         return back()->with('success', 'Evaluación guardada.');
@@ -169,14 +178,36 @@ class BazarEvaluacionController extends Controller
     /** Seleccionar / deseleccionar un participante aprobado */
     public function toggleSeleccion(Request $request, Evento $evento)
     {
+        abort_if(!$evento->esBazar(), 404);
+
         $request->validate([
             'user_id'      => 'required|integer|exists:users,id',
             'seleccionado' => 'required|boolean',
         ]);
 
+        // Solo se puede seleccionar a alguien que paso la revision inicial.
+        // Sin esto se podia seleccionar a un 'pendiente' o 'rechazado' y
+        // acababa recibiendo el correo de "Fuiste seleccionado".
+        if ($request->seleccionado) {
+            $registro = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $request->user_id)
+                ->where('tipo', 'expositor')
+                ->first();
+
+            if (!$registro) {
+                return back()->withErrors(['error' => 'Ese participante no tiene una solicitud de expositor en este evento.']);
+            }
+
+            if ($registro->estado !== 'aprobado') {
+                return back()->withErrors(['error' => 'Solo puedes seleccionar participantes que ya pasaron la revision inicial.']);
+            }
+        }
+
         if ($request->seleccionado && $evento->max_espacios) {
             $actuales = DB::table('evento_usuario')
                 ->where('evento_id', $evento->id)
+                ->where('tipo', 'expositor')
                 ->where('seleccionado', true)
                 ->count();
 
@@ -188,6 +219,7 @@ class BazarEvaluacionController extends Controller
         DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
             ->where('user_id', $request->user_id)
+            ->where('tipo', 'expositor')
             ->update(['seleccionado' => $request->seleccionado]);
 
         return back()->with('success', $request->seleccionado ? 'Participante seleccionado.' : 'Participante deseleccionado.');
@@ -196,6 +228,8 @@ class BazarEvaluacionController extends Controller
     /** Guardar notas de rechazo (por participante no seleccionado) */
     public function guardarNotasRechazo(Request $request, Evento $evento, int $userId)
     {
+        abort_if(!$evento->esBazar(), 404);
+
         $request->validate([
             'notas_rechazo' => 'required|string|max:2000',
         ]);
@@ -203,6 +237,7 @@ class BazarEvaluacionController extends Controller
         DB::table('evento_usuario')
             ->where('evento_id', $evento->id)
             ->where('user_id', $userId)
+            ->where('tipo', 'expositor')
             ->update(['notas_rechazo' => $request->notas_rechazo]);
 
         return back()->with('success', 'Notas guardadas.');
@@ -211,6 +246,8 @@ class BazarEvaluacionController extends Controller
     /** Enviar correos a seleccionados */
     public function enviarAprobacion(Evento $evento)
     {
+        abort_if(!$evento->esBazar(), 404);
+
         $seleccionados = DB::table('evento_usuario as eu')
             ->join('users as u', 'u.id', '=', 'eu.user_id')
             ->where('eu.evento_id', $evento->id)
@@ -239,6 +276,7 @@ class BazarEvaluacionController extends Controller
                 DB::table('evento_usuario')
                     ->where('evento_id', $evento->id)
                     ->where('user_id', $p->user_id)
+                    ->where('tipo', 'expositor')
                     ->update(['correo_aprobacion_enviado' => true]);
                 Notificacion::crear($p->user_id, 'solicitud_aprobada', 'Seleccionado en el bazar',
                     'Fuiste seleccionado(a) para participar como expositor en "' . $evento->nombre . '".');
@@ -254,6 +292,8 @@ class BazarEvaluacionController extends Controller
     /** Enviar correos a NO seleccionados (con token de evaluación) */
     public function enviarRechazo(Evento $evento)
     {
+        abort_if(!$evento->esBazar(), 404);
+
         $rechazados = DB::table('evento_usuario as eu')
             ->join('users as u', 'u.id', '=', 'eu.user_id')
             ->where('eu.evento_id', $evento->id)
@@ -281,6 +321,7 @@ class BazarEvaluacionController extends Controller
                     DB::table('evento_usuario')
                         ->where('evento_id', $evento->id)
                         ->where('user_id', $p->user_id)
+                        ->where('tipo', 'expositor')
                         ->update(['token_evaluacion' => $token]);
                 }
                 $urlEvaluacion = route('bazar.evaluacion', ['token' => $token]);
@@ -292,6 +333,7 @@ class BazarEvaluacionController extends Controller
                 DB::table('evento_usuario')
                     ->where('evento_id', $evento->id)
                     ->where('user_id', $p->user_id)
+                    ->where('tipo', 'expositor')
                     ->update(['correo_rechazo_enviado' => true]);
                 Notificacion::crear($p->user_id, 'solicitud_rechazada', 'Resultado del bazar',
                     'Tu solicitud para "' . $evento->nombre . '" no fue seleccionada. Revisa tu evaluación en el correo enviado.');

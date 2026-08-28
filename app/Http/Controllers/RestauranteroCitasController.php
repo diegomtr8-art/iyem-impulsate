@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Mail\CitaAceptada;
+use App\Mail\CitaCancelada;
 use App\Mail\CitaRechazada;
 use App\Mail\CitaReagendada;
 use App\Models\Cita;
 use App\Models\Notificacion;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -139,6 +141,32 @@ class RestauranteroCitasController extends Controller
     }
 
     /** Respuesta del comprador al reagendamiento (ruta pública con token) */
+    /**
+     * Pagina intermedia: el GET del correo ya no ejecuta la accion.
+     * Muestra la cita y dos botones que hacen POST.
+     */
+    public function mostrarConfirmacion(Cita $cita, string $token)
+    {
+        if (!$cita->token_confirmacion
+            || !hash_equals($cita->token_confirmacion, $token)
+            || $cita->estado !== 'pendiente_reconfirmacion') {
+            abort(404, 'El enlace no es valido o ya fue utilizado.');
+        }
+
+        $cita->load(['restaurantero', 'cliente']);
+
+        return Inertia::render('Citas/ConfirmarReagenda', [
+            'cita'  => [
+                'id'               => $cita->id,
+                'proveedor'        => $cita->restaurantero->nombre_restaurante ?? '',
+                'inicio_original'  => $cita->inicio,
+                'propuesta_inicio' => $cita->propuesta_inicio,
+                'propuesta_fin'    => $cita->propuesta_fin,
+            ],
+            'token' => $token,
+        ]);
+    }
+
     public function confirmarToken(Cita $cita, string $token)
     {
         if (!$cita->token_confirmacion || !hash_equals($cita->token_confirmacion, $token) || $cita->estado !== 'pendiente_reconfirmacion') {
@@ -176,8 +204,21 @@ class RestauranteroCitasController extends Controller
         $cita->load(['restaurantero', 'cliente']);
 
         try {
-            Mail::to($cita->restaurantero->user->email)->send(new CitaReagendada($cita, 'proveedor'));
-        } catch (\Exception $e) {}
+            // El comprador rechazo: la cita quedo CANCELADA. Antes se mandaba
+            // el mismo correo que en la aceptacion y el proveedor no podia
+            // distinguir un caso del otro.
+            Mail::to($cita->restaurantero->user->email)->send(new CitaCancelada($cita));
+        } catch (\Exception $e) {
+            Log::warning('Error notificando cancelacion al proveedor: ' . $e->getMessage());
+        }
+
+        Notificacion::crear(
+            $cita->restaurantero->user_id,
+            'cita_cancelada',
+            'Propuesta de reagenda rechazada',
+            'El comprador rechazo la nueva fecha propuesta. La cita del ' .
+            $cita->inicio->format('d/m/Y H:i') . ' quedo cancelada.'
+        );
 
         return view('mail.confirmacion-exitosa', ['mensaje' => 'Has rechazado la propuesta. La cita quedó cancelada.']);
     }

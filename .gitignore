@@ -22,3 +22,24 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# ── Datos y respaldos: nunca al repositorio ──
+*.sql
+*.sqlite
+*.sqlite-journal
+citas_db
+/storage/app/private
+/storage/app/public/documentos
+
+# ── Scratch de desarrollo ──
+tmp_*.py
+check_*.py
+op_*.py
+diag.py
+verify.py
+fix_build*.py
+__pycache__/
+*.pyc
+
+# ── Archivo con nombre corrupto (ruta de Windows aplanada) ──
+C:xampphtdocscitasdiag.py

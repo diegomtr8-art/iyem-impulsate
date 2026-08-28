@@ -65,7 +65,7 @@ GOOGLE_CLIENT_SECRET=tu_client_secret
 GOOGLE_REDIRECT_URI=https://lightcyan-mallard-509513.hostingersite.com/auth/google/callback
 
 # Token de acceso a la Pantalla TV
-TV_TOKEN=impulsate-tv-2026
+TV_TOKEN=<token-generado-por-evento-ver-/admin/tv>
 ```
 
 > ⚠️ **Nunca subas el archivo `.env` al repositorio.** Créalo directamente en el servidor.
@@ -253,7 +253,7 @@ En Google Cloud Console → Credenciales → OAuth 2.0:
 
 Acceder en:
 ```
-https://lightcyan-mallard-509513.hostingersite.com/tv/impulsate-tv-2026
+https://lightcyan-mallard-509513.hostingersite.com/tv/<token-generado-por-evento-ver-/admin/tv>
 ```
 
 Para cambiar el token, actualizar `TV_TOKEN` en `.env` y ejecutar `php artisan config:cache`.

@@ -1,0 +1,711 @@
+═══════════════════════════════════════════════════════════════════════════
+REGISTRO PENDIENTE AL ENCUENTRO DE NEGOCIOS
+Que TODOS los registros al encuentro queden en "pendiente" y sea el
+administrador quien decida quién entra. El Bazar NO se toca.
+═══════════════════════════════════════════════════════════════════════════
+
+
+RESUMEN DE CAMBIOS
+==================
+1. Quitar la auto-aprobación del COMPRADOR al completar perfil
+2. Quitar la auto-aprobación del COMPRADOR al marcar "¿Eres restaurantero?"
+3. Quitar la auto-aprobación del PROVEEDOR al completar su perfil de negocio
+   (el perfil se sigue aprobando solo → sigue apareciendo en el directorio;
+    lo que cambia es que su inscripción AL EVENTO queda pendiente)
+4. Nueva plantilla de correo "evento_solicitud_recibida" + envío al registrarse
+5. Notificar a TODOS los admins (hoy solo se avisa al primero por ID)
+6. Migración que revierte a "pendiente" los ya auto-aprobados del encuentro activo
+7. Verificación final
+
+
+CONTEXTO — QUÉ YA FUNCIONA Y NO HAY QUE TOCAR
+==============================================
+El flujo de aprobación YA EXISTE y está bien hecho:
+
+  • EventoRegistroController::registrarComprador y ::registrarProveedor
+    ya insertan con estado='pendiente'. NO se modifican (salvo el punto 4 y 5).
+
+  • La pantalla /admin/eventos/{evento}/solicitudes ya lista pendientes y
+    tiene aprobar / rechazar / aprobar-todos / revertir. NO se modifica.
+
+  • TabEventos.vue ya muestra el badge ámbar "Pendiente de aprobación"
+    (estadoLabel/estadoBadgeClass, líneas 157-169). NO se modifica.
+
+  • CitaPublicaController::store ya exige estado='aprobado' para agendar.
+    NO se modifica.
+
+El problema son TRES puntos que se saltan ese flujo y aprueban solos.
+Este prompt cierra esos tres puntos. Nada más.
+
+
+⛔ LO QUE NO SE DEBE TOCAR — EL BAZAR
+=====================================
+El bazar usa tipo='expositor' y su propio controlador. Ningún cambio de
+este documento toca:
+
+  ✗ EventoRegistroController::registrarBazar
+  ✗ Admin/BazarEvaluacionController.php  (completo)
+  ✗ BazarPublicoController.php
+  ✗ Las plantillas bazar_solicitud_recibida / bazar_seleccionado / bazar_rechazado
+  ✗ Cualquier fila de evento_usuario con tipo='expositor'
+  ✗ Cualquier evento con tipo_evento='bazar_exposicion'
+
+REGLA: todo filtro nuevo debe incluir tipo IN ('comprador','proveedor')
+       y tipo_evento = 'encuentro_negocios'. Nunca 'expositor'.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 1 — app/Http/Controllers/CompletarPerfilController.php
+Método store() · aprox. líneas 89-122
+─────────────────────────────────────────────────────────────
+
+PROBLEMA: al completar el perfil marcando "¿Eres restaurantero?", el
+comprador se inscribe Y se aprueba solo. Nunca pasa por el admin.
+
+BUSCA este bloque completo (empieza en el comentario "// Auto-registro y
+auto-aprobación al evento activo si es restaurantero"):
+
+        // Auto-registro y auto-aprobación al evento activo si es restaurantero
+        if ($request->boolean('es_restaurantero')) {
+            $evento = Evento::activo();
+            if ($evento) {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $user->id)
+                    ->where('tipo', 'comprador')
+                    ->first();
+
+                if (!$registro) {
+                    DB::table('evento_usuario')->insert([
+                        'evento_id'     => $evento->id,
+                        'user_id'       => $user->id,
+                        'tipo'          => 'comprador',
+                        'estado'        => 'aprobado',
+                        'respondido_at' => now(),
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]);
+                } elseif ($registro->estado !== 'aprobado') {
+                    DB::table('evento_usuario')
+                        ->where('id', $registro->id)
+                        ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+                }
+
+                Notificacion::crear(
+                    $user->id,
+                    'solicitud_aprobada',
+                    '¡Bienvenido al evento!',
+                    'Tu registro al evento "' . $evento->nombre . '" fue aprobado automáticamente. Ya puedes ver el directorio de proveedores y agendar citas.'
+                );
+            }
+        }
+
+REEMPLÁZALO POR:
+
+        // Auto-registro al encuentro de negocios activo si es restaurantero.
+        // IMPORTANTE: queda en 'pendiente'. La aprobación la decide el admin
+        // desde /admin/eventos/{evento}/solicitudes.
+        if ($request->boolean('es_restaurantero')) {
+            $evento = Evento::activo();
+
+            // Solo encuentro de negocios. Si el evento activo más próximo es un
+            // bazar, no se inscribe aquí (el bazar tiene su propio flujo).
+            if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $user->id)
+                    ->where('tipo', 'comprador')
+                    ->first();
+
+                if (!$registro) {
+                    DB::table('evento_usuario')->insert([
+                        'evento_id'     => $evento->id,
+                        'user_id'       => $user->id,
+                        'tipo'          => 'comprador',
+                        'estado'        => 'pendiente',
+                        'respondido_at' => null,
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]);
+
+                    Notificacion::crear(
+                        $user->id,
+                        'solicitud_registro',
+                        'Tu solicitud está en revisión',
+                        'Registramos tu solicitud para el evento "' . $evento->nombre . '". El equipo la revisará y te avisaremos por correo cuando sea aprobada.'
+                    );
+
+                    // Avisar a TODOS los administradores
+                    foreach (User::role('admin')->get() as $admin) {
+                        Notificacion::crear(
+                            $admin->id,
+                            'solicitud_registro',
+                            'Nueva solicitud de comprador',
+                            $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
+                        );
+                    }
+                }
+                // Si ya existía un registro (pendiente, aprobado o rechazado)
+                // NO se toca: el estado lo gobierna el admin o el propio flujo
+                // de re-postulación de EventoRegistroController.
+            }
+        }
+
+⚠ OBLIGATORIO: este archivo NO importa User todavía (verificado). Añade el
+   import al inicio, junto a los demás, respetando el orden alfabético:
+
+        use App\Models\Evento;
+        use App\Models\Horario;
+        use App\Models\Notificacion;
+        use App\Models\Restaurantero;
+        use App\Models\Servicio;
+        use App\Models\User;          ← AÑADIR ESTA LÍNEA
+        use Illuminate\Http\Request;
+
+   Sin este import, los CAMBIOS 1 y 2 lanzan "Class User not found".
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 2 — app/Http/Controllers/CompletarPerfilController.php
+Método actualizarComprador() · aprox. líneas 168-204
+─────────────────────────────────────────────────────────────
+
+PROBLEMA: idéntico al anterior, pero cuando el usuario marca
+"¿Eres restaurantero?" más tarde desde su panel.
+
+BUSCA este bloque (empieza en "// Si acaba de marcar "¿Eres restaurantero?""):
+
+        // Si acaba de marcar "¿Eres restaurantero?", auto-registrarlo al evento activo
+        if ($seAcabaDeVolverRestaurantero) {
+            $evento = Evento::activo();
+            if ($evento) {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $user->id)
+                    ->where('tipo', 'comprador')
+                    ->first();
+
+                if (!$registro) {
+                    DB::table('evento_usuario')->insert([
+                        'evento_id'     => $evento->id,
+                        'user_id'       => $user->id,
+                        'tipo'          => 'comprador',
+                        'estado'        => 'aprobado',
+                        'respondido_at' => now(),
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]);
+                } elseif ($registro->estado !== 'aprobado') {
+                    DB::table('evento_usuario')
+                        ->where('id', $registro->id)
+                        ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+                }
+
+                Notificacion::crear(
+                    $user->id,
+                    'solicitud_aprobada',
+                    '¡Ahora eres parte del evento!',
+                    'Tu registro como restaurantero al evento "' . $evento->nombre . '" fue activado automáticamente.'
+                );
+            }
+        }
+
+REEMPLÁZALO POR:
+
+        // Si acaba de marcar "¿Eres restaurantero?", registrarlo al encuentro
+        // activo como PENDIENTE. La aprobación la decide el admin.
+        if ($seAcabaDeVolverRestaurantero) {
+            $evento = Evento::activo();
+
+            if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
+                $registro = DB::table('evento_usuario')
+                    ->where('evento_id', $evento->id)
+                    ->where('user_id', $user->id)
+                    ->where('tipo', 'comprador')
+                    ->first();
+
+                if (!$registro) {
+                    DB::table('evento_usuario')->insert([
+                        'evento_id'     => $evento->id,
+                        'user_id'       => $user->id,
+                        'tipo'          => 'comprador',
+                        'estado'        => 'pendiente',
+                        'respondido_at' => null,
+                        'created_at'    => now(),
+                        'updated_at'    => now(),
+                    ]);
+
+                    Notificacion::crear(
+                        $user->id,
+                        'solicitud_registro',
+                        'Tu solicitud está en revisión',
+                        'Registramos tu solicitud para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
+                    );
+
+                    foreach (User::role('admin')->get() as $admin) {
+                        Notificacion::crear(
+                            $admin->id,
+                            'solicitud_registro',
+                            'Nueva solicitud de comprador',
+                            $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
+                        );
+                    }
+                }
+            }
+        }
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 3 — app/Models/Restaurantero.php
+Método autoAprobar() · aprox. líneas 141-197
+─────────────────────────────────────────────────────────────
+
+PROBLEMA: al completar su perfil, el proveedor hace DOS cosas a la vez:
+  (a) aprueba su PERFIL  → aparece en el directorio público
+  (b) se inscribe al EVENTO como 'aprobado'  ← esto es lo que hay que quitar
+
+DECISIÓN: se conserva (a) — el directorio no se vacía y el proveedor sigue
+siendo visible. Se cambia (b) a 'pendiente'.
+
+BUSCA dentro de autoAprobar() el bloque que empieza en "if ($evento) {":
+
+        if ($evento) {
+            $registro = \Illuminate\Support\Facades\DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $this->user_id)
+                ->where('tipo', 'proveedor')
+                ->first();
+
+            if (!$registro) {
+                \Illuminate\Support\Facades\DB::table('evento_usuario')->insert([
+                    'evento_id'     => $evento->id,
+                    'user_id'       => $this->user_id,
+                    'tipo'          => 'proveedor',
+                    'estado'        => 'aprobado',
+                    'respondido_at' => now(),
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+            } elseif ($registro->estado !== 'aprobado') {
+                \Illuminate\Support\Facades\DB::table('evento_usuario')
+                    ->where('id', $registro->id)
+                    ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+            }
+        }
+
+REEMPLÁZALO POR:
+
+        // El PERFIL se aprueba solo (arriba: aprobado=true, activo=true) para que
+        // el proveedor aparezca en el directorio público. Pero su inscripción al
+        // ENCUENTRO queda PENDIENTE: la decide el admin en /admin/eventos/{id}/solicitudes.
+        if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
+            $registro = \Illuminate\Support\Facades\DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $this->user_id)
+                ->where('tipo', 'proveedor')
+                ->first();
+
+            if (!$registro) {
+                \Illuminate\Support\Facades\DB::table('evento_usuario')->insert([
+                    'evento_id'     => $evento->id,
+                    'user_id'       => $this->user_id,
+                    'tipo'          => 'proveedor',
+                    'estado'        => 'pendiente',
+                    'respondido_at' => null,
+                    'created_at'    => now(),
+                    'updated_at'    => now(),
+                ]);
+
+                foreach (\App\Models\User::role('admin')->get() as $admin) {
+                    Notificacion::crear(
+                        $admin->id,
+                        'solicitud_registro',
+                        'Nueva solicitud de proveedor',
+                        ($this->user?->name ?? 'Un proveedor') . ' completó su perfil y solicita unirse al evento "' . $evento->nombre . '".'
+                    );
+                }
+            }
+            // Si ya existe un registro NO se toca: no se puede re-aprobar por
+            // encima de una decisión del admin.
+        }
+
+Y MÁS ABAJO, en el mismo método, BUSCA la notificación final al usuario:
+
+        if ($this->user) {
+            Notificacion::crear(
+                $this->user->id,
+                'solicitud_aprobada',
+                '🎉 ¡Perfil completo y aprobado!',
+                $evento
+                    ? "Tu perfil está completo y fuiste aprobado automáticamente en el evento \"{$evento->nombre}\". Ya apareces en el directorio de proveedores."
+                    : 'Tu perfil está completo y fue aprobado automáticamente.'
+            );
+        }
+
+REEMPLÁZALA POR (el mensaje ya no puede decir que fue aprobado al evento):
+
+        if ($this->user) {
+            $esEncuentro = $evento && $evento->tipo_evento === 'encuentro_negocios';
+
+            Notificacion::crear(
+                $this->user->id,
+                'solicitud_aprobada',
+                '🎉 ¡Tu perfil está completo!',
+                $esEncuentro
+                    ? "Tu perfil quedó completo y ya apareces en el directorio de proveedores. Tu solicitud para el evento \"{$evento->nombre}\" está en revisión: te avisaremos cuando el equipo la apruebe."
+                    : 'Tu perfil está completo y ya apareces en el directorio de proveedores.'
+            );
+        }
+
+⚠ Revisa también el correo ProveedorAprobado que se envía unas líneas arriba
+   (resources/views/mail/proveedor-aprobado.blade.php). Si ese texto dice que
+   ya puede recibir citas del evento, ajústalo para que hable solo del PERFIL
+   y del directorio, no del evento.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 4 — Nueva plantilla de correo "evento_solicitud_recibida"
+database/seeders/PlantillasCorreoSeeder.php
+─────────────────────────────────────────────────────────────
+
+Hoy, cuando alguien se registra al encuentro, NO recibe ningún correo.
+Se queda sin saber qué pasó. Añadimos el acuse de recibo.
+
+PASO 4.1 — En el array $plantillas, JUSTO DESPUÉS de la entrada
+'evento_solicitud_rechazada', AÑADE:
+
+            [
+                'clave'              => 'evento_solicitud_recibida',
+                'nombre'             => 'Solicitud al Evento Recibida',
+                'asunto'             => 'Recibimos tu solicitud para {{nombre_evento}} — Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplEventoSolicitudRecibida(),
+            ],
+
+PASO 4.2 — AÑADE este método privado junto a los demás tpl* (por ejemplo
+justo antes de tplBazarSolicitudRecibida):
+
+    private function tplEventoSolicitudRecibida(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">Recibimos tu solicitud de registro como <strong>{{tipo_participante}}</strong> para <strong>{{nombre_evento}}</strong>. Tu solicitud está en revisión.</p>
+<div style="background:#fff7f7;border:1px solid #fbc4cd;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">¿Qué sigue?</p>
+  <ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">
+    <li>El equipo de Impulsate revisará tu perfil y tu solicitud</li>
+    <li>Recibirás un correo con el resultado</li>
+    <li>Una vez aprobada, podrás participar en el encuentro</li>
+  </ul>
+</div>
+<p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Mientras tanto puedes revisar y completar tu perfil para agilizar la revisión.</p>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="https://impulsate.iyemyucatan.com" style="display:inline-block;background:linear-gradient(135deg,#8b1028,#45060f);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi perfil
+  </a>
+</div>
+HTML;
+        return $this->wrap('Solicitud Recibida', '📋 Tu solicitud está en revisión', $cuerpo);
+    }
+
+PASO 4.3 — En producción, correr SOLO este seeder (usa firstOrCreate, no pisa
+las plantillas que el admin ya haya editado):
+
+    php artisan db:seed --class=PlantillasCorreoSeeder --force
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 5 — app/Http/Controllers/EventoRegistroController.php
+Métodos registrarComprador() y registrarProveedor()
+─────────────────────────────────────────────────────────────
+
+Dos cosas: enviar el correo de acuse, y notificar a TODOS los admins.
+
+PASO 5.1 — En registrarComprador(), BUSCA el bloque final antes del return:
+
+        $admin = User::role('admin')->first();
+        if ($admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de comprador',
+                $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
+            );
+        }
+
+        return back()->with('success', 'Tu solicitud de registro fue enviada. El administrador la revisará pronto.');
+
+REEMPLÁZALO POR:
+
+        // Notificar a TODOS los administradores (antes solo al primero por ID)
+        foreach (User::role('admin')->get() as $admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de comprador',
+                $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
+            );
+        }
+
+        // Notificación in-app al usuario
+        Notificacion::crear(
+            $user->id,
+            'solicitud_registro',
+            'Tu solicitud está en revisión',
+            'Registramos tu solicitud para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
+        );
+
+        $this->enviarAcuseSolicitud($user, $evento, 'comprador');
+
+        return back()->with('success', 'Tu solicitud de registro fue enviada. El administrador la revisará pronto.');
+
+PASO 5.2 — En registrarProveedor(), haz EXACTAMENTE lo mismo cambiando
+'comprador' por 'proveedor' en los tres lugares:
+
+        foreach (User::role('admin')->get() as $admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de proveedor',
+                $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como proveedor.'
+            );
+        }
+
+        Notificacion::crear(
+            $user->id,
+            'solicitud_registro',
+            'Tu solicitud está en revisión',
+            'Registramos tu solicitud como proveedor para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
+        );
+
+        $this->enviarAcuseSolicitud($user, $evento, 'proveedor');
+
+        return back()->with('success', 'Tu solicitud de registro como proveedor fue enviada. El administrador la aprobará pronto.');
+
+PASO 5.3 — AÑADE este método privado al final de la clase, ANTES de la
+llave de cierre final:
+
+    /**
+     * Acuse de recibo al registrarse al encuentro de negocios.
+     * Nunca debe lanzar excepción: un fallo de SMTP no puede tumbar el registro.
+     */
+    private function enviarAcuseSolicitud(User $user, Evento $evento, string $tipo): void
+    {
+        if (!$user->email) return;
+
+        try {
+            $plantilla = PlantillaCorreo::paraClave('evento_solicitud_recibida');
+            if (!$plantilla) {
+                \Log::warning('Plantilla "evento_solicitud_recibida" no encontrada o inactiva.');
+                return;
+            }
+
+            Mail::to($user->email)->queue(new PlantillaCorreoMail($plantilla, [
+                'nombre_usuario'    => $user->name,
+                'nombre_evento'     => $evento->nombre,
+                'tipo_participante' => $tipo === 'proveedor' ? 'proveedor' : 'comprador',
+            ]));
+        } catch (\Exception $e) {
+            \Log::warning('Error enviando acuse de solicitud al evento: ' . $e->getMessage());
+        }
+    }
+
+⚠ Los imports PlantillaCorreoMail, PlantillaCorreo, Mail y User YA ESTÁN
+   al inicio del archivo. No hace falta añadir nada.
+
+⚠ NO toques registrarBazar(). Ese método ya envía su propio acuse con la
+   plantilla bazar_solicitud_recibida.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 6 — Migración: revertir a pendiente los ya auto-aprobados
+database/migrations/2026_08_26_120000_revertir_aprobados_encuentro_a_pendiente.php
+─────────────────────────────────────────────────────────────
+
+⚠⚠ LEE ESTO ANTES DE CORRER LA MIGRACIÓN ⚠⚠
+
+Esta migración pone en 'pendiente' a TODOS los inscritos aprobados del
+encuentro de negocios activo. Consecuencias reales:
+
+  • Las citas YA AGENDADAS no se borran ni se cancelan. Siguen ahí.
+  • Pero quien quede en pendiente NO PODRÁ AGENDAR CITAS NUEVAS hasta que
+    el admin lo apruebe (CitaPublicaController::store exige 'aprobado').
+  • Los proveedores siguen apareciendo en el directorio público, porque eso
+    depende de restauranteros.aprobado, que no se toca.
+
+ANTES DE CORRERLA:
+  1. Respalda la base de datos.
+  2. Mira a cuántos afecta:
+
+     SELECT e.nombre, eu.tipo, COUNT(*) AS total
+     FROM evento_usuario eu
+     JOIN eventos e ON e.id = eu.evento_id
+     WHERE e.tipo_evento = 'encuentro_negocios'
+       AND e.activa = 1
+       AND eu.tipo IN ('comprador','proveedor')
+       AND eu.estado = 'aprobado'
+     GROUP BY e.nombre, eu.tipo;
+
+  3. Avisa al equipo: después de correrla hay que entrar a
+     /admin/eventos/{evento}/solicitudes y aprobar a quien corresponda,
+     o el evento se verá vacío.
+
+CREA EL ARCHIVO:
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    /**
+     * Revierte a 'pendiente' las inscripciones aprobadas automáticamente en los
+     * encuentros de negocios ACTIVOS, para que el admin decida quién entra.
+     *
+     * NO toca:
+     *   - tipo='expositor'            (flujo del bazar)
+     *   - tipo_evento='bazar_exposicion'
+     *   - eventos ya finalizados o archivados (histórico intacto)
+     *   - la tabla citas
+     *   - restauranteros.aprobado / activo  (el directorio sigue igual)
+     */
+    public function up(): void
+    {
+        $eventos = DB::table('eventos')
+            ->where('tipo_evento', 'encuentro_negocios')
+            ->where('activa', 1)
+            ->where(function ($q) {
+                $q->whereNull('fecha_hora_fin')
+                  ->orWhere('fecha_hora_fin', '>=', now());
+            })
+            ->pluck('id');
+
+        if ($eventos->isEmpty()) {
+            return;
+        }
+
+        $afectados = DB::table('evento_usuario')
+            ->whereIn('evento_id', $eventos)
+            ->whereIn('tipo', ['comprador', 'proveedor'])   // nunca 'expositor'
+            ->where('estado', 'aprobado')
+            ->update([
+                'estado'         => 'pendiente',
+                'respondido_at'  => null,
+                'motivo_rechazo' => null,
+                'updated_at'     => now(),
+            ]);
+
+        \Log::info("[revertir_aprobados_encuentro] {$afectados} inscripciones pasaron a pendiente.");
+    }
+
+    /**
+     * Irreversible por diseño: no guardamos qué filas estaban aprobadas antes,
+     * así que un rollback automático re-aprobaría a gente que quizá el admin
+     * ya rechazó. Si hay que deshacerlo, se hace desde el panel de Solicitudes
+     * con "Aprobar todos", o restaurando el respaldo.
+     */
+    public function down(): void
+    {
+        // no-op intencional
+    }
+};
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 7 — Verificación (no modifica código)
+─────────────────────────────────────────────────────────────
+
+Confirma que estos puntos SIGUEN escribiendo 'aprobado' y NO los tocaste,
+porque son decisiones explícitas del admin y deben quedarse así:
+
+  ✓ Admin/EventoSolicitudesController.php:165   → aprobar()
+  ✓ Admin/EventoSolicitudesController.php:264   → aprobarTodos()
+  ✓ Admin/EventoSolicitudesController.php:335   → agregarProveedor()
+  ✓ Admin/EventoSolicitudesController.php:379   → agregarComprador()
+  ✓ Admin/BazarEvaluacionController.php:97      → aprobar() del BAZAR
+
+Después de aplicar todo, este comando NO debe devolver ningún resultado
+en CompletarPerfilController ni en Restaurantero:
+
+    grep -rn "'estado'\s*=>\s*'aprobado'" app/Http/Controllers/CompletarPerfilController.php app/Models/Restaurantero.php
+
+(salida esperada: vacía)
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS ANTES DE SUBIR
+═══════════════════════════════════════════════════════════════════════════
+
+ENCUENTRO DE NEGOCIOS — debe quedar pendiente
+  □ Usuario nuevo → completa perfil marcando "¿Eres restaurantero?"
+    → en su panel ve el badge ámbar "Pendiente de aprobación"
+    → recibe el correo "Recibimos tu solicitud..."
+    → NO puede agendar citas
+  □ El admin ve la solicitud en /admin/eventos/{evento}/solicitudes
+  □ Todos los admins (no solo el primero) reciben la notificación
+  □ Admin aprueba → el usuario pasa a "Aprobado" y YA puede agendar
+  □ Admin rechaza con motivo → el usuario ve el motivo y el botón
+    "Volver a postularme"
+
+PROVEEDOR — perfil aprobado, evento pendiente
+  □ Proveedor completa su perfil de negocio
+    → SÍ aparece en /proveedores (directorio público)
+    → su inscripción al evento queda "Pendiente de aprobación"
+    → la notificación ya no dice "aprobado automáticamente en el evento"
+
+BAZAR — no debe cambiar nada
+  □ Registrarse al bazar sigue funcionando igual
+  □ Sigue llegando el correo bazar_solicitud_recibida
+  □ La pantalla de evaluación /admin/eventos/{id}/bazar funciona igual
+  □ Los puntajes y selecciones existentes siguen intactos
+  □ Ninguna fila con tipo='expositor' cambió de estado
+
+REGRESIÓN
+  □ Las citas ya agendadas antes del cambio siguen visibles
+  □ El admin puede seguir agregando participantes a mano (quedan aprobados)
+  □ No hay errores 500 en el registro si el SMTP falla
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS A SUBIR
+═══════════════════════════════════════════════════════════════════════════
+
+  app/Http/Controllers/CompletarPerfilController.php
+  app/Http/Controllers/EventoRegistroController.php
+  app/Models/Restaurantero.php
+  database/seeders/PlantillasCorreoSeeder.php
+  database/migrations/2026_08_26_120000_revertir_aprobados_encuentro_a_pendiente.php
+
+  (Opcional, si ajustaste el texto:)
+  resources/views/mail/proveedor-aprobado.blade.php
+
+NO hay cambios de frontend: TabEventos.vue ya sabe pintar "pendiente".
+No hace falta rebuild de Vite.
+
+
+COMANDOS EN EL SERVIDOR (en este orden)
+========================================
+
+  php artisan down
+  # subir los archivos
+  php artisan migrate --force
+  php artisan db:seed --class=PlantillasCorreoSeeder --force
+  php artisan optimize:clear
+  php artisan up
+
+Verifica después:
+  - Que la cola esté corriendo (el acuse se envía con ->queue()):
+      SELECT COUNT(*) FROM jobs;
+      SELECT COUNT(*) FROM failed_jobs;
+  - Que la plantilla exista y esté activa:
+      SELECT clave, activo FROM plantillas_correo WHERE clave='evento_solicitud_recibida';
+
+
+⚠ NOTA SOBRE LA COLA
+   El acuse usa Mail::queue(). Si el cron de `queue:work` no está configurado
+   en el servidor, los correos se acumulan en la tabla `jobs` y NO se envían.
+   Verifica con `crontab -l` antes de dar por bueno el despliegue.
+   Si no hay cola configurada, cambia ->queue( por ->send( en
+   enviarAcuseSolicitud() como solución temporal.

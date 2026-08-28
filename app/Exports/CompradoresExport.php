@@ -20,7 +20,7 @@ class CompradoresExport implements FromCollection, WithHeadings, WithStyles, Wit
 {
     public function collection()
     {
-        $eventoId = Evento::activo()?->id;
+        $eventoId = Evento::contextoAdmin()?->id;
 
         $participaciones = $eventoId
             ? DB::table('evento_usuario')

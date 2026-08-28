@@ -1,3 +1,15 @@
+# ── Blindaje: nada de esto debe salir a internet ──────────────────
+<FilesMatch "^\.env|^\.env\..*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$">
+    Require all denied
+</FilesMatch>
+
+# robots.txt SI se sirve (verificado: 200). Va DESPUES del FilesMatch
+# porque Apache aplica las secciones en orden y la ultima gana.
+<Files "robots.txt">
+    Require all granted
+</Files>
+# ──────────────────────────────────────────────────────────────────
+
 Options -Indexes
 
 <IfModule mod_rewrite.c>
@@ -13,6 +25,15 @@ Options -Indexes
 
     # Route /storage/ requests to public/storage/ (Laravel symlink lives there)
     RewriteRule ^storage/(.+)$ public/storage/$1 [L]
+
+    # Directorios internos que nunca deben servirse.
+    # OJO: 'storage' NO va en esta lista — la regla de arriba ya reescribe
+    # /storage/* hacia public/storage/*, y bloquearlo aquí romperia las
+    # imagenes de eventos y los assets publicos.
+    RewriteRule ^(\.git|vendor|database|bootstrap|config|app|resources|routes|tests|node_modules)/ - [F,L]
+
+    # Archivo con nombre corrupto (ruta de Windows aplanada)
+    RewriteRule ^C:xampphtdocscitasdiag\.py$ - [F,L]
 
     # Static files and directories: serve directly (no rewrite)
     RewriteCond %{REQUEST_FILENAME} -f [OR]

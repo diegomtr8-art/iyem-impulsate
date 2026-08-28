@@ -21,7 +21,9 @@ const esProveedor = computed(() => authUser.value?.is_restaurantero ?? false);
 const esComprador = computed(() => authUser.value?.is_cliente ?? false);
 const tieneDualRol = computed(() => authUser.value?.tiene_dual_rol ?? false);
 
-const eventoActivo = computed(() => props.eventos.find(e => e.activa) || null);
+// Puede haber varios eventos activos a la vez; el usuario elige a cuál postularse.
+const eventosActivos = computed(() => props.eventos.filter(e => e.activa));
+const eventoActivo = computed(() => eventosActivos.value[0] || null);
 const eventoProximos = computed(() =>
     props.eventos.filter(e => !e.activa && e.fecha_hora_inicio && new Date(e.fecha_hora_inicio) > new Date())
 );
@@ -177,10 +179,14 @@ const fases = [
 <template>
     <div class="space-y-6">
 
-        <!-- SECCIÓN A: Evento Activo -->
-        <div v-if="eventoActivo">
-            <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Evento Activo</h3>
-            <div class="bg-white dark:bg-gray-900 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl p-5 shadow-sm">
+        <!-- SECCIÓN A: Eventos Activos (pueden ser varios simultáneos) -->
+        <div v-if="eventosActivos.length">
+            <h3 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
+                {{ eventosActivos.length === 1 ? 'Evento Activo' : `Eventos Activos (${eventosActivos.length})` }}
+            </h3>
+            <div class="space-y-4">
+            <div v-for="eventoActivo in eventosActivos" :key="eventoActivo.id"
+                 class="bg-white dark:bg-gray-900 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl p-5 shadow-sm">
 
                 <!-- Header -->
                 <div class="flex items-start gap-3 mb-4">
@@ -656,6 +662,7 @@ const fases = [
                     </template>
 
                 </div>
+            </div>
             </div>
         </div>
 

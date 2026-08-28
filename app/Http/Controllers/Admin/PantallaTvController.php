@@ -9,16 +9,26 @@ use Inertia\Inertia;
 
 class PantallaTvController extends Controller
 {
+    /**
+     * El token vive en la fila del evento, no en una constante del codigo.
+     * Antes era un literal publicado en DEPLOY.md y en el repo.
+     */
     public static function getToken(): string
     {
-        return config('app.tv_token', 'impulsate-tv-2026');
+        return \App\Models\Evento::contextoAdmin()?->tokenTv() ?? '';
+    }
+
+    /** Resuelve el evento a partir del token recibido. */
+    private static function eventoPorToken(string $token): ?\App\Models\Evento
+    {
+        if ($token === '') return null;
+        return \App\Models\Evento::where('tv_token', $token)->first();
     }
 
     public function index(Request $request, string $token)
     {
-        if ($token !== static::getToken()) {
-            abort(404);
-        }
+        $evento = static::eventoPorToken($token);
+        abort_if(!$evento, 404);
         return Inertia::render('Admin/PantallaTv', [
             'tvToken' => $token,
         ]);
@@ -27,14 +37,14 @@ class PantallaTvController extends Controller
     /** Datos públicos para la Pantalla Pública (polling 3s) */
     public function datosPublicos(Request $request, string $token)
     {
-        if ($token !== static::getToken()) {
-            abort(404);
-        }
+        $evento = static::eventoPorToken($token);
+        abort_if(!$evento, 404);
 
         $hoy  = now()->toDateString();
         $ahora = now();
 
         $citas = Cita::whereDate('inicio', $hoy)
+            ->where('edicion_id', $evento->id)
             ->whereNotIn('estado', ['cancelada', 'rechazada'])
             ->whereNotIn('estado_tv', ['pendiente'])
             ->with(['cliente', 'restaurantero'])
@@ -52,6 +62,7 @@ class PantallaTvController extends Controller
             ->values();
 
         $proximas = Cita::whereDate('inicio', $hoy)
+            ->where('edicion_id', $evento->id)
             ->whereIn('estado', ['confirmada', 'reagendada'])
             ->whereIn('estado_tv', ['pendiente', 'reprogramada'])
             ->with(['cliente', 'restaurantero'])
@@ -63,7 +74,7 @@ class PantallaTvController extends Controller
                 'id'         => $c->id,
                 'hora'       => $c->inicio->format('H:i'),
                 'mesa'       => $c->mesa ?? '—',
-                'comprador'  => $c->cliente?->name ?? '—',
+                'comprador'  => (string) \Illuminate\Support\Str::of($c->cliente?->nombre_empresa ?: $c->cliente?->name ?: '—')->limit(28),
                 'proveedor'  => $c->restaurantero?->nombre_restaurante ?? '—',
                 'categoria'  => $c->restaurantero?->categoria ?? '',
             ])
@@ -77,7 +88,7 @@ class PantallaTvController extends Controller
                 'id'        => $c->id,
                 'hora'      => $c->hora_real_fin?->format('H:i') ?? $c->fin->format('H:i'),
                 'mesa'      => $c->mesa ?? '—',
-                'comprador' => $c->cliente?->name ?? '—',
+                'comprador' => (string) \Illuminate\Support\Str::of($c->cliente?->nombre_empresa ?: $c->cliente?->name ?: '—')->limit(28),
                 'proveedor' => $c->restaurantero?->nombre_restaurante ?? '—',
             ])
             ->values();
@@ -104,7 +115,7 @@ class PantallaTvController extends Controller
             'hora_fin'      => $c->fin->format('H:i'),
             'hora_real'     => $inicioReal->format('H:i'),
             'mesa'          => $c->mesa ?? '—',
-            'comprador'     => $c->cliente?->name ?? '—',
+            'comprador'     => (string) \Illuminate\Support\Str::of($c->cliente?->nombre_empresa ?: $c->cliente?->name ?: '—')->limit(28),
             'proveedor'     => $c->restaurantero?->nombre_restaurante ?? '—',
             'categoria'     => $c->restaurantero?->categoria ?? '',
             'elapsed_sec'   => max(0, $elapsed),

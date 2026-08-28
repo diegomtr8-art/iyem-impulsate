@@ -97,7 +97,7 @@ updir(sftp, 'resources/views', 'resources/views')
 
 print('\n=== [4/7] Archivos raíz ===')
 for f in ['.htaccess', 'artisan', 'composer.json', 'composer.lock',
-          'tailwind.config.js', 'vite.config.js', 'opcache_reset.php']:
+          'tailwind.config.js', 'vite.config.js']:
     if f not in SKIP_ROOT_FILES:
         up(sftp, f)
 

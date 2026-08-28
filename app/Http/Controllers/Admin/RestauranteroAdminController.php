@@ -87,7 +87,7 @@ class RestauranteroAdminController extends Controller
 
         $restaurantero = Restaurantero::create([
             'user_id'            => $user->id,
-            'edicion_id'         => Evento::activo()?->id,
+            'edicion_id'         => Evento::contextoAdmin()?->id,
             'nombre_restaurante' => $request->nombre_restaurante,
             'telefono'           => $request->telefono,
             'direccion'          => $request->direccion,

@@ -1,0 +1,706 @@
+═══════════════════════════════════════════════════════════════════════════
+FASE 1 — CONTENCIÓN
+Cerrar la exposición de datos que hoy está abierta.
+Duración estimada: 1–2 días · Prioridad: MÁXIMA
+═══════════════════════════════════════════════════════════════════════════
+
+Este documento tiene DOS partes:
+
+  PARTE A — Acciones en el servidor y en el repo. NO son código.
+            Se hacen a mano, en este orden. Empieza por aquí.
+
+  PARTE B — Cambios de código. Se pueden pasar a un agente/IDE.
+
+
+⚠ ANTES DE EMPEZAR: respalda la base de datos de producción y haz commit
+   de lo que tengas pendiente. Hay 18 archivos modificados sin commitear
+   (git status) — no los mezcles con este trabajo.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE A — ACCIONES MANUALES (servidor / repo)
+═══════════════════════════════════════════════════════════════════════════
+
+──────────────────────────────────────────────────────────────
+A1. REVOCAR LA CONTRASEÑA DE GMAIL  ← HAZ ESTO PRIMERO
+──────────────────────────────────────────────────────────────
+
+El archivo deploy_convocatoria_correo.py línea 86 contiene:
+
+    APP_PWD = '***REVOCADA***'
+
+Es una App Password de la cuenta impulsate@iyemyucatan.com y el archivo
+ESTÁ TRACKEADO EN GIT (verificado con git ls-files).
+
+PASOS:
+  1. Entra a https://myaccount.google.com/apppasswords con la cuenta
+     impulsate@iyemyucatan.com
+  2. Revoca la contraseña de aplicación existente.
+  3. Genera una nueva.
+  4. Ponla SOLO en el .env del servidor (MAIL_PASSWORD). Nunca en un script.
+  5. Edita deploy_convocatoria_correo.py y sustituye la línea 86 por:
+
+         import os
+         APP_PWD = os.environ.get('IMPULSATE_MAIL_PWD')
+         if not APP_PWD:
+             raise SystemExit('Falta la variable de entorno IMPULSATE_MAIL_PWD')
+
+  6. Revisa si hay otros scripts con la misma contraseña:
+
+         grep -rn "***REVOCADA***" . --include=*.py --include=*.txt --include=*.md
+
+⚠ Rotar el archivo NO borra la contraseña del historial de git. La contraseña
+   vieja seguirá siendo recuperable por cualquiera con acceso al repo. Por eso
+   el paso 1 (revocar) es obligatorio, no opcional.
+
+
+──────────────────────────────────────────────────────────────
+A2. COMPROBAR QUÉ ES DESCARGABLE EN PRODUCCIÓN
+──────────────────────────────────────────────────────────────
+
+El docroot es la RAÍZ del proyecto, no public/. El .htaccess raíz tiene:
+
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+Eso sirve CUALQUIER archivo que exista, sin pasar por Laravel.
+
+Corre estos comandos y anota el código de respuesta de cada uno:
+
+    for f in .env .env.example citas_db composer.json DEPLOY.md \
+             backup_impulsate_20260610_153841.sql \
+             _rollback_ev9_20260826.sql \
+             database/database.sqlite \
+             storage/logs/laravel.log \
+             .git/config
+    do
+      code=$(curl -s -o /dev/null -w "%{http_code}" "https://impulsate.iyemyucatan.com/$f")
+      echo "$code  $f"
+    done
+
+INTERPRETACIÓN:
+  403 o 404  → bien, ese archivo está protegido
+  200        → INCIDENTE. Ese archivo se está sirviendo a internet.
+
+SI ALGÚN .env DEVUELVE 200, ejecuta TODO esto el mismo día:
+  □ Rotar APP_KEY:  php artisan key:generate --force
+    (⚠ esto invalida todas las sesiones activas y cualquier dato cifrado
+     con la llave anterior. Avisa al equipo antes.)
+  □ Cambiar la contraseña de la base de datos en el panel de Hostinger
+    y actualizar DB_PASSWORD en el .env.
+  □ Rotar el secreto de Google OAuth en console.cloud.google.com
+    y actualizar GOOGLE_CLIENT_SECRET.
+  □ Revocar y regenerar la App Password de Gmail (ya lo hiciste en A1).
+  □ Revisar los logs de acceso de Apache buscando peticiones a /.env
+
+
+──────────────────────────────────────────────────────────────
+A3. BLINDAR EL .htaccess DE LA RAÍZ
+──────────────────────────────────────────────────────────────
+
+Esto es una CURITA, no la solución. La solución real es la Fase 3 (mover la
+app fuera del docroot). Pero cierra el agujero hoy mismo.
+
+En el .htaccess de la RAÍZ del proyecto, AÑADE este bloque AL PRINCIPIO,
+ANTES de la línea "Options -Indexes":
+
+    # ── Blindaje: nada de esto debe salir a internet ──────────────────
+    <FilesMatch "^\.env|^\.env\..*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$">
+        Require all denied
+    </FilesMatch>
+
+    <IfModule mod_rewrite.c>
+        RewriteEngine On
+        # Directorios que nunca deben servirse
+        RewriteRule ^(\.git|storage|vendor|database|bootstrap|config|app|resources|routes|tests|node_modules)/ - [F,L]
+        # Archivo con nombre corrupto
+        RewriteRule ^C:xampphtdocscitasdiag\.py$ - [F,L]
+    </IfModule>
+    # ──────────────────────────────────────────────────────────────────
+
+⚠ OJO CON DOS COSAS:
+
+   1. La regla bloquea .txt — verifica que robots.txt siga accesible.
+      Si lo necesitas, añade ANTES del FilesMatch:
+
+          <Files "robots.txt">
+              Require all granted
+          </Files>
+
+   2. La regla bloquea el directorio "public" NO está incluida a propósito:
+      public/build/ y public/storage/ deben seguir sirviéndose.
+
+DESPUÉS DE APLICARLO, vuelve a correr los curl de A2. Ahora todo debe dar 403.
+Y comprueba que el sitio sigue funcionando:
+  □ La portada carga
+  □ Los estilos y el JS cargan (revisa la consola del navegador)
+  □ Las imágenes de eventos se ven
+  □ Puedes iniciar sesión
+
+
+──────────────────────────────────────────────────────────────
+A4. BORRAR LOS RESPALDOS .bak DEL SERVIDOR
+──────────────────────────────────────────────────────────────
+
+Los scripts de deploy dejan copias tipo:
+    public_html/app/Http/Controllers/Admin/EventoController.php.bak-20260825c
+
+Apache no las pasa al intérprete de PHP: las sirve como TEXTO PLANO.
+Es tu código fuente completo, legible por cualquiera.
+
+Por SSH en el servidor:
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+
+    # 1. Ver qué hay (NO borres a ciegas)
+    find . -name "*.bak-*" -o -name "*.bak" | head -50
+    find . -name "*.bak-*" -o -name "*.bak" | wc -l
+
+    # 2. Moverlos fuera del docroot en lugar de borrarlos
+    mkdir -p ~/backups/bak-rescatados
+    find . -name "*.bak-*" -o -name "*.bak" -exec mv {} ~/backups/bak-rescatados/ \;
+
+    # 3. Confirmar que no queda ninguno
+    find . -name "*.bak*" | wc -l     # debe dar 0
+
+LUEGO, en el repo local, corrige los scripts para que no vuelvan a hacerlo.
+En estos 5 archivos:
+
+    deploy_2026_08_25_multi_evento_activo.py
+    deploy_2026_08_25_fix_crear_evento.py
+    deploy_2026_08_14_restauranteros_ui.py
+    deploy_2026_08_12_bazar_documentos.py
+    deploy_2026_07_28_encuestas.py
+
+BUSCA la línea (o su equivalente):
+
+    run('cp %s %s.bak-%s' % (rp, rp, STAMP))
+
+REEMPLÁZALA POR:
+
+    run('mkdir -p ~/backups/%s' % STAMP)
+    run('cp %s ~/backups/%s/$(basename %s)' % (rp, STAMP, rp))
+
+Verifica cuáles lo tienen:
+
+    grep -ln "bak-" deploy_*.py
+
+
+──────────────────────────────────────────────────────────────
+A5. SACAR LOS DUMPS Y LA BD DEL REPOSITORIO
+──────────────────────────────────────────────────────────────
+
+Archivos confirmados en el repo, con datos personales reales:
+
+    backup_impulsate_20260610_153841.sql   61 KB · 5 hashes bcrypt + emails + teléfonos
+    backup_impulsate_20260610_152716.sql   29 bytes · dump fallido
+    _rollback_ev9_20260826.sql             650 bytes
+    citas_db                               200 KB · archivo SQLite 3 real
+    database/database.sqlite               131 KB
+
+PASO 1 — Sacarlos del árbol de trabajo sin perderlos:
+
+    mkdir -p ~/impulsate-respaldos-privados
+    git rm --cached backup_impulsate_20260610_153841.sql
+    git rm --cached backup_impulsate_20260610_152716.sql
+    git rm --cached citas_db
+    mv backup_impulsate_*.sql ~/impulsate-respaldos-privados/
+    mv citas_db ~/impulsate-respaldos-privados/
+    mv _rollback_ev9_20260826.sql ~/impulsate-respaldos-privados/
+
+PASO 2 — Añadir al .gitignore (ver CAMBIO B3 en la Parte B).
+
+PASO 3 — Commit:
+
+    git add .gitignore
+    git commit -m "chore(seguridad): sacar dumps de BD y SQLite del repositorio"
+
+PASO 4 — El historial. Los archivos siguen en commits anteriores.
+Tienes dos opciones:
+
+  OPCIÓN CONSERVADORA (recomendada si el repo es privado y de pocas personas):
+    - No reescribir el historial.
+    - Forzar reset de contraseña a los 5 usuarios cuyos hashes están en el dump.
+    - Documentar el incidente.
+
+  OPCIÓN LIMPIA (si el repo estuvo público o hay dudas):
+    - pip install git-filter-repo
+    - git filter-repo --path backup_impulsate_20260610_153841.sql \
+                      --path backup_impulsate_20260610_152716.sql \
+                      --path citas_db --invert-paths
+    - ⚠ Reescribe TODO el historial: hay que re-clonar en todas las máquinas
+      y forzar push. Coordínalo con el equipo antes.
+
+PASO 5 — En cualquiera de los dos casos, forzar reset de contraseña a los
+usuarios del dump. Identifícalos:
+
+    grep -o "'[^']*@[^']*'" ~/impulsate-respaldos-privados/backup_impulsate_20260610_153841.sql | sort -u
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE B — CAMBIOS DE CÓDIGO
+═══════════════════════════════════════════════════════════════════════════
+
+Contexto verificado del proyecto:
+  • config/filesystems.php ya define el disco 'local' con root
+    storage_path('app/private'). NO hay que crear ningún disco nuevo.
+  • CompletarPerfilController NO importa Storage: usa \Storage:: con backslash.
+  • No existe ningún DocumentoController — el nombre está libre.
+  • routes/web.php línea 120 tiene perfil.documentos.subir, dentro del grupo
+    auth:sanctum + jetstream.auth_session + verified.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO B1 — Mover INE y CSF a disco privado
+Es el hallazgo con mayor riesgo legal (LFPDPPP). 5 archivos.
+─────────────────────────────────────────────────────────────
+
+Hoy los documentos se guardan en storage/app/public/documentos/{user_id}/ine.pdf
+y se sirven en /storage/documentos/{id}/ine.pdf: sin autenticación, con nombre
+fijo y user_id secuencial. Se enumeran con un bucle.
+
+
+B1.1 — app/Http/Controllers/CompletarPerfilController.php
+
+BUSCA el método subirDocumentos() completo (empieza en la línea ~305):
+
+    public function subirDocumentos(Request $request)
+    {
+        $request->validate([
+            'ine'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'csf'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'csf_fecha'=> 'nullable|date|before_or_equal:today',
+        ], [
+            'ine.max'       => 'El INE no debe pesar más de 5 MB.',
+            'csf.max'       => 'La CSF no debe pesar más de 5 MB.',
+            'csf_fecha.before_or_equal' => 'La fecha de la CSF no puede ser futura.',
+        ]);
+
+        $user = $request->user();
+        $datos = [];
+
+        if ($request->hasFile('ine')) {
+            if ($user->ine_path && \Storage::disk('public')->exists($user->ine_path)) {
+                \Storage::disk('public')->delete($user->ine_path);
+            }
+            $datos['ine_path'] = $request->file('ine')
+                ->storeAs("documentos/{$user->id}", 'ine.' . $request->file('ine')->extension(), 'public');
+        }
+
+        if ($request->hasFile('csf')) {
+            if ($user->csf_path && \Storage::disk('public')->exists($user->csf_path)) {
+                \Storage::disk('public')->delete($user->csf_path);
+            }
+            $datos['csf_path'] = $request->file('csf')
+                ->storeAs("documentos/{$user->id}", 'csf.' . $request->file('csf')->extension(), 'public');
+        }
+
+        if ($request->filled('csf_fecha')) {
+            $datos['csf_fecha'] = $request->csf_fecha;
+        }
+
+        if (!empty($datos)) {
+            $user->update($datos);
+        }
+
+        return back()->with('documentos_success', 'Documentos actualizados correctamente.');
+    }
+
+REEMPLÁZALO POR:
+
+    public function subirDocumentos(Request $request)
+    {
+        $request->validate([
+            'ine'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'csf'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
+            'csf_fecha'=> 'nullable|date|before_or_equal:today',
+        ], [
+            'ine.max'       => 'El INE no debe pesar más de 5 MB.',
+            'csf.max'       => 'La CSF no debe pesar más de 5 MB.',
+            'csf_fecha.before_or_equal' => 'La fecha de la CSF no puede ser futura.',
+        ]);
+
+        $user = $request->user();
+        $datos = [];
+
+        // Disco 'local' = storage/app/private (NO servido por el servidor web).
+        // Nombre aleatorio para que la ruta no sea adivinable ni enumerable.
+        foreach (['ine', 'csf'] as $campo) {
+            if (!$request->hasFile($campo)) continue;
+
+            $columna = $campo . '_path';
+
+            // Borrar el anterior, esté donde esté (público viejo o privado nuevo)
+            if ($user->$columna) {
+                foreach (['local', 'public'] as $disco) {
+                    if (\Storage::disk($disco)->exists($user->$columna)) {
+                        \Storage::disk($disco)->delete($user->$columna);
+                    }
+                }
+            }
+
+            $archivo   = $request->file($campo);
+            $extension = strtolower($archivo->extension());
+            $nombre    = $campo . '_' . \Illuminate\Support\Str::random(40) . '.' . $extension;
+
+            $datos[$columna] = $archivo->storeAs("documentos/{$user->id}", $nombre, 'local');
+        }
+
+        if ($request->filled('csf_fecha')) {
+            $datos['csf_fecha'] = $request->csf_fecha;
+        }
+
+        if (!empty($datos)) {
+            $user->update($datos);
+        }
+
+        return back()->with('documentos_success', 'Documentos actualizados correctamente.');
+    }
+
+
+B1.2 — NUEVO archivo app/Http/Controllers/DocumentoController.php
+
+CREA el archivo completo:
+
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+
+class DocumentoController extends Controller
+{
+    /**
+     * Descarga autenticada de INE / CSF.
+     * Solo el dueño del documento o un administrador pueden verlo.
+     */
+    public function mostrar(Request $request, User $user, string $tipo)
+    {
+        abort_unless(in_array($tipo, ['ine', 'csf'], true), 404);
+
+        $solicitante = $request->user();
+
+        $autorizado = $solicitante->id === $user->id
+            || $solicitante->hasRole('admin')
+            || $solicitante->hasRole('super-admin');
+
+        abort_unless($autorizado, 403, 'No tienes permiso para ver este documento.');
+
+        $ruta = $tipo === 'ine' ? $user->ine_path : $user->csf_path;
+
+        abort_if(!$ruta, 404, 'El documento no ha sido subido.');
+        abort_if(!Storage::disk('local')->exists($ruta), 404, 'El documento no se encuentra en el servidor.');
+
+        // Inline para que el navegador lo muestre en una pestaña nueva.
+        return Storage::disk('local')->response($ruta, null, [
+            'Content-Disposition' => 'inline; filename="' . $tipo . '-' . $user->id . '.' . pathinfo($ruta, PATHINFO_EXTENSION) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+}
+
+
+B1.3 — routes/web.php
+
+BUSCA la línea 120:
+
+    Route::post('/perfil/documentos', [CompletarPerfilController::class, 'subirDocumentos'])->name('perfil.documentos.subir');
+
+AÑADE JUSTO DEBAJO:
+
+    Route::get('/documentos/{user}/{tipo}', [\App\Http\Controllers\DocumentoController::class, 'mostrar'])
+        ->whereIn('tipo', ['ine', 'csf'])
+        ->name('documentos.ver');
+
+⚠ Queda dentro del grupo auth:sanctum + verified, que es lo que queremos.
+   NO la pongas fuera del grupo.
+
+
+B1.4 — app/Http/Controllers/Admin/BazarEvaluacionController.php
+
+BUSCA (líneas 56-57):
+
+                $s->ine_url = $s->ine_path ? Storage::disk('public')->url($s->ine_path) : null;
+                $s->csf_url = $s->csf_path ? Storage::disk('public')->url($s->csf_path) : null;
+
+REEMPLAZA POR:
+
+                $s->ine_url = $s->ine_path ? route('documentos.ver', ['user' => $s->user_id, 'tipo' => 'ine']) : null;
+                $s->csf_url = $s->csf_path ? route('documentos.ver', ['user' => $s->user_id, 'tipo' => 'csf']) : null;
+
+
+B1.5 — resources/js/Pages/Admin/Eventos/Solicitudes.vue
+
+Hay DOS enlaces que construyen la URL a mano.
+
+BUSCA (línea ~857):
+
+                                           :href="'/storage/' + solicitudPreview.user.ine_path"
+
+REEMPLAZA POR:
+
+                                           :href="route('documentos.ver', { user: solicitudPreview.user_id, tipo: 'ine' })"
+
+BUSCA (línea ~893):
+
+                                           :href="'/storage/' + solicitudPreview.user.csf_path"
+
+REEMPLAZA POR:
+
+                                           :href="route('documentos.ver', { user: solicitudPreview.user_id, tipo: 'csf' })"
+
+
+B1.6 — resources/js/Pages/Profile/Partials/DocumentosLegalesForm.vue
+
+BUSCA (línea ~65):
+
+                        <a :href="'/storage/' + user.ine_path" target="_blank"
+
+REEMPLAZA POR:
+
+                        <a :href="route('documentos.ver', { user: user.id, tipo: 'ine' })" target="_blank"
+
+BUSCA (línea ~100):
+
+                        <a :href="'/storage/' + user.csf_path" target="_blank"
+
+REEMPLAZA POR:
+
+                        <a :href="route('documentos.ver', { user: user.id, tipo: 'csf' })" target="_blank"
+
+
+B1.7 — Script de migración de los archivos ya subidos
+
+CREA database/migrations/2026_08_27_100000_mover_documentos_a_disco_privado.php:
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+
+return new class extends Migration
+{
+    /**
+     * Mueve los INE/CSF ya subidos de storage/app/public a storage/app/private
+     * y les cambia el nombre a uno aleatorio no adivinable.
+     * Actualiza users.ine_path / users.csf_path con la ruta nueva.
+     */
+    public function up(): void
+    {
+        $usuarios = DB::table('users')
+            ->select('id', 'ine_path', 'csf_path')
+            ->where(function ($q) {
+                $q->whereNotNull('ine_path')->orWhereNotNull('csf_path');
+            })
+            ->get();
+
+        $movidos = 0;
+        $faltantes = 0;
+
+        foreach ($usuarios as $u) {
+            $cambios = [];
+
+            foreach (['ine' => $u->ine_path, 'csf' => $u->csf_path] as $tipo => $rutaVieja) {
+                if (!$rutaVieja) continue;
+
+                // Si ya está en privado, no hacer nada
+                if (Storage::disk('local')->exists($rutaVieja) && !Storage::disk('public')->exists($rutaVieja)) {
+                    continue;
+                }
+
+                if (!Storage::disk('public')->exists($rutaVieja)) {
+                    $faltantes++;
+                    \Log::warning("[mover_documentos] No se encontró {$rutaVieja} (user {$u->id})");
+                    continue;
+                }
+
+                $extension = pathinfo($rutaVieja, PATHINFO_EXTENSION) ?: 'pdf';
+                $rutaNueva = "documentos/{$u->id}/{$tipo}_" . Str::random(40) . ".{$extension}";
+
+                Storage::disk('local')->put($rutaNueva, Storage::disk('public')->get($rutaVieja));
+                Storage::disk('public')->delete($rutaVieja);
+
+                $cambios[$tipo . '_path'] = $rutaNueva;
+                $movidos++;
+            }
+
+            if ($cambios) {
+                DB::table('users')->where('id', $u->id)->update($cambios);
+            }
+        }
+
+        \Log::info("[mover_documentos] {$movidos} archivos movidos a disco privado. {$faltantes} no encontrados.");
+    }
+
+    /**
+     * Irreversible por diseño: volver a exponer documentos de identidad en el
+     * disco público sería reintroducir la vulnerabilidad.
+     */
+    public function down(): void
+    {
+        // no-op intencional
+    }
+};
+
+
+B1.8 — Limpiar la carpeta pública vacía (manual, después de migrar)
+
+Por SSH, DESPUÉS de correr la migración y verificar que todo se ve bien:
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+    ls -la storage/app/public/documentos/      # debe estar vacío o casi
+    # Solo si está vacío:
+    find storage/app/public/documentos -type d -empty -delete
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO B2 — Borrar public/opcache_reset.php
+─────────────────────────────────────────────────────────────
+
+Hoy cualquiera puede invocarlo en bucle y forzar la recompilación de todo
+el código en cada petición. Contenido actual:
+
+    <?php
+    if (function_exists('opcache_reset')) {
+        opcache_reset();
+        echo 'OPcache reset successfully.';
+    } else {
+        echo 'OPcache is not enabled.';
+    }
+
+BORRA el archivo:
+
+    git rm public/opcache_reset.php
+
+Y en el servidor:
+
+    rm -f /home/u489236361/domains/impulsate.iyemyucatan.com/public_html/public/opcache_reset.php
+    rm -f /home/u489236361/domains/impulsate.iyemyucatan.com/public_html/opcache_reset.php
+
+Si los scripts de deploy lo invocaban, sustitúyelo por SSH:
+
+    php artisan optimize:clear
+
+Busca referencias antes de borrar:
+
+    grep -rn "opcache_reset" --include=*.py --include=*.php --include=*.md .
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO B3 — .gitignore
+─────────────────────────────────────────────────────────────
+
+BUSCA el .gitignore actual y AÑADE al final:
+
+    # ── Datos y respaldos: nunca al repositorio ──
+    *.sql
+    *.sqlite
+    *.sqlite-journal
+    citas_db
+    /storage/app/private
+    /storage/app/public/documentos
+
+    # ── Scratch de desarrollo ──
+    tmp_*.py
+    check_*.py
+    op_*.py
+    diag.py
+    verify.py
+    fix_build*.py
+    __pycache__/
+    *.pyc
+
+    # ── Archivo con nombre corrupto (ruta de Windows aplanada) ──
+    C:xampphtdocscitasdiag.py
+
+⚠ El archivo C:xampphtdocscitasdiag.py no se puede borrar desde el
+   explorador de Windows. Usa PowerShell:
+
+    Remove-Item -LiteralPath "C:\xampp\htdocs\citas\C:xampphtdocscitasdiag.py" -Force
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+DESPUÉS DE LA PARTE A
+  □ Los curl de A2 devuelven 403/404 en todos los archivos sensibles
+  □ La portada, los estilos, el JS y las imágenes siguen cargando
+  □ Se puede iniciar sesión
+  □ robots.txt sigue accesible (si lo necesitas)
+  □ find . -name "*.bak*" en el servidor devuelve 0
+
+DESPUÉS DE LA PARTE B — documentos
+  □ Subir un INE nuevo desde el perfil funciona
+  □ El archivo NO aparece en storage/app/public/documentos
+  □ El archivo SÍ aparece en storage/app/private/documentos con nombre aleatorio
+  □ El dueño puede abrir su documento desde su perfil
+  □ Un admin puede abrirlo desde Solicitudes y desde BazarEvaluacion
+  □ Un usuario CUALQUIERA con sesión NO puede abrir el de otro
+      → /documentos/{otro_id}/ine debe dar 403
+  □ Sin sesión, /documentos/1/ine redirige a login (no lo sirve)
+  □ La URL vieja /storage/documentos/1/ine.pdf ya NO devuelve nada
+  □ Los documentos ya existentes se ven bien después de la migración
+  □ Los badges "✓ Subido / ✗ Sin INE" siguen apareciendo correctamente
+     (TabEventos.vue y Perfil/Show.vue leen ine_path, que sigue existiendo)
+
+REGRESIÓN — el registro al bazar sigue funcionando
+  □ Un expositor sin INE sigue viendo el error al registrarse
+  □ Un expositor con INE y CSF vigente sí puede registrarse
+  □ La validación de CSF de 3 meses sigue funcionando
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS TOCADOS
+═══════════════════════════════════════════════════════════════════════════
+
+Código:
+  app/Http/Controllers/CompletarPerfilController.php          (modificado)
+  app/Http/Controllers/DocumentoController.php                (NUEVO)
+  app/Http/Controllers/Admin/BazarEvaluacionController.php    (modificado)
+  routes/web.php                                              (modificado)
+  resources/js/Pages/Admin/Eventos/Solicitudes.vue            (modificado)
+  resources/js/Pages/Profile/Partials/DocumentosLegalesForm.vue (modificado)
+  database/migrations/2026_08_27_100000_mover_documentos_a_disco_privado.php (NUEVO)
+  .gitignore                                                  (modificado)
+  .htaccess                                                   (modificado)
+
+Borrados:
+  public/opcache_reset.php
+
+Sacados del repo (movidos a carpeta privada):
+  backup_impulsate_20260610_152716.sql
+  backup_impulsate_20260610_153841.sql
+  _rollback_ev9_20260826.sql
+  citas_db
+
+⚠ HAY CAMBIOS DE VUE → hay que correr build:
+      npm run build
+   y subir public/build/ completo.
+
+
+COMANDOS EN EL SERVIDOR (en este orden)
+========================================
+
+  php artisan down
+  # subir código + public/build/
+  php artisan migrate --force          # mueve los documentos a disco privado
+  php artisan optimize:clear
+  php artisan up
+
+  # Verificar
+  ls -la storage/app/private/documentos/
+  ls -la storage/app/public/documentos/    # debe estar vacío
+
+
+⚠ NOTA SOBRE PERMISOS
+   storage/app/private debe ser escribible por el usuario de PHP y NO debe
+   tener symlink desde public/. Verifica:
+
+     ls -la storage/app/
+     ls -la public/storage        # debe apuntar SOLO a storage/app/public

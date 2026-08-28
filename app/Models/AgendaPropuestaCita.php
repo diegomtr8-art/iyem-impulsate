@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AgendaPropuestaCita extends Model
 {
     protected $fillable = [
-        'agenda_propuesta_id', 'restaurantero_id', 'slot_inicio', 'slot_fin',
+        'agenda_propuesta_id', 'restaurantero_id', 'slot_inicio', 'slot_fin', 'cita_id',
     ];
 
     protected function casts(): array
@@ -28,5 +28,11 @@ class AgendaPropuestaCita extends Model
     public function proveedor(): BelongsTo
     {
         return $this->belongsTo(Restaurantero::class, 'restaurantero_id');
+    }
+
+    // La cita real creada a partir de este renglon (si el comprador acepto)
+    public function cita(): BelongsTo
+    {
+        return $this->belongsTo(Cita::class, 'cita_id');
     }
 }

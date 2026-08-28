@@ -854,7 +854,7 @@ const csfVigente = (csf_fecha) => {
                                             </span>
                                         </div>
                                         <a v-if="solicitudPreview.user?.ine_path"
-                                           :href="'/storage/' + solicitudPreview.user.ine_path"
+                                           :href="route('documentos.ver', { user: solicitudPreview.user_id, tipo: 'ine' })"
                                            target="_blank"
                                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold
                                                   bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400
@@ -890,7 +890,7 @@ const csfVigente = (csf_fecha) => {
                                             </span>
                                         </div>
                                         <a v-if="solicitudPreview.user?.csf_path"
-                                           :href="'/storage/' + solicitudPreview.user.csf_path"
+                                           :href="route('documentos.ver', { user: solicitudPreview.user_id, tipo: 'csf' })"
                                            target="_blank"
                                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold
                                                   bg-guinda-50 dark:bg-guinda-900/20 text-guinda-700 dark:text-guinda-400

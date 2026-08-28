@@ -1,0 +1,590 @@
+═══════════════════════════════════════════════════════════════════════════
+FASE 2.5 — PROTEGER LO QUE YA SE HIZO
+Duración: ~2 horas · Prioridad: MÁXIMA
+═══════════════════════════════════════════════════════════════════════════
+
+Las fases 1 y 2 se aplicaron bien: 41 de 42 comprobaciones pasan y 22
+hallazgos quedaron cerrados. El problema ahora NO es lo que está mal en el
+código: es que ese trabajo todavía se puede perder o está expuesto.
+
+Cuatro de los seis críticos actuales no son bugs. Son consecuencia de haber
+avanzado rápido sin cerrar.
+
+Casi nada de este documento es programación. Es commitear, revocar,
+verificar y limpiar. Hazlo EN ESTE ORDEN.
+
+
+┌─────────────────────────────────────────────────────────────┐
+│ CHECKLIST                                                    │
+│  □ P1  Commitear los 68 archivos                             │
+│  □ P2  Revocar la App Password de Gmail                      │
+│  □ P3  Bloquear .html y sacar los informes del docroot       │
+│  □ P4  Verificar crontab y la cola en producción             │
+│  □ P5  Retirar los .bak del servidor y rotar credenciales    │
+│  □ P6  Arreglar la migración de documentos ANTES de correrla │
+│  □ P7  Decidir qué hacer con database/migrations-manual/     │
+└─────────────────────────────────────────────────────────────┘
+
+
+─────────────────────────────────────────────────────────────
+P1 — COMMITEAR LOS 68 ARCHIVOS      ← LO PRIMERO, SIN EXCEPCIÓN
+─────────────────────────────────────────────────────────────
+
+Estado actual verificado:
+
+    git status --porcelain | wc -l   →  68
+    git log --oneline | wc -l        →  42
+    HEAD                             →  f447216  (anterior a TODO este trabajo)
+
+Sin commitear están, entre otros:
+
+    app/Http/Controllers/DocumentoController.php      ← la corrección completa
+    database/migrations/2026_08_27_100000_*.php        de documentos privados
+    database/migrations/2026_08_27_110000_*.php
+    database/migrations/2026_08_27_120000_*.php
+    .htaccess                                          ← el blindaje
+    routes/web.php
+    _fase1/                                            ← tus scripts de deploy
+    ...y ~30 controladores y vistas más
+
+Un `git clean -fd`, un `git checkout .`, un fallo de disco o un clon limpio
+borra semanas de trabajo de seguridad. **No hay copia en ningún otro sitio.**
+
+PASOS:
+
+1. Mira qué hay, sin prisa:
+
+       git status
+       git diff --stat
+
+2. Revisa que no se cuele nada que no deba ir. En especial:
+
+       git status --porcelain | grep -iE "\.env|\.sql|citas_db|\.sqlite|backup"
+
+   (debe salir vacío — el .gitignore ya los cubre, pero confirma)
+
+3. Commitea. Aunque sea un commit grande y poco elegante: es recuperable,
+   y ahora mismo nada lo es.
+
+       git add -A
+       git commit -m "fix(seguridad): fases 1 y 2 — documentos a disco privado, htaccess blindado, tokens rotables, GET->POST, validaciones"
+
+4. Súbelo:
+
+       git push origin main
+
+5. Verifica:
+
+       git status          # debe quedar limpio
+       git log --oneline -1
+
+⚠ SOBRE `_fase1/`
+   Esa carpeta está en limbo: ni versionada ni en .gitignore. Y es, con
+   diferencia, el mejor código de despliegue del proyecto — lista blanca de
+   archivos, respaldo de BD previo con aborto si falla, artisan down/up en
+   try/finally, verificación posterior.
+
+   Commitéala. Y en la Fase 4 debería convertirse en EL script de despliegue
+   del proyecto, archivando los 71 deploy_*.py restantes.
+
+⚠ SI PREFIERES COMMITS SEPARADOS (opcional, más trabajo, mejor historial):
+
+       git add app/Http/Controllers/DocumentoController.php app/Http/Controllers/CompletarPerfilController.php database/migrations/2026_08_27_100000_* resources/js/Pages/Profile/Partials/DocumentosLegalesForm.vue resources/js/Pages/Admin/Eventos/Solicitudes.vue
+       git commit -m "fix(seguridad): INE y CSF a disco privado con ruta autenticada"
+
+       git add .htaccess .gitignore
+       git commit -m "fix(seguridad): blindar htaccess y ampliar gitignore"
+
+       git add app/Http/Middleware/ routes/web.php resources/js/Pages/Citas/ resources/js/Pages/Agenda/
+       git commit -m "fix: rutas por token exentas de onboarding + GET destructivos a POST"
+
+       git add -A
+       git commit -m "fix: bugs de fase 2 (recordatorios, bazar, multi-evento, encuestas)"
+
+
+─────────────────────────────────────────────────────────────
+P2 — REVOCAR LA APP PASSWORD DE GMAIL
+─────────────────────────────────────────────────────────────
+
+El archivo ya está bien: deploy_convocatoria_correo.py:87 lee
+os.environ.get('IMPULSATE_MAIL_PWD'). Eso se hizo correctamente.
+
+PERO el secreto sigue vivo en el historial. Verificado:
+
+    git log --all --oneline -S"<la contraseña>" -- deploy_convocatoria_correo.py
+    →  d102da6 feat: flujo agenda invertido a comprador...
+
+Cualquiera con acceso al repositorio hace `git show d102da6` y la obtiene.
+El repo está en github.com/diegomtr8-art/iyem-impulsate.
+
+**Quitarla del archivo no revocó nada. Si no la has revocado en la cuenta de
+Google, sigue funcionando ahora mismo.**
+
+PASOS:
+
+1. Entra a https://myaccount.google.com/apppasswords con la cuenta
+   impulsate@iyemyucatan.com
+
+2. Revoca la contraseña de aplicación existente.
+   → Esto es lo único que corta el acceso. Todo lo demás es cosmético.
+
+3. Genera una nueva.
+
+4. Ponla SOLO en el .env de producción (MAIL_PASSWORD). Nunca en un script.
+
+5. Prueba que el correo sigue saliendo:
+
+       php artisan tinker
+       >>> Mail::raw('prueba post-rotacion', fn($m) => $m->to('tu@correo.com')->subject('Test'));
+
+6. Comprueba que no quedó en ningún otro sitio:
+
+       grep -rn "***REVOCADA***" . --include=* 2>/dev/null | grep -v "^./.git/"
+
+   ⚠ Este informe y los PROMPT_FASE1 la contenían. Ya está redactada del
+     informe HTML; revisa los .txt.
+
+7. (Opcional, cuando tengas margen) Purgar el historial:
+
+       pip install git-filter-repo
+       git filter-repo --replace-text <(echo "***REVOCADA***==>***REVOCADA***")
+       git push --force
+
+   ⚠ Reescribe TODO el historial: hay que re-clonar en todas las máquinas.
+     Coordínalo con quien más use el repo. Y después pide a GitHub Support
+     el recolector de basura, porque conserva los objetos accesibles por SHA
+     incluso tras un force-push.
+
+   Si el repo es privado y de pocas personas, revocar (paso 1-2) es
+   suficiente y esto puede esperar.
+
+
+─────────────────────────────────────────────────────────────
+P3 — BLOQUEAR .html Y SACAR LOS INFORMES DEL DOCROOT
+─────────────────────────────────────────────────────────────
+
+El .htaccess blindado bloquea .py, .txt, .md, .sql, .log, .sqlite, .bak,
+.docx, .xlsx… **pero no .html**. Y la raíz del proyecto es el docroot.
+
+Hay 16 archivos .html servibles desde internet, incluido el informe de la
+auditoría, que hasta hace un momento contenía la contraseña en claro:
+
+    AUDITORIA_IMPULSATE.html          ← el informe completo de vulnerabilidades
+    MOCKUP_*.html (6)
+    Mockup_*.html (2)
+    bocetos_v7.html · bocetos_v8.html
+    adecuaciones-impulsate.html · bazar-flujo-usuario.html
+    flujo_registro_impulsate.html
+    mockup_bazar_admin.html · mockup_bazar_resultados.html
+
+Compruébalo tú mismo:
+
+    curl -s -o /dev/null -w "%{http_code}\n" https://impulsate.iyemyucatan.com/AUDITORIA_IMPULSATE.html
+
+Si devuelve 200, cualquiera tiene el mapa de vulnerabilidades del sistema.
+
+PASO 1 — Añadir .html al FilesMatch
+
+BUSCA en .htaccess la línea del FilesMatch (línea 2):
+
+    <FilesMatch "^\.env|^\.env\..*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$">
+
+REEMPLÁZALA POR (añade html, json, yml, sh, ini, pem, key, crt, htpasswd,
+cache y los config de JS):
+
+    <FilesMatch "^\.env|^\.env\..*|^\.git.*|\.log$|\.sqlite$|\.sql$|\.bak.*$|\.py$|\.pyc$|\.md$|\.txt$|\.docx$|\.xlsx$|\.html?$|\.json$|\.ya?ml$|\.sh$|\.ini$|\.conf$|\.pem$|\.key$|\.crt$|\.cache$|^\.htpasswd$|^composer\.(json|lock)$|^package(-lock)?\.json$|^phpunit\.xml$|^artisan$|^citas_db$|^(vite|tailwind|postcss|jsconfig)\.(js|json)$">
+
+PASO 2 — Respaldo del bloqueo de directorios FUERA de mod_rewrite
+
+Hoy .git/ solo está bloqueado por un RewriteRule que vive DENTRO de
+<IfModule mod_rewrite.c>. Si mod_rewrite se desactivara, el bloqueo
+desaparece y el FilesMatch no lo respalda: el historial completo de git
+—con el secreto de P2 dentro— quedaría descargable. Falla en abierto.
+
+AÑADE en .htaccess, justo después del bloque <Files "robots.txt">:
+
+    # Respaldo del bloqueo de directorios, INDEPENDIENTE de mod_rewrite.
+    # Si mod_rewrite se desactivara, el RewriteRule de abajo dejaria de
+    # proteger .git/ y el historial completo quedaria descargable.
+    RedirectMatch 404 ^/(\.git|\.github|vendor|database|bootstrap|config|app|resources|routes|tests|node_modules)(/|$)
+
+⚠ NO incluyas "storage" en esa lista. Ya lo tienes documentado en tu propio
+   .htaccess y es correcto: la regla de arriba reescribe /storage/* hacia
+   public/storage/* y bloquearlo rompería las imágenes.
+
+PASO 3 — Sacar los archivos del docroot (esto es lo que de verdad cierra)
+
+El .htaccess es una curita. Los archivos no deberían estar ahí.
+
+En LOCAL:
+
+    mkdir -p docs/auditoria docs/mockups
+    git mv AUDITORIA_IMPULSATE.html docs/auditoria/
+    git mv MOCKUP_*.html Mockup_*.html bocetos_v*.html docs/mockups/
+    git mv adecuaciones-impulsate.html bazar-flujo-usuario.html docs/mockups/
+    git mv flujo_registro_impulsate.html mockup_bazar_*.html docs/mockups/
+    git commit -m "chore: sacar informes y mockups del docroot"
+
+⚠ SI USAS EL ARTEFACTO PUBLICADO DE LA AUDITORÍA: al mover el archivo, la
+   siguiente republicación crearía un artefacto nuevo con otra URL. Si
+   quieres conservar el enlace actual, deja AUDITORIA_IMPULSATE.html donde
+   está y confía en el bloqueo de .html del PASO 1. El resto de mockups sí
+   muévelos.
+
+En el SERVIDOR, borra los que ya subiste:
+
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+    ls -la *.html
+    mkdir -p ~/backups/html-retirados
+    mv *.html ~/backups/html-retirados/ 2>/dev/null
+    ls -la *.html      # debe decir "no such file"
+
+PASO 4 — Verificar
+
+    for f in AUDITORIA_IMPULSATE.html jsconfig.json vite.config.js .gitignore .git/config
+    do
+      echo "$(curl -s -o /dev/null -w '%{http_code}' https://impulsate.iyemyucatan.com/$f)  $f"
+    done
+
+Todo debe dar 403 o 404. Y comprueba que el sitio sigue vivo:
+  □ La portada carga
+  □ Los estilos y el JS cargan (consola del navegador sin errores)
+  □ Las imágenes de eventos y logos se ven
+  □ robots.txt sigue accesible
+
+
+─────────────────────────────────────────────────────────────
+P4 — VERIFICAR EL CRON Y LA COLA EN PRODUCCIÓN
+─────────────────────────────────────────────────────────────
+
+Esta es, con diferencia, la causa más probable de "los correos no llegan".
+
+Con QUEUE_CONNECTION=database y sin worker corriendo, cada ->queue() inserta
+una fila en la tabla `jobs`, le dice al admin "enviado", y el correo no sale
+NUNCA. Nada en el repositorio instala ese cron: DEPLOY.md lo deja como paso
+manual y ninguno de los 71 deploy_*.py lo configura.
+
+PASO 1 — Mirar qué hay:
+
+    ssh -p 65002 u489236361@195.35.38.222
+    crontab -l
+
+Deberías ver algo como:
+
+    * * * * * cd /home/.../public_html && php artisan schedule:run >> /dev/null 2>&1
+    */5 * * * * cd /home/.../public_html && php artisan queue:work --stop-when-empty >> /dev/null 2>&1
+
+PASO 2 — Mirar la cola:
+
+    php artisan tinker
+    >>> DB::table('jobs')->count();
+    >>> DB::table('failed_jobs')->count();
+    >>> DB::table('jobs')->orderBy('id')->first();
+
+INTERPRETACIÓN:
+  jobs = 0            → o no hay trabajos, o el worker los está procesando. Bien.
+  jobs > 0 y creciendo → EL WORKER NO ESTÁ CORRIENDO. Ahí están tus correos.
+  failed_jobs > 0     → revisa el campo `exception` de esas filas.
+
+PASO 3 — Si el cron no está, ponlo (panel de Hostinger → Cron Jobs):
+
+    * * * * *    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html && php artisan schedule:run >> /dev/null 2>&1
+    */5 * * * *  cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html && php artisan queue:work --stop-when-empty --tries=3 --max-time=280 >> ~/logs/queue.log 2>&1
+
+PASO 4 — Si Hostinger no permite workers o prefieres no depender del cron:
+
+En el .env de producción cambia:
+
+    QUEUE_CONNECTION=sync
+
+Con eso los correos se envían dentro del request (lento, pero salen).
+Es peor para el rendimiento pero mejor que no enviarlos. La Fase 3 asume
+que la cola FUNCIONA, así que decide esto antes de aplicarla.
+
+PASO 5 — Vaciar la cola atascada, si la hay:
+
+    php artisan queue:work --stop-when-empty
+
+Y mira si empiezan a llegar correos pendientes de días atrás.
+
+⚠ OJO: el comentario de routes/console.php:11 dice "cada 15 minutos" pero el
+   código dice everyFiveMinutes(). No es un bug, pero corrige el comentario
+   para que nadie se confíe.
+
+
+─────────────────────────────────────────────────────────────
+P5 — RETIRAR LOS .bak DEL SERVIDOR Y ROTAR CREDENCIALES
+─────────────────────────────────────────────────────────────
+
+Los scripts ya se corrigieron y escriben en ~/backups/. Pero los archivos
+que ya se subieron siguen ahí.
+
+Uno de tus propios scripts (deploy_2026_08_26_check_smtp.py:45) hace
+`ls -la .env.bak-20260818-smtp`: existe un respaldo del .env con credenciales
+SMTP y de base de datos EN CLARO dentro del docroot.
+
+Un .bak junto a un .php se sirve como texto plano.
+
+PASO 1 — Ya tienes el script escrito. Ejecútalo:
+
+    python _fase1/11_limpieza.py
+
+Está bien diseñado: archiva en tar, verifica el conteo, y solo entonces
+borra. Si el tar no queda bien, aborta sin tocar el docroot.
+
+PASO 2 — Verificar a mano que no quedó nada:
+
+    ssh -p 65002 u489236361@195.35.38.222
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+    find . -name "*.bak*" | wc -l        # debe dar 0
+    ls -la .env.bak* 2>&1                # debe decir "no such file"
+
+PASO 3 — ROTAR LAS CREDENCIALES QUE ESTUVIERON EXPUESTAS
+
+El .env.bak estuvo servible. Hay que asumir las credenciales comprometidas:
+
+  □ Contraseña de la base de datos
+    → panel de Hostinger → MySQL → cambiar contraseña
+    → actualizar DB_PASSWORD en el .env de producción
+    → php artisan config:clear
+
+  □ APP_KEY
+    ⚠ Rotar APP_KEY invalida todas las sesiones activas y cualquier dato
+      cifrado con la llave anterior. Avisa al equipo antes.
+    → php artisan key:generate --force
+
+  □ Secreto de Google OAuth
+    → console.cloud.google.com → credenciales → regenerar
+    → actualizar GOOGLE_CLIENT_SECRET
+
+  □ La App Password de Gmail ya la rotaste en P2.
+
+PASO 4 — Revisar los logs de acceso buscando quién pidió esos archivos:
+
+    grep -E "\.env|\.bak|citas_db|\.sql" ~/logs/*access* 2>/dev/null | tail -50
+
+Si aparece alguna petición desde una IP desconocida, documenta el incidente.
+
+
+─────────────────────────────────────────────────────────────
+P6 — ARREGLAR LA MIGRACIÓN DE DOCUMENTOS ANTES DE CORRERLA
+─────────────────────────────────────────────────────────────
+
+⚠ ESTE ES EL ÚNICO PUNTO DE ESTE DOCUMENTO CON RIESGO DE PÉRDIDA DE DATOS.
+
+Estado actual de
+database/migrations/2026_08_27_100000_mover_documentos_a_disco_privado.php:
+
+    Storage::disk('local')->put($rutaNueva, Storage::disk('public')->get($rutaVieja));
+    Storage::disk('public')->delete($rutaVieja);      ← borra pase lo que pase
+
+    ...y el UPDATE de la BD ocurre DESPUÉS, al final del usuario.
+
+Y config/filesystems.php declara 'throw' => false en ambos discos: si el
+put() falla por permisos o disco lleno, **devuelve false en silencio y el
+original se borra igual**.
+
+Dos formas de perder INE y CSF de forma irrecuperable:
+  a) Un permiso mal puesto en storage/app/private → borrado masivo silencioso.
+  b) El proceso muere entre el delete y el UPDATE → archivo con nombre
+     aleatorio en privado y la BD apuntando a una ruta ya borrada.
+
+────────────────────────────────
+PRIMERO: ¿ya la corriste?
+────────────────────────────────
+
+    php artisan migrate:status | grep mover_documentos
+
+  • Si dice "Pending" en producción → NO la corras todavía. Aplica el arreglo
+    de abajo primero.
+
+  • Si dice "Ran" en producción → verifica que no se perdió nada ANTES de
+    hacer nada más:
+
+        php artisan tinker
+        >>> $rotos = App\Models\User::whereNotNull('ine_path')->get()
+        ...     ->filter(fn($u) => !Storage::disk('local')->exists($u->ine_path));
+        >>> $rotos->count();
+        >>> $rotos->pluck('id', 'email');
+
+        >>> $rotosCsf = App\Models\User::whereNotNull('csf_path')->get()
+        ...     ->filter(fn($u) => !Storage::disk('local')->exists($u->csf_path));
+        >>> $rotosCsf->count();
+
+    Si ambos cuentan 0, tuviste suerte y no hay nada que lamentar.
+    Si alguno es > 0, esos usuarios perdieron su documento: hay que pedírselo
+    de nuevo. Busca también huérfanos en storage/app/private/documentos que
+    no correspondan a ninguna ruta en BD.
+
+────────────────────────────────
+EL ARREGLO
+────────────────────────────────
+
+BUSCA en la migración este bloque:
+
+                $extension = pathinfo($rutaVieja, PATHINFO_EXTENSION) ?: 'pdf';
+                $rutaNueva = "documentos/{$u->id}/{$tipo}_" . Str::random(40) . ".{$extension}";
+
+                Storage::disk('local')->put($rutaNueva, Storage::disk('public')->get($rutaVieja));
+                Storage::disk('public')->delete($rutaVieja);
+
+                $cambios[$tipo . '_path'] = $rutaNueva;
+                $movidos++;
+
+REEMPLÁZALO POR:
+
+                $extension = pathinfo($rutaVieja, PATHINFO_EXTENSION) ?: 'pdf';
+                $rutaNueva = "documentos/{$u->id}/{$tipo}_" . Str::random(40) . ".{$extension}";
+
+                // Los discos tienen 'throw' => false: get() devuelve null y put()
+                // devuelve false en silencio si fallan. Hay que comprobarlos, o el
+                // delete de abajo borraria el original sin tener copia.
+                $contenido = Storage::disk('public')->get($rutaVieja);
+
+                if ($contenido === null) {
+                    $faltantes++;
+                    Log::error("[mover_documentos] No se pudo leer {$rutaVieja} (user {$u->id}). NO se borra el original.");
+                    continue;
+                }
+
+                if (Storage::disk('local')->put($rutaNueva, $contenido) === false) {
+                    $faltantes++;
+                    Log::error("[mover_documentos] Fallo al escribir {$rutaNueva} (user {$u->id}). Revisa permisos de storage/app/private. NO se borra el original.");
+                    continue;
+                }
+
+                // Verificar que la copia existe y no quedo vacia
+                if (!Storage::disk('local')->exists($rutaNueva)
+                    || Storage::disk('local')->size($rutaNueva) !== strlen($contenido)) {
+                    $faltantes++;
+                    Log::error("[mover_documentos] La copia de {$rutaNueva} no coincide en tamano (user {$u->id}). NO se borra el original.");
+                    continue;
+                }
+
+                // Escribir la BD ANTES de borrar el original: si el proceso muere
+                // aqui, el documento sigue existiendo en publico y la ruta vieja
+                // sigue siendo valida. La guarda de idempotencia lo retomara.
+                DB::table('users')->where('id', $u->id)->update([$tipo . '_path' => $rutaNueva]);
+
+                Storage::disk('public')->delete($rutaVieja);
+
+                $movidos++;
+
+Y MÁS ABAJO, BUSCA:
+
+            if ($cambios) {
+                DB::table('users')->where('id', $u->id)->update($cambios);
+            }
+
+REEMPLÁZALO POR:
+
+            // El UPDATE ya se hace campo por campo arriba, en cuanto la copia
+            // esta verificada. Aqui no queda nada que escribir.
+
+⚠ La variable $cambios queda sin uso. Puedes borrar también su declaración
+   ($cambios = []; unas líneas más arriba) o dejarla, es inocuo.
+
+────────────────────────────────
+ANTES DE CORRERLA EN PRODUCCIÓN
+────────────────────────────────
+
+  □ Respaldar la carpeta:
+
+        ssh -p 65002 u489236361@195.35.38.222
+        cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+        tar czf ~/backups/documentos-antes-de-migrar-$(date +%Y%m%d).tar.gz storage/app/public/documentos
+        ls -lh ~/backups/documentos-antes-de-migrar-*.tar.gz
+
+  □ Comprobar permisos de escritura del destino:
+
+        ls -la storage/app/
+        touch storage/app/private/.prueba && rm storage/app/private/.prueba && echo "escribible OK"
+
+  □ Contar cuántos documentos hay que mover:
+
+        find storage/app/public/documentos -type f | wc -l
+
+  □ Correr la migración y comparar el conteo:
+
+        php artisan migrate --force
+        find storage/app/private/documentos -type f | wc -l    # debe coincidir
+        find storage/app/public/documentos -type f | wc -l     # debe dar 0
+
+  □ Revisar el log:
+
+        tail -50 storage/logs/laravel.log | grep mover_documentos
+
+  □ Probar en la interfaz: abrir un INE desde Solicitudes como admin.
+
+
+─────────────────────────────────────────────────────────────
+P7 — DECIDIR QUÉ HACER CON database/migrations-manual/
+─────────────────────────────────────────────────────────────
+
+Hay un archivo suelto:
+
+    database/migrations-manual/2026_08_26_120000_revertir_aprobados_encuentro_a_pendiente.php
+
+Revierte en masa estado='aprobado' → 'pendiente' en evento_usuario y borra
+respondido_at y motivo_rechazo. No está en git ni referenciado en ningún sitio.
+
+TRES RIESGOS:
+
+  1. Se pierde con un `git clean -fd` sin que nadie lo note.
+  2. No pasa por la tabla `migrations`: no hay forma de saber si ya se aplicó.
+  3. **Su timestamp (2026_08_26) es ANTERIOR a las migraciones del 27.** Si
+     alguien lo mueve a database/migrations/, el siguiente `migrate --force`
+     del despliegue lo ejecuta SOLO en producción y des-aprueba a todos los
+     inscritos de los eventos activos.
+
+DECIDE UNA DE ESTAS TRES:
+
+  OPCIÓN A — Ya no lo necesitas (lo más probable):
+
+      rm -rf database/migrations-manual/
+
+  OPCIÓN B — Lo necesitas y lo quieres ejecutable de forma segura:
+
+      Conviértelo en un comando artisan con --dry-run.
+      Crea app/Console/Commands/RevertirAprobadosAPendiente.php con la misma
+      lógica, pero:
+        - que primero imprima a cuántos y a quiénes va a afectar
+        - que solo escriba si se pasa --force
+        - que registre en el log qué filas cambió
+
+      Y borra el directorio migrations-manual.
+
+  OPCIÓN C — Lo quieres conservar como referencia:
+
+      mkdir -p docs/sql-manual
+      git mv database/migrations-manual/*.php docs/sql-manual/
+      rmdir database/migrations-manual
+
+      Renómbralo quitando el prefijo de fecha para que nunca pueda
+      confundirse con una migración:
+
+      docs/sql-manual/revertir_aprobados_encuentro_a_pendiente.php.txt
+
+⚠ EN CUALQUIER CASO, añade al .gitignore como red de seguridad:
+
+    /database/migrations-manual
+
+
+═══════════════════════════════════════════════════════════════════════════
+VERIFICACIÓN FINAL
+═══════════════════════════════════════════════════════════════════════════
+
+  □ git status limpio y git push hecho
+  □ App Password de Gmail revocada y el correo sigue saliendo
+  □ curl a /AUDITORIA_IMPULSATE.html devuelve 403 o 404
+  □ curl a /.env, /citas_db, /.git/config devuelven 403 o 404
+  □ El sitio funciona: portada, estilos, imágenes, login
+  □ crontab -l muestra schedule:run y queue:work
+  □ SELECT COUNT(*) FROM jobs no crece sin control
+  □ find . -name "*.bak*" en el servidor da 0
+  □ Credenciales de BD, APP_KEY y OAuth rotadas
+  □ La migración de documentos está arreglada (verificar antes de borrar)
+  □ database/migrations-manual/ resuelto
+
+Cuando todo esto esté hecho, el trabajo de las fases 1 y 2 está a salvo y
+ya no hay nada expuesto. A partir de ahí, la Fase 3 es desarrollo normal.

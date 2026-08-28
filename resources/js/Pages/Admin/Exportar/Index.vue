@@ -1,5 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import SelectorEvento from '@/Components/SelectorEvento.vue';
 
 defineProps({
     evento: Object,
@@ -16,6 +17,8 @@ defineProps({
         </template>
 
         <div class="max-w-3xl space-y-6">
+
+            <SelectorEvento />
 
             <!-- Aviso sin evento activo -->
             <div v-if="!evento" class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 flex items-center gap-3">

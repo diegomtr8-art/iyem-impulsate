@@ -45,7 +45,8 @@ print('Conectado OK')
 sftp = ssh.open_sftp()
 
 print('\n=== Backup remoto ===')
-run(ssh, f'cp {RROOT}/app/Mail/EncuestaSatisfaccionMail.php {RROOT}/app/Mail/EncuestaSatisfaccionMail.php.bak-20260728b')
+run(ssh, 'mkdir -p ~/backups/20260728b')
+run(ssh, f'cp {RROOT}/app/Mail/EncuestaSatisfaccionMail.php ~/backups/20260728b/EncuestaSatisfaccionMail.php')
 
 print('\n=== Subiendo Mailable actualizado (usa PlantillaCorreo clave encuesta_satisfaccion) ===')
 up(sftp, 'app/Mail/EncuestaSatisfaccionMail.php')

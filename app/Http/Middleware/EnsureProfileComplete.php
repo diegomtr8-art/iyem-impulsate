@@ -45,6 +45,15 @@ class EnsureProfileComplete
             'perfil.necesidades',
             'user.perfil',
             'perfil.documentos.subir',
+            // Rutas publicas por token (ver EnsureAvisoAceptado)
+            'agenda.*',
+            'encuestas.responder',
+            'encuestas.responder.store',
+            'citas.confirmar-token*',
+            'citas.rechazar-token*',
+            'tv.index',
+            'tv.publico',
+            'bazar.evaluacion',
             // El formulario de completar perfil vive dentro del panel del proveedor
             // (Restaurantero/Panel.vue), junto con el resto de sus rutas (calendario,
             // citas). Exentar todo el grupo evita un loop de redirección hacia

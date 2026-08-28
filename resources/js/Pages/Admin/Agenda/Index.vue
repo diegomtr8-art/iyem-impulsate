@@ -1,5 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import SelectorEvento from '@/Components/SelectorEvento.vue';
 import { Link, router } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
@@ -60,6 +61,8 @@ const ejecutarBorrado = () => {
                     + Nueva propuesta de agenda
                 </Link>
             </div>
+
+            <SelectorEvento />
 
             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-sm">
                 <table class="w-full text-sm">

@@ -57,7 +57,7 @@ ssh.close()
 print()
 print('Re-testing endpoints...')
 time.sleep(1)
-for path, label in [('/register/proveedor', 'Registro Proveedor'), ('/tv/impulsate-tv-2026', 'Pantalla TV')]:
+for path, label in [('/register/proveedor', 'Registro Proveedor'), ('/tv/<token-generado-por-evento-ver-/admin/tv>', 'Pantalla TV')]:
     try:
         r = urllib.request.urlopen(urllib.request.Request(BASE + path, headers={'User-Agent': 'Test'}), timeout=12)
         print('  OK  200  ' + label)

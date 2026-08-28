@@ -122,7 +122,8 @@ const abrirEditar = (evento) => {
     formEditar.tipo_evento                   = evento.tipo_evento || 'encuentro_negocios';
     formEditar.max_espacios                  = evento.max_espacios ?? null;
     formEditar.con_criterios_evaluacion      = !!evento.con_criterios_evaluacion;
-    formEditar.criterios                     = (evento.criterios || []).map(c => ({ nombre: c.nombre, porcentaje: Number(c.porcentaje) }));
+    formEditar.criterios                     = (evento.criterios || []).map(c => ({ id: c.id, nombre: c.nombre, porcentaje: Number(c.porcentaje) }));
+    formEditar.clearErrors();
     modalEditar.value = true;
 };
 
@@ -133,8 +134,15 @@ const guardarEdicion = () => {
     });
 };
 
-const eventoActivo = computed(() => props.eventos.find(e => e.activa) || null);
+// Puede haber varios eventos activos simultáneos.
+const eventosActivos = computed(() => props.eventos.filter(e => e.activa));
+const eventoActivo = computed(() => eventosActivos.value[0] || null);
 const eventosArchivados = computed(() => props.eventos.filter(e => !e.activa));
+
+const toggleForm = () => {
+    mostrarForm.value = !mostrarForm.value;
+    if (mostrarForm.value) form.clearErrors();
+};
 
 const crearEvento = () => {
     form.post(route('admin.eventos.store'), {
@@ -158,7 +166,7 @@ const enviarEncuestas = (evento) => {
 };
 
 const activar = (evento) => {
-    if (!confirm(`¿Activar el evento "${evento.nombre}"? Esto desactivará cualquier evento activo actual.`)) return;
+    if (!confirm(`¿Activar el evento "${evento.nombre}"? Los eventos que ya estén activos seguirán activos.`)) return;
     router.post(route('admin.eventos.activar', evento.id));
 };
 
@@ -195,7 +203,7 @@ const secuenciaValidaEditar = computed(() =>
                     <p class="text-sm text-gray-500 dark:text-gray-500 mt-0.5">Gestiona los eventos de la plataforma por sector económico</p>
                 </div>
                 <button
-                    @click="mostrarForm = !mostrarForm"
+                    @click="toggleForm"
                     class="inline-flex items-center gap-2 px-4 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
                 >
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -437,10 +445,21 @@ const secuenciaValidaEditar = computed(() =>
                     </div>
                 </div>
 
+                <!-- Errores de validación -->
+                <div v-if="Object.keys(form.errors).length" class="mt-5 p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl">
+                    <p class="text-sm font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-1.5">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0l-7.1 12.25A2 2 0 004.99 19z" /></svg>
+                        No se pudo crear el evento. Revisa lo siguiente:
+                    </p>
+                    <ul class="list-disc list-inside space-y-1 text-sm text-red-600 dark:text-red-300">
+                        <li v-for="(mensaje, campo) in form.errors" :key="campo">{{ mensaje }}</li>
+                    </ul>
+                </div>
+
                 <div class="flex items-center gap-3 mt-5">
-                    <button @click="crearEvento"
-                        class="px-5 py-2 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-semibold rounded-xl transition-colors">
-                        Crear evento
+                    <button @click="crearEvento" :disabled="form.processing"
+                        class="px-5 py-2 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors">
+                        {{ form.processing ? 'Creando…' : 'Crear evento' }}
                     </button>
                     <button @click="mostrarForm = false"
                         class="px-5 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-xl transition-colors">
@@ -449,11 +468,15 @@ const secuenciaValidaEditar = computed(() =>
                 </div>
             </div>
 
-            <!-- Evento activo -->
+            <!-- Eventos activos (pueden ser varios simultáneos) -->
             <div>
-                <h2 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Evento activo</h2>
+                <h2 class="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
+                    {{ eventosActivos.length > 1 ? `Eventos activos (${eventosActivos.length})` : 'Evento activo' }}
+                </h2>
 
-                <div v-if="eventoActivo" class="bg-white dark:bg-gray-900 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl p-6 shadow-sm">
+                <div v-if="eventosActivos.length" class="space-y-4">
+                <div v-for="eventoActivo in eventosActivos" :key="eventoActivo.id"
+                     class="bg-white dark:bg-gray-900 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl p-6 shadow-sm">
                     <div class="flex items-start justify-between gap-4 flex-wrap">
                         <div>
                             <div class="flex items-center gap-2 mb-1">
@@ -543,6 +566,7 @@ const secuenciaValidaEditar = computed(() =>
                             Descargar Excel
                         </a>
                     </div>
+                </div>
                 </div>
 
                 <div v-else class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800 rounded-2xl p-6">
@@ -846,14 +870,25 @@ const secuenciaValidaEditar = computed(() =>
                             </div>
                         </div>
 
+                        <!-- Errores de validación -->
+                        <div v-if="Object.keys(formEditar.errors).length" class="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 rounded-xl">
+                            <p class="text-sm font-semibold text-red-700 dark:text-red-400 mb-2 flex items-center gap-1.5">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.48 0l-7.1 12.25A2 2 0 004.99 19z" /></svg>
+                                No se pudieron guardar los cambios. Revisa lo siguiente:
+                            </p>
+                            <ul class="list-disc list-inside space-y-1 text-sm text-red-600 dark:text-red-300">
+                                <li v-for="(mensaje, campo) in formEditar.errors" :key="campo">{{ mensaje }}</li>
+                            </ul>
+                        </div>
+
                         <div class="flex items-center gap-3 pt-2">
                             <button @click="modalEditar = false"
                                 class="flex-1 sm:flex-none px-5 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-xl transition-colors">
                                 Cancelar
                             </button>
-                            <button @click="guardarEdicion"
-                                class="flex-1 sm:flex-none px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 text-white text-sm font-bold rounded-xl transition-colors">
-                                Guardar cambios
+                            <button @click="guardarEdicion" :disabled="formEditar.processing"
+                                class="flex-1 sm:flex-none px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-colors">
+                                {{ formEditar.processing ? 'Guardando…' : 'Guardar cambios' }}
                             </button>
                         </div>
                     </div>

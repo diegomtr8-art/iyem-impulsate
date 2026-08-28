@@ -8,6 +8,7 @@ use App\Mail\CitaCancelada;
 use App\Mail\CitaConfirmada;
 use App\Models\Cita;
 use App\Models\Evento;
+use App\Models\Notificacion;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
 use App\Models\User;
@@ -58,7 +59,7 @@ class CitaAdminController extends Controller
             'notas'            => 'nullable|string|max:1000',
         ]);
 
-        $evento = Evento::activo();
+        $evento = Evento::contextoAdmin();
         if (!$evento) {
             return back()->withErrors(['edicion' => 'No hay un evento activo.']);
         }
@@ -145,8 +146,25 @@ class CitaAdminController extends Controller
 
         try {
             Mail::to($cita->cliente->email)->send(new CitaAgendada($cita, 'cliente'));
+
+            // El proveedor tambien debe enterarse: en el alta publica si se le
+            // avisa, en el alta desde el panel no se le avisaba nunca.
+            $emailProveedor = $cita->restaurantero?->user?->email;
+            if ($emailProveedor) {
+                Mail::to($emailProveedor)->send(new CitaAgendada($cita, 'proveedor'));
+            }
         } catch (\Exception $e) {
             // El correo no bloquea la operación
+        }
+
+        if ($cita->restaurantero?->user_id) {
+            Notificacion::crear(
+                $cita->restaurantero->user_id,
+                'cita_nueva',
+                'Nueva cita asignada',
+                'El administrador te asigno una cita el ' . $cita->inicio->format('d/m/Y H:i') . '.',
+                $cita->id
+            );
         }
 
         return back()->with('success', 'Cita agendada correctamente para ' . $cliente->name . '.');

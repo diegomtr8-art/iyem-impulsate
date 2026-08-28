@@ -1,0 +1,902 @@
+═══════════════════════════════════════════════════════════════════════════
+FASE 3 — CORREO, RENDIMIENTO Y REMATES
+11 cambios de código. Duración estimada: 1 semana
+═══════════════════════════════════════════════════════════════════════════
+
+⚠ APLICA PRIMERO LA FASE 2.5 (PROTEGER LO QUE YA SE HIZO).
+   En particular P1 (commitear) y P4 (verificar la cola): el CAMBIO 1 de este
+   documento ASUME que hay un worker de colas corriendo. Si no lo hay, los
+   correos dejarán de enviarse en lugar de mejorar.
+
+   Si en P4 decidiste poner QUEUE_CONNECTION=sync, **salta el CAMBIO 1** y
+   aplica solo el CAMBIO 2 (los catch vacíos).
+
+
+ORDEN RECOMENDADO
+=================
+  Sprint A — seguridad (medio día):        3, 4
+  Sprint B — correo (1 día):               1, 2
+  Sprint C — rendimiento (2 días):         5, 6, 10
+  Sprint D — remates de Fase 2 (1 día):    7, 8, 9, 11
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 1 — Encolar los 13 Mailables que faltan
+13 archivos, 2 líneas cada uno
+─────────────────────────────────────────────────────────────
+
+Solo PlantillaCorreoMail implementa ShouldQueue. Los otros 13 envían de
+forma síncrona dentro del request: cada Mail::to()->send() bloquea 1-3
+segundos en el handshake SMTP, y si el SMTP cae, el usuario recibe un 500
+DESPUÉS de que la acción ya se aplicó en la base de datos.
+
+Esa es la causa raíz del parche 2026_08_17_120000_verify_existing_users_again:
+el registro fallaba con 500 porque el correo de verificación reventaba.
+
+**Es la corrección con mejor retorno de toda la auditoría**: Mail::to()->send()
+sobre un Mailable encolable encola automáticamente, así que estas 26 líneas
+arreglan ~25 puntos de envío repartidos por todo el proyecto, sin tocar
+ningún controlador.
+
+LOS 13 ARCHIVOS:
+
+    app/Mail/CitaAceptada.php
+    app/Mail/CitaAgendada.php
+    app/Mail/CitaCancelada.php
+    app/Mail/CitaConfirmada.php
+    app/Mail/CitaReagendada.php
+    app/Mail/CitaRechazada.php
+    app/Mail/EncuestaRecordatorioMail.php
+    app/Mail/EncuestaSatisfaccionMail.php
+    app/Mail/EventoSolicitudAprobadaMail.php
+    app/Mail/EventoSolicitudRechazadaMail.php
+    app/Mail/ProveedorAprobado.php
+    app/Mail/ProveedorRechazado.php
+    app/Mail/RecordatorioCita.php
+
+EN CADA UNO, dos cambios idénticos.
+
+1) BUSCA la línea:
+
+    use Illuminate\Mail\Mailable;
+
+   AÑADE JUSTO ANTES:
+
+    use Illuminate\Contracts\Queue\ShouldQueue;
+
+   (queda en orden alfabético, igual que en PlantillaCorreoMail)
+
+2) BUSCA la declaración de la clase:
+
+    class NOMBRE extends Mailable
+
+   REEMPLÁZALA POR:
+
+    class NOMBRE extends Mailable implements ShouldQueue
+
+   donde NOMBRE es el de cada archivo. Por ejemplo:
+
+    class CitaAceptada extends Mailable implements ShouldQueue
+
+⚠ NO toques el `use Queueable, SerializesModels;` de dentro de la clase:
+   ya está en los 13 y es justo lo que hace falta.
+
+⚠ NO toques PlantillaCorreoMail: ya lo tiene.
+
+VERIFICACIÓN:
+
+    grep -L "ShouldQueue" app/Mail/*.php
+
+(no debe devolver ningún archivo)
+
+PRUEBAS IMPRESCINDIBLES DESPUÉS:
+  □ El worker está corriendo (Fase 2.5 P4)
+  □ Agendar una cita: el correo llega en menos de 5 minutos
+  □ SELECT COUNT(*) FROM jobs baja a 0 después de que corra el worker
+  □ SELECT COUNT(*) FROM failed_jobs sigue en 0
+  □ Si algo falla, el campo `exception` de failed_jobs dice qué pasó
+
+⚠ EFECTO SECUNDARIO A TENER EN CUENTA: los Mailables encolados serializan el
+   modelo y lo recargan al ejecutarse. Si una cita se cancela entre el encolado
+   y el envío, el correo saldrá con los datos actualizados, no con los del
+   momento. En este sistema es lo deseable, pero conviene saberlo.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 2 — Los 10 catch vacíos que ocultan fallos de correo
+6 archivos
+─────────────────────────────────────────────────────────────
+
+Hay 10 bloques `} catch (\Exception $e) {}` completamente vacíos, sin
+siquiera un log. Si el correo falla, no queda ningún rastro en ninguna parte.
+
+UBICACIONES EXACTAS:
+
+    app/Http/Controllers/Admin/RestauranteroAdminController.php:311
+    app/Http/Controllers/Admin/RestauranteroAdminController.php:344
+    app/Http/Controllers/CitaPublicaController.php:180
+    app/Http/Controllers/RestauranteroCitasController.php:66
+    app/Http/Controllers/RestauranteroCitasController.php:90
+    app/Http/Controllers/RestauranteroCitasController.php:129
+    app/Http/Controllers/RestauranteroCitasController.php:187
+    app/Jobs/RecordatorioCita24h.php:31
+    app/Jobs/RecordatorioCita2h.php:31
+    app/Models/Restaurantero.php:197
+
+EN CADA UNO, BUSCA:
+
+    } catch (\Exception $e) {}
+
+REEMPLAZA POR (ajusta el texto entre comillas al contexto de cada sitio):
+
+    } catch (\Throwable $e) {
+        \Log::warning('Error enviando correo [DESCRIBE EL CASO]: ' . $e->getMessage());
+    }
+
+Sugerencias de texto por archivo:
+
+    RestauranteroAdminController:311  → 'aprobación de proveedor'
+    RestauranteroAdminController:344  → 'rechazo de proveedor'
+    CitaPublicaController:180         → 'cita agendada al proveedor'
+    RestauranteroCitasController:66   → 'cita aceptada al comprador'
+    RestauranteroCitasController:90   → 'cita rechazada al comprador'
+    RestauranteroCitasController:129  → 'propuesta de reagenda al comprador'
+    RestauranteroCitasController:187  → 'confirmación de reagenda al proveedor'
+    RecordatorioCita24h:31            → 'recordatorio 24h'
+    RecordatorioCita2h:31             → 'recordatorio 2h'
+    Restaurantero:197                 → 'auto-aprobación de proveedor'
+
+⚠ POR QUÉ \Throwable Y NO \Exception:
+   Es el hallazgo M10 de la re-auditoría. En RestauranteroCitasController hay
+   líneas como:
+
+       Mail::to($cita->restaurantero->user->email)->send(...);
+
+   Si restauranteros.user_id es null, acceder a ->email sobre null lanza un
+   \Error, que **NO extiende \Exception**. El catch actual no lo captura y la
+   ruta pública devuelve 500. \Throwable sí lo atrapa.
+
+⚠ ADEMÁS, en RestauranteroCitasController hay una Notificacion::crear() que
+   quedó FUERA del try y usa ->user_id sin operador seguro. BUSCA (línea ~215):
+
+        Notificacion::crear(
+            $cita->restaurantero->user_id,
+
+   REEMPLAZA el bloque completo por una versión protegida:
+
+        if ($cita->restaurantero?->user_id) {
+            Notificacion::crear(
+                $cita->restaurantero->user_id,
+                ... (deja el resto igual)
+            );
+        }
+
+⚠ Verifica que cada archivo importe Log. Si usas \Log:: con backslash, no
+   hace falta import. Si prefieres el import, añade:
+       use Illuminate\Support\Facades\Log;
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 3 — Ejecución remota de código en la subida de logo
+app/Http/Controllers/Admin/RestauranteroAdminController.php + .htaccess
+─────────────────────────────────────────────────────────────
+
+La validación es `mimes:jpg,jpeg,png,webp`, que Laravel comprueba contra la
+extensión ADIVINADA DEL CONTENIDO. Pero el nombre del archivo se construye
+con getClientOriginalExtension(), que es la extensión QUE ENVÍA EL CLIENTE.
+
+Un JPEG real renombrado a evil.php pasa la validación y se guarda como .php
+dentro de storage/app/public/logos/. Y el .htaccess sirve /storage/ sin
+impedir la ejecución de PHP.
+
+Requiere rol admin, así que es escalada de admin a RCE, no acceso anónimo.
+Pero con cero Policies y varios admins, la superficie es real.
+
+3.1 — BUSCA (línea ~249-263):
+
+        if ($request->hasFile('logo')) {
+            $file     = $request->file('logo');
+            $filename = 'logo_' . $restaurantero->id . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $dir      = storage_path('app/public/logos');
+
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            if ($restaurantero->logo_path && str_starts_with($restaurantero->logo_path, 'logos/logo_')) {
+                @unlink(storage_path('app/public/' . $restaurantero->logo_path));
+            }
+
+            $file->move($dir, $filename);
+            $data['logo_path'] = 'logos/' . $filename;
+        }
+
+REEMPLÁZALO POR:
+
+        if ($request->hasFile('logo')) {
+            $file = $request->file('logo');
+
+            // extension() adivina la extension a partir del CONTENIDO real.
+            // getClientOriginalExtension() devuelve lo que mande el cliente:
+            // un JPEG renombrado a .php pasaba la validacion de mimes y se
+            // guardaba como .php dentro de storage, que el servidor sirve.
+            $extension = strtolower($file->extension());
+
+            if (!in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                return back()->withErrors(['logo' => 'El archivo debe ser una imagen JPG, PNG o WEBP.']);
+            }
+
+            $filename = 'logo_' . $restaurantero->id . '_' . uniqid() . '.' . $extension;
+            $dir      = storage_path('app/public/logos');
+
+            if (!is_dir($dir)) {
+                mkdir($dir, 0755, true);
+            }
+
+            if ($restaurantero->logo_path && str_starts_with($restaurantero->logo_path, 'logos/logo_')) {
+                @unlink(storage_path('app/public/' . $restaurantero->logo_path));
+            }
+
+            $file->move($dir, $filename);
+            $data['logo_path'] = 'logos/' . $filename;
+        }
+
+3.2 — DEFENSA EN PROFUNDIDAD (obligatoria, no opcional)
+
+Aunque el punto anterior cierre este caso concreto, nada impide que un futuro
+punto de subida cometa el mismo error. Bloquea la ejecución de PHP bajo
+/storage/ de una vez.
+
+OPCIÓN A (preferida) — un .htaccess dentro de la carpeta de subidas.
+CREA storage/app/public/.htaccess con:
+
+    # Nada de lo que suben los usuarios debe ejecutarse jamas.
+    php_flag engine off
+    <FilesMatch "\.(php|phtml|php[0-9]|phar|pl|py|cgi|sh|htaccess)$">
+        Require all denied
+    </FilesMatch>
+
+⚠ php_flag solo funciona con mod_php. Si Hostinger usa PHP-FPM lo ignorará
+   silenciosamente — por eso el FilesMatch va también, que sí funciona siempre.
+
+OPCIÓN B — en el .htaccess de la raíz, junto al blindaje que ya tienes:
+
+    # Nada ejecutable bajo /storage/ (son archivos subidos por usuarios)
+    RewriteRule ^storage/.*\.(php|phtml|php[0-9]|phar|pl|py|cgi|sh)$ - [F,L]
+
+   ⚠ Esta regla debe ir ANTES de la línea que reescribe /storage/ hacia
+      public/storage/, o no se llegará a evaluar.
+
+VERIFICACIÓN (hazla de verdad, no la des por buena):
+
+  1. Crea un archivo de prueba en local:
+     echo '<?php echo "EJECUTADO"; ?>' > /tmp/prueba.php
+  2. Renómbralo a prueba.jpg, súbelo como logo desde el panel admin.
+     → debe ser rechazado por la validación nueva (no es una imagen real)
+  3. Toma un JPG real, renómbralo a real.php, súbelo.
+     → debe guardarse como .jpg, no como .php
+  4. Si en el servidor quedó algún .php de intentos anteriores:
+     find storage/app/public -name "*.php" -o -name "*.phtml" | head
+     → borra lo que encuentres
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 4 — Tres subidas aceptan SVG → XSS almacenado
+2 archivos, 3 líneas
+─────────────────────────────────────────────────────────────
+
+La regla `image` de Laravel ACEPTA SVG. Un SVG con <script> servido desde el
+mismo origen ejecuta JavaScript con la sesión de quien lo abra.
+
+Dónde importa: en publicidad el archivo se muestra en la PORTADA PÚBLICA; en
+el perfil de proveedor, el propio proveedor sube su foto, así que cualquier
+proveedor registrado puede plantar XSS en el directorio público y robar la
+sesión de un admin que visite su perfil.
+
+No es desconocimiento: EventoController y RestauranteroAdminController sí
+usan mimes:. Es inconsistencia entre archivos.
+
+4.1 — app/Http/Controllers/Admin/SuperAdmin/PublicidadController.php:98
+
+BUSCA:
+
+        $imageRule = $forUpdate ? ['nullable', 'image', 'max:4096'] : ['nullable', 'image', 'max:4096'];
+
+REEMPLAZA POR:
+
+        // 'image' a secas acepta SVG, y un SVG con <script> es XSS almacenado
+        // servido desde nuestro propio origen. La publicidad se pinta en la portada.
+        $imageRule = ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'];
+
+(el ternario era redundante: ambas ramas eran idénticas)
+
+4.2 — app/Http/Controllers/ProveedorPerfilController.php:72
+
+BUSCA:
+
+            'foto'                    => ['nullable', 'image', 'max:4096'],
+
+REEMPLAZA POR:
+
+            'foto'                    => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
+
+4.3 — app/Http/Controllers/ProveedorPerfilController.php:101
+
+BUSCA:
+
+            $rules["producto_foto_{$i}"] = ['nullable', 'image', 'max:4096'];
+
+REEMPLAZA POR:
+
+            $rules["producto_foto_{$i}"] = ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'];
+
+VERIFICACIÓN:
+
+    grep -rn "'image'" app/Http/Controllers/ | grep -v mimes
+
+(no debe devolver ninguna regla de validación)
+
+⚠ Revisa si hay SVG ya subidos de antes:
+
+    find storage/app/public -iname "*.svg" | head
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 5 — whereDate anula el índice en las pantallas con polling
+3 archivos, 3 líneas
+─────────────────────────────────────────────────────────────
+
+whereDate() aplica una función sobre la columna, lo que IMPIDE usar el índice
+y fuerza escaneo completo de la tabla. Y el frontend hace polling cada 3
+segundos: son unos 40.000 escaneos al día por cada pantalla abierta.
+
+5.1 — app/Http/Controllers/Admin/TorreControlController.php:43
+
+BUSCA:
+
+        $citas = Cita::whereDate('inicio', $hoy)
+
+REEMPLAZA POR:
+
+        $citas = Cita::whereBetween('inicio', [
+                \Carbon\Carbon::parse($hoy)->startOfDay(),
+                \Carbon\Carbon::parse($hoy)->endOfDay(),
+            ])
+
+5.2 y 5.3 — app/Http/Controllers/Admin/PantallaTvController.php:46 y :64
+
+Hay DOS ocurrencias en este archivo. En ambas:
+
+BUSCA:
+
+        Cita::whereDate('inicio', $hoy)
+
+REEMPLAZA POR:
+
+        Cita::whereBetween('inicio', [
+                \Carbon\Carbon::parse($hoy)->startOfDay(),
+                \Carbon\Carbon::parse($hoy)->endOfDay(),
+            ])
+
+⚠ Mantén la indentación de cada sitio; las dos ocurrencias están en
+   contextos distintos ($citas y $proximas).
+
+5.4 — Sacar la consulta de admins del bucle
+app/Console/Commands/EnviarRecordatorios.php
+
+Este comando corre cada 5 minutos y hace User::role('admin')->get() DENTRO
+del foreach de citas: una consulta por cita, cada 5 minutos, para siempre.
+
+BUSCA dentro del foreach:
+
+            // Notificar a todos los admins
+            $admins = User::role('admin')->get();
+            foreach ($admins as $admin) {
+
+REEMPLAZA POR:
+
+            // Notificar a todos los admins ($admins se resuelve una sola vez
+            // fuera del bucle: antes era una consulta por cita, cada 5 minutos)
+            foreach ($admins as $admin) {
+
+Y AÑADE, ANTES del `foreach ($citas1h as $cita) {`:
+
+        // Una sola consulta para todo el comando
+        $admins = User::role('admin')->get();
+
+⚠ Revisa si hay más bucles en ese archivo con el mismo patrón (los de 24h y
+   2h). Si los hay, deben reutilizar la misma variable $admins.
+
+OTRAS OCURRENCIAS DE whereDate (menor prioridad, no hay polling):
+
+    app/Http/Controllers/Admin/AdminController.php:18
+    app/Http/Controllers/Admin/MetricasController.php:61
+    app/Http/Controllers/RestauranteroPanelController.php:53
+
+Estas se ejecutan una vez por carga de página. Puedes convertirlas por
+consistencia, pero no son urgentes.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 6 — La pantalla de Solicitudes envía datos personales de más
+app/Http/Controllers/Admin/EventoSolicitudesController.php
+─────────────────────────────────────────────────────────────
+
+index() trae TODOS los inscritos sin paginar, y por cada uno serializa ~15
+campos hacia una prop de Inertia: email, teléfono, RFC, ine_path, csf_path.
+Con 400 inscritos son varios MB dentro del HTML, sin caché posible.
+
+Y desde la Fase 1, ine_path y csf_path ya NO se usan para construir enlaces
+(eso ahora lo hace route('documentos.ver')). Solo se usan como bandera v-if.
+Así que estamos exponiendo rutas internas del filesystem sin necesidad.
+
+⚠ ALCANCE DE ESTE CAMBIO: recorto el payload, que es un cambio de un solo
+   archivo y sin riesgo. La paginación completa requiere tocar también
+   Solicitudes.vue y la dejo como trabajo posterior — está anotada al final.
+
+BUSCA en el `$mapear`:
+
+                'ine_path'  => $users[$reg->user_id]->ine_path ?? null,
+                'csf_path'  => $users[$reg->user_id]->csf_path ?? null,
+                'csf_fecha' => $users[$reg->user_id]->csf_fecha ?? null,
+
+REEMPLAZA POR:
+
+                // Booleanos en vez de rutas: el frontend solo los usa como
+                // bandera v-if, y los enlaces reales van por route('documentos.ver').
+                // No hay razon para exponer rutas internas del filesystem.
+                'tiene_ine' => !empty($users[$reg->user_id]->ine_path),
+                'tiene_csf' => !empty($users[$reg->user_id]->csf_path),
+                'csf_fecha' => $users[$reg->user_id]->csf_fecha ?? null,
+
+Y AJUSTA resources/js/Pages/Admin/Eventos/Solicitudes.vue.
+BUSCA todas las apariciones de:
+
+    s.user?.ine_path        →  s.user?.tiene_ine
+    s.user?.csf_path        →  s.user?.tiene_csf
+    solicitudPreview.user?.ine_path   →  solicitudPreview.user?.tiene_ine
+    solicitudPreview.user?.csf_path   →  solicitudPreview.user?.tiene_csf
+
+⚠ Son unas 10 ocurrencias. Localízalas con:
+
+    grep -n "ine_path\|csf_path" resources/js/Pages/Admin/Eventos/Solicitudes.vue
+
+⚠ NO cambies los :href que usan route('documentos.ver', ...): esos ya están
+   bien y no dependen de estos campos.
+
+⚠ HAZ LO MISMO en BazarEvaluacionController si aplica: revisa si sigue
+   enviando ine_path/csf_path además de ine_url/csf_url. Si es así, quita
+   los _path y deja solo las URLs y un booleano.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 7 — REMATE: las agendas viejas no se pueden deshacer
+Nueva migración de backfill
+─────────────────────────────────────────────────────────────
+
+destroy() ya cancela solo las citas de la propuesta, que es lo correcto. Pero
+cita_id solo se puebla desde el código nuevo, y la migración 2026_08_27_110000
+únicamente añadió la columna, sin rellenarla hacia atrás.
+
+Para toda agenda aceptada ANTES del despliegue: la lista sale vacía, se borran
+las filas del pivote, las citas reales quedan vivas y huérfanas, y el admin
+lee "Propuesta de agenda eliminada correctamente".
+
+7.1 — CREA database/migrations/2026_08_28_100000_backfill_cita_id_agenda_propuesta.php
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+
+return new class extends Migration
+{
+    /**
+     * Rellena agenda_propuesta_citas.cita_id en las agendas ya ACEPTADAS antes
+     * de que existiera esa columna, emparejando por proveedor + comprador +
+     * hora de inicio + evento. Sin esto, AgendaController::destroy() no puede
+     * cancelar las citas de una propuesta vieja y las deja huerfanas.
+     */
+    public function up(): void
+    {
+        $filas = DB::table('agenda_propuesta_citas as apc')
+            ->join('agendas_propuestas as ap', 'ap.id', '=', 'apc.agenda_propuesta_id')
+            ->whereNull('apc.cita_id')
+            ->where('ap.estado', 'aceptada')
+            ->select(
+                'apc.id',
+                'apc.restaurantero_id',
+                'apc.slot_inicio',
+                'ap.user_id',
+                'ap.evento_id'
+            )
+            ->get();
+
+        $emparejadas = 0;
+        $ambiguas    = 0;
+        $sinCita     = 0;
+
+        foreach ($filas as $f) {
+            $candidatas = DB::table('citas')
+                ->where('restaurantero_id', $f->restaurantero_id)
+                ->where('cliente_id', $f->user_id)
+                ->where('edicion_id', $f->evento_id)
+                ->where('inicio', $f->slot_inicio)
+                ->pluck('id');
+
+            if ($candidatas->count() === 1) {
+                DB::table('agenda_propuesta_citas')
+                    ->where('id', $f->id)
+                    ->update(['cita_id' => $candidatas->first()]);
+                $emparejadas++;
+            } elseif ($candidatas->count() > 1) {
+                // Mas de una cita para el mismo slot: no adivinamos, se deja null.
+                $ambiguas++;
+                Log::warning("[backfill_cita_id] {$candidatas->count()} citas para apc={$f->id}. Se deja sin vincular.");
+            } else {
+                $sinCita++;
+            }
+        }
+
+        Log::info("[backfill_cita_id] {$emparejadas} vinculadas, {$ambiguas} ambiguas, {$sinCita} sin cita.");
+    }
+
+    public function down(): void
+    {
+        // No se revierte: dejar cita_id en null no aporta nada y perderia
+        // el vinculo recien reconstruido.
+    }
+};
+
+7.2 — Mensaje honesto cuando no se canceló nada
+app/Http/Controllers/Admin/AgendaController.php
+
+BUSCA en destroy():
+
+        return redirect()->route('admin.agenda.index')
+            ->with('success', $canceladas > 0
+                ? "Propuesta eliminada. Se cancelaron {$canceladas} cita(s) generadas por ella."
+                : 'Propuesta de agenda eliminada correctamente.');
+
+REEMPLAZA POR:
+
+        $mensaje = $canceladas > 0
+            ? "Propuesta eliminada. Se cancelaron {$canceladas} cita(s) generadas por ella."
+            : ($agenda->estado === 'aceptada'
+                ? 'Propuesta eliminada, pero NO se canceló ninguna cita: esta agenda es anterior al registro de vínculos. Revisa las citas del comprador a mano si hace falta.'
+                : 'Propuesta de agenda eliminada correctamente.');
+
+        return redirect()->route('admin.agenda.index')->with('success', $mensaje);
+
+⚠ $agenda->estado se lee después del delete(), así que puede venir vacío.
+   Guarda el estado en una variable ANTES de la transacción:
+
+        $estadoOriginal = $agenda->estado;
+
+   y usa $estadoOriginal en el ternario.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 8 — REMATE: tres rutas más que los middlewares bloquean
+3 archivos de middleware
+─────────────────────────────────────────────────────────────
+
+Es el mismo bug que se arregló en la Fase 2, con tres rutas que se quedaron
+fuera:
+
+  documentos.ver               → un proveedor con perfil incompleto que hace
+                                 clic en "Ver documento" recibe un redirect a
+                                 completar perfil, no el PDF
+  perfil.comprador.actualizar  → el GET de user.perfil está exento pero el
+  perfil.agregar-rol             POST que guarda no: el usuario con perfil
+                                 incompleto es redirigido en vez de guardar
+
+EN LOS TRES MIDDLEWARES:
+
+    app/Http/Middleware/EnsureAvisoAceptado.php
+    app/Http/Middleware/EnsureRolSeleccionado.php
+    app/Http/Middleware/EnsureProfileComplete.php
+
+BUSCA la línea que ya añadiste en la Fase 2:
+
+                    'bazar.evaluacion'
+
+AÑADE DESPUÉS (respetando la coma):
+
+                    'bazar.evaluacion',
+                    'documentos.ver',
+                    'perfil.comprador.actualizar',
+                    'perfil.agregar-rol'
+
+⚠ En EnsureProfileComplete la lista continúa con 'restaurantero.*' y otras,
+   así que ahí la coma final SÍ va. En los otros dos, 'bazar.evaluacion' es
+   el último elemento: comprueba si necesitas coma o no según lo que siga.
+
+⚠ Verifica que los nombres existen:
+
+    grep -n "documentos.ver\|perfil.comprador.actualizar\|perfil.agregar-rol" routes/web.php
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 9 — REMATE: /admin/tv devuelve 500 sin evento activo
+routes/web.php
+─────────────────────────────────────────────────────────────
+
+getToken() devuelve '' si contextoAdmin() es null. El generador de URLs de
+Laravel ignora el valor vacío, deja el literal {token} en la URI y lanza
+UrlGenerationException → error 500.
+
+Y el enlace está siempre visible en el sidebar de admin, así que basta con no
+tener ningún evento activo para que un admin se tope con una pantalla rota.
+
+BUSCA (líneas ~249-251):
+
+        Route::get('/tv', fn() => redirect()->route('tv.index', [
+            'token' => \App\Http\Controllers\Admin\PantallaTvController::getToken()
+        ]))->name('tv.index');
+
+REEMPLAZA POR:
+
+        Route::get('/tv', function () {
+            $token = \App\Http\Controllers\Admin\PantallaTvController::getToken();
+
+            // Sin evento de contexto el token viene vacio, y route() lanzaria
+            // UrlGenerationException (error 500) en vez de un mensaje util.
+            if ($token === '') {
+                return back()->withErrors([
+                    'error' => 'No hay un evento activo. Activa uno para generar el enlace de la Pantalla TV.',
+                ]);
+            }
+
+            return redirect()->route('tv.index', ['token' => $token]);
+        })->name('tv.index');
+
+⚠ MEJORA OPCIONAL: en PantallaTvController::eventoPorToken(), el token de un
+   evento archivado sigue sirviendo. Si quieres que deje de funcionar al
+   archivar el evento, añade el filtro:
+
+       return \App\Models\Evento::where('tv_token', $token)
+           ->where('activa', true)
+           ->first();
+
+   Piénsalo: si un evento se archiva mientras la pantalla está abierta en la
+   sala, dejaría de mostrar datos. Puede ser lo que quieres o no.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 10 — Índices en las columnas por las que más se filtra
+Nueva migración
+─────────────────────────────────────────────────────────────
+
+Tres consultas calientes hacen escaneo completo de tabla:
+
+  page_visits.url          → MetricasController agrupa por ahí, sin filtro de
+                             fecha, sobre la tabla que más crece
+  restauranteros           → el directorio público hace 3 escaneos por request
+                             anónimo (6 con paginación)
+  evento_usuario           → el unique(evento_id,user_id,tipo) no aplica por la
+                             izquierda a where('estado','pendiente')
+
+CREA database/migrations/2026_08_28_110000_add_performance_indexes.php:
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('page_visits', function (Blueprint $table) {
+            // url es string(500): se indexa un prefijo para no exceder el
+            // limite de longitud de indice de MySQL.
+            $table->index([\Illuminate\Support\Facades\DB::raw('url(191)')], 'page_visits_url_idx');
+        });
+
+        Schema::table('restauranteros', function (Blueprint $table) {
+            $table->index(['activo', 'aprobado', 'perfil_completo'], 'restauranteros_directorio_idx');
+        });
+
+        Schema::table('evento_usuario', function (Blueprint $table) {
+            $table->index(['evento_id', 'estado'], 'evento_usuario_estado_idx');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('page_visits', fn (Blueprint $t) => $t->dropIndex('page_visits_url_idx'));
+        Schema::table('restauranteros', fn (Blueprint $t) => $t->dropIndex('restauranteros_directorio_idx'));
+        Schema::table('evento_usuario', fn (Blueprint $t) => $t->dropIndex('evento_usuario_estado_idx'));
+    }
+};
+
+⚠ SI EL ÍNDICE DE PREFIJO DA PROBLEMAS en tu versión de MySQL, sustitúyelo por
+   SQL crudo:
+
+        DB::statement('CREATE INDEX page_visits_url_idx ON page_visits (url(191))');
+
+⚠ ACOTAR MÉTRICAS POR FECHA (el índice ayuda, pero esto ayuda más).
+   En app/Http/Controllers/Admin/MetricasController.php:71-76, añade un filtro
+   de 90 días al GROUP BY de url. Sin filtro, la consulta crece para siempre
+   aunque tenga índice.
+
+⚠ PURGA DE page_visits (recomendado, no incluido aquí):
+   No existe modelo PageVisit, así que no hay Prunable disponible. Crear el
+   modelo con Prunable a 6 meses y añadir Schedule::command('model:prune')
+   ->daily() a routes/console.php sería el cierre correcto de este tema.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 11 — Hacer idempotente la migración de tv_token
+database/migrations/2026_08_27_120000_add_tv_token_to_eventos_table.php
+─────────────────────────────────────────────────────────────
+
+Primero el DDL (que en MySQL hace commit implícito) y después un bucle que
+genera el token de cada evento. Si el bucle muere a la mitad, la columna ya
+existe, algunos eventos tienen token y otros no, y la fila NO llegó a
+escribirse en la tabla `migrations`.
+
+Resultado: el siguiente migrate falla con "Duplicate column name 'tv_token'"
+y bloquea el despliegue completo.
+
+⚠ SI YA LA CORRISTE SIN PROBLEMAS, este cambio es preventivo: protege contra
+   un re-run en otro entorno (staging, la máquina de otro desarrollador).
+
+BUSCA:
+
+    public function up(): void
+    {
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->string('tv_token', 64)->nullable()->unique()->after('activa');
+        });
+
+        // Generar uno para cada evento existente
+        foreach (DB::table('eventos')->pluck('id') as $id) {
+            DB::table('eventos')->where('id', $id)->update(['tv_token' => Str::random(48)]);
+        }
+    }
+
+REEMPLAZA POR:
+
+    public function up(): void
+    {
+        // El DDL hace commit implicito en MySQL: si el backfill muere despues,
+        // la columna existe pero la migracion no queda registrada, y el
+        // siguiente migrate falla con "Duplicate column name".
+        if (!Schema::hasColumn('eventos', 'tv_token')) {
+            Schema::table('eventos', function (Blueprint $table) {
+                $table->string('tv_token', 64)->nullable()->unique()->after('activa');
+            });
+        }
+
+        // Solo los que aun no tienen token: reanudable sin efectos secundarios.
+        foreach (DB::table('eventos')->whereNull('tv_token')->pluck('id') as $id) {
+            DB::table('eventos')->where('id', $id)->update(['tv_token' => Str::random(48)]);
+        }
+    }
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+CAMBIO 1 y 2 — correo
+  □ El worker de colas está corriendo
+  □ Agendar una cita: el correo llega en menos de 5 minutos
+  □ SELECT COUNT(*) FROM jobs baja a 0 tras correr el worker
+  □ failed_jobs sigue en 0
+  □ Apagar el SMTP a propósito: la acción se completa sin 500 y el fallo
+    aparece en storage/logs/laravel.log
+  □ grep -L "ShouldQueue" app/Mail/*.php no devuelve nada
+
+CAMBIO 3 — RCE
+  □ Un JPG renombrado a .php se guarda como .jpg
+  □ Un .php disfrazado de .jpg es rechazado por la validación
+  □ Un .php colocado a mano en storage/app/public NO se ejecuta por URL
+  □ Los logos que ya existían siguen viéndose
+
+CAMBIO 4 — SVG
+  □ Subir un SVG como publicidad da error de validación
+  □ Subir un SVG como foto de proveedor da error
+  □ JPG, PNG y WEBP siguen funcionando en los tres puntos
+
+CAMBIO 5 — rendimiento
+  □ La torre de control y la pantalla TV siguen mostrando las citas de hoy
+  □ El comando de recordatorios sigue notificando a todos los admins
+  □ EXPLAIN sobre la consulta de la torre ya usa el índice de inicio
+
+CAMBIO 6 — payload
+  □ Los badges "✓ INE / ✗ Sin INE" siguen apareciendo en Solicitudes
+  □ Los enlaces "Ver / Descargar INE" siguen funcionando
+  □ El HTML de la página ya no contiene rutas tipo documentos/12/ine_...
+
+CAMBIO 7 — backfill
+  □ Correr la migración y revisar el log: cuántas vinculó
+  □ Borrar una agenda vieja aceptada: ahora sí cancela sus citas
+  □ Una cita que el comprador agendó por su cuenta NO se toca
+
+CAMBIO 8 — middlewares
+  □ Un proveedor con perfil incompleto abre su INE y ve el PDF
+  □ Un usuario con perfil incompleto puede guardar desde /user/profile
+
+CAMBIO 9 — pantalla TV
+  □ Sin ningún evento activo, /admin/tv muestra un mensaje, no un 500
+  □ Con evento activo, redirige y la pantalla funciona
+
+CAMBIO 10 y 11 — BD
+  □ php artisan migrate --force corre sin errores
+  □ La pantalla de Métricas carga notablemente más rápido
+  □ El directorio público de proveedores carga más rápido
+  □ Correr migrate dos veces seguidas no falla
+
+REGRESIÓN GENERAL
+  □ Agendar una cita de punta a punta sigue funcionando
+  □ El registro a un evento sigue funcionando y llega el acuse
+  □ El flujo de bazar sigue igual
+  □ Sin errores nuevos en storage/logs/laravel.log tras una vuelta completa
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS TOCADOS
+═══════════════════════════════════════════════════════════════════════════
+
+  app/Mail/*.php (13 archivos)                                    (C1)
+  app/Http/Controllers/Admin/RestauranteroAdminController.php     (C2, C3)
+  app/Http/Controllers/CitaPublicaController.php                  (C2)
+  app/Http/Controllers/RestauranteroCitasController.php           (C2)
+  app/Jobs/RecordatorioCita24h.php · RecordatorioCita2h.php       (C2)
+  app/Models/Restaurantero.php                                    (C2)
+  app/Http/Controllers/Admin/SuperAdmin/PublicidadController.php  (C4)
+  app/Http/Controllers/ProveedorPerfilController.php              (C4)
+  app/Http/Controllers/Admin/TorreControlController.php           (C5)
+  app/Http/Controllers/Admin/PantallaTvController.php             (C5)
+  app/Console/Commands/EnviarRecordatorios.php                    (C5)
+  app/Http/Controllers/Admin/EventoSolicitudesController.php      (C6)
+  app/Http/Controllers/Admin/AgendaController.php                 (C7)
+  app/Http/Middleware/ (3 archivos)                               (C8)
+  routes/web.php                                                  (C9)
+  database/migrations/2026_08_27_120000_add_tv_token...php        (C11)
+
+  resources/js/Pages/Admin/Eventos/Solicitudes.vue                (C6)
+
+  storage/app/public/.htaccess                          (C3 · NUEVO)
+  database/migrations/2026_08_28_100000_backfill_cita_id...php    (NUEVO)
+  database/migrations/2026_08_28_110000_add_performance_indexes.php (NUEVO)
+
+⚠ HAY UN CAMBIO DE VUE (C6) → npm run build y subir public/build/ completo.
+
+
+COMANDOS EN EL SERVIDOR
+========================
+
+  php artisan down
+  # subir código + public/build/
+  php artisan migrate --force
+  php artisan optimize:clear
+  php artisan queue:restart          # ← importante: recarga el worker con el código nuevo
+  php artisan up
+
+  # Verificar
+  php artisan queue:work --stop-when-empty --once
+  # y confirmar que llegan los correos
+
+
+⚠ `queue:restart` NO es opcional. El worker mantiene el código en memoria: si
+   no se reinicia, seguirá usando los Mailables viejos sin ShouldQueue.
+
+
+═══════════════════════════════════════════════════════════════════════════
+LO QUE QUEDA PARA DESPUÉS (no está en este documento)
+═══════════════════════════════════════════════════════════════════════════
+
+  • Paginación real de Solicitudes y BazarEvaluacion (toca las vistas Vue)
+  • EncuestaEnvioService: sigue con N+1 triple aunque el correo ya se encole.
+    Sacar el ->load() del bucle y crear la fila DESPUÉS de encolar.
+    Está duplicado en EncuestaAdminController:673-703 — arreglar los dos.
+  • N+1 en los paneles de comprador y proveedor (bucle sobre todos los eventos)
+  • Modelo PageVisit con Prunable + purga programada
+  • Fase 4: sacar la app del docroot
+  • Fase 5: Policies, tests ejecutables, Form Requests

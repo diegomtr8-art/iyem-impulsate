@@ -30,6 +30,13 @@ class EventoRegistroController extends Controller
             throw ValidationException::withMessages(['error' => 'Este evento ya ha finalizado.']);
         }
 
+        if ($evento->fecha_hora_inicio_compradores && now()->lt($evento->fecha_hora_inicio_compradores)) {
+            throw ValidationException::withMessages([
+                'error' => 'El registro de compradores aun no ha abierto. Apertura: ' .
+                    $evento->fecha_hora_inicio_compradores->format('d/m/Y H:i') . '.',
+            ]);
+        }
+
         $finCompradores = $evento->fecha_hora_fin_compradores ?? $evento->fecha_hora_fin;
         if ($finCompradores && now()->gt($finCompradores)) {
             throw ValidationException::withMessages(['error' => 'El período de registro de compradores ya cerró.']);
@@ -64,8 +71,8 @@ class EventoRegistroController extends Controller
             ]);
         }
 
-        $admin = User::role('admin')->first();
-        if ($admin) {
+        // Notificar a TODOS los administradores (antes solo al primero por ID)
+        foreach (User::role('admin')->get() as $admin) {
             Notificacion::crear(
                 $admin->id,
                 'solicitud_registro',
@@ -73,6 +80,16 @@ class EventoRegistroController extends Controller
                 $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
             );
         }
+
+        // Notificación in-app al usuario
+        Notificacion::crear(
+            $user->id,
+            'solicitud_registro',
+            'Tu solicitud está en revisión',
+            'Registramos tu solicitud para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
+        );
+
+        $this->enviarAcuseSolicitud($user, $evento, 'comprador');
 
         return back()->with('success', 'Tu solicitud de registro fue enviada. El administrador la revisará pronto.');
     }
@@ -92,6 +109,13 @@ class EventoRegistroController extends Controller
 
         if ($evento->fecha_hora_fin && now()->gt($evento->fecha_hora_fin)) {
             throw ValidationException::withMessages(['error' => 'Este evento ya ha finalizado.']);
+        }
+
+        if ($evento->fecha_hora_inicio_proveedores && now()->lt($evento->fecha_hora_inicio_proveedores)) {
+            throw ValidationException::withMessages([
+                'error' => 'El registro de proveedores aun no ha abierto. Apertura: ' .
+                    $evento->fecha_hora_inicio_proveedores->format('d/m/Y H:i') . '.',
+            ]);
         }
 
         if ($evento->fecha_hora_fin_proveedores && now()->gt($evento->fecha_hora_fin_proveedores)) {
@@ -129,8 +153,8 @@ class EventoRegistroController extends Controller
             ]);
         }
 
-        $admin = User::role('admin')->first();
-        if ($admin) {
+        // Notificar a TODOS los administradores (antes solo al primero por ID)
+        foreach (User::role('admin')->get() as $admin) {
             Notificacion::crear(
                 $admin->id,
                 'solicitud_registro',
@@ -138,6 +162,16 @@ class EventoRegistroController extends Controller
                 $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como proveedor.'
             );
         }
+
+        // Notificación in-app al usuario
+        Notificacion::crear(
+            $user->id,
+            'solicitud_registro',
+            'Tu solicitud está en revisión',
+            'Registramos tu solicitud como proveedor para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
+        );
+
+        $this->enviarAcuseSolicitud($user, $evento, 'proveedor');
 
         return back()->with('success', 'Tu solicitud de registro como proveedor fue enviada. El administrador la aprobará pronto.');
     }
@@ -229,13 +263,12 @@ class EventoRegistroController extends Controller
             ]);
         }
 
-        $admin = User::role('admin')->first();
-        if ($admin) {
+        foreach (User::role('admin')->get() as $admin) {
             Notificacion::crear(
                 $admin->id,
                 'solicitud_registro',
                 'Nueva solicitud de bazar',
-                $user->name . ' solicita participar en "' . $evento->nombre . '".'
+                $user->name . ' solicita participar como expositor en "' . $evento->nombre . '".'
             );
         }
 
@@ -253,5 +286,30 @@ class EventoRegistroController extends Controller
 
         return back()->with('success',
             'Tu solicitud fue enviada. Te notificaremos por correo cuando sea revisada.');
+    }
+
+    /**
+     * Acuse de recibo al registrarse al encuentro de negocios.
+     * Nunca debe lanzar excepción: un fallo de SMTP no puede tumbar el registro.
+     */
+    private function enviarAcuseSolicitud(User $user, Evento $evento, string $tipo): void
+    {
+        if (!$user->email) return;
+
+        try {
+            $plantilla = PlantillaCorreo::paraClave('evento_solicitud_recibida');
+            if (!$plantilla) {
+                \Log::warning('Plantilla "evento_solicitud_recibida" no encontrada o inactiva.');
+                return;
+            }
+
+            Mail::to($user->email)->queue(new PlantillaCorreoMail($plantilla, [
+                'nombre_usuario'    => $user->name,
+                'nombre_evento'     => $evento->nombre,
+                'tipo_participante' => $tipo === 'proveedor' ? 'proveedor' : 'comprador',
+            ]));
+        } catch (\Exception $e) {
+            \Log::warning('Error enviando acuse de solicitud al evento: ' . $e->getMessage());
+        }
     }
 }

@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auditoría Impúlsate</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f7f7f5; --surface:#ffffff; --surface-2:#f2f1ee; --border:#e2e0da; --border-strong:#cfccc3;
+  --text:#1c1b18; --text-2:#57544c; --text-3:#8a867c;
+  --accent:#b5451c; --accent-soft:#fdf0e9;
+  --crit:#b3261e; --crit-bg:#fdecea;
+  --high:#b5451c; --high-bg:#fdf0e9;
+  --med:#8a6d00; --med-bg:#fbf4dd;
+  --low:#3f6b52; --low-bg:#eaf3ed;
+  --ok:#2e6b4f; --ok-bg:#eaf3ed;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#171614; --surface:#201f1c; --surface-2:#282622; --border:#35322d; --border-strong:#4a463f;
+    --text:#f0eee9; --text-2:#b3aea4; --text-3:#847f76;
+    --accent:#e88a5f; --accent-soft:#2e2119;
+    --crit:#f08a80; --crit-bg:#33201e;
+    --high:#e88a5f; --high-bg:#2e2119;
+    --med:#d9bd57; --med-bg:#2b2718;
+    --low:#7ab894; --low-bg:#1b2822;
+    --ok:#7ab894; --ok-bg:#1b2822;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#171614; --surface:#201f1c; --surface-2:#282622; --border:#35322d; --border-strong:#4a463f;
+  --text:#f0eee9; --text-2:#b3aea4; --text-3:#847f76;
+  --accent:#e88a5f; --accent-soft:#2e2119;
+  --crit:#f08a80; --crit-bg:#33201e;
+  --high:#e88a5f; --high-bg:#2e2119;
+  --med:#d9bd57; --med-bg:#2b2718;
+  --low:#7ab894; --low-bg:#1b2822;
+  --ok:#7ab894; --ok-bg:#1b2822;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;font-size:15px}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+
+header.hero{border-bottom:1px solid var(--border);background:var(--surface);padding:56px 0 40px}
+.eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:14px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.1;letter-spacing:-.025em;font-weight:800;margin-bottom:14px}
+.sub{color:var(--text-2);font-size:17px;max-width:64ch}
+.meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+.chip{font-family:var(--mono);font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:5px;color:var(--text-2);background:var(--surface-2)}
+.chip.ok{border-color:var(--ok);color:var(--ok)}
+
+nav.tabs{position:sticky;top:0;z-index:40;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+nav.tabs .wrap{display:flex;gap:2px;min-width:max-content}
+nav.tabs button{background:none;border:none;font-family:inherit;font-size:13.5px;font-weight:600;color:var(--text-3);padding:15px 14px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:color .15s}
+nav.tabs button:hover{color:var(--text)}
+nav.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+
+main{padding:44px 0 90px}
+.panel{display:none}
+.panel.on{display:block;animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+h2{font-size:26px;letter-spacing:-.02em;font-weight:750;margin:0 0 8px}
+h3{font-size:18px;font-weight:700;letter-spacing:-.01em;margin:34px 0 12px;padding-top:4px}
+h4{font-size:14px;font-weight:700;margin:20px 0 8px}
+p{margin-bottom:14px;color:var(--text-2)}
+p.lead{font-size:16.5px;color:var(--text-2);max-width:72ch;margin-bottom:26px}
+strong{color:var(--text);font-weight:650}
+code{font-family:var(--mono);font-size:.86em;background:var(--surface-2);padding:1.5px 5px;border-radius:4px;border:1px solid var(--border);color:var(--text)}
+ul,ol{margin:0 0 16px 20px;color:var(--text-2)}
+li{margin-bottom:7px}
+
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.g3{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}
+.stat .n{font-size:30px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.stat .l{font-size:12px;color:var(--text-3);margin-top:6px;font-weight:500}
+.stat.c .n{color:var(--crit)} .stat.h .n{color:var(--high)} .stat.m .n{color:var(--med)}
+.stat.l .n{color:var(--low)} .stat.k .n{color:var(--ok)}
+
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:20px}
+table{border-collapse:collapse;width:100%;min-width:560px;font-size:13.5px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);padding:11px 14px;border-bottom:1px solid var(--border);font-weight:700;background:var(--surface-2);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text-2);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td strong{color:var(--text)}
+.yes{color:var(--ok);font-weight:700}
+.no{color:var(--crit);font-weight:700}
+.part{color:var(--med);font-weight:700}
+
+.filters{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 22px}
+.filters button{font-family:inherit;font-size:12.5px;font-weight:600;padding:7px 13px;border-radius:99px;border:1px solid var(--border-strong);background:var(--surface);color:var(--text-2);cursor:pointer;transition:.15s}
+.filters button.on{background:var(--text);color:var(--bg);border-color:var(--text)}
+.find{border:1px solid var(--border);border-left:3px solid var(--border-strong);border-radius:8px;background:var(--surface);margin-bottom:10px;overflow:hidden}
+.find[data-s="crit"]{border-left-color:var(--crit)}
+.find[data-s="high"]{border-left-color:var(--high)}
+.find[data-s="med"]{border-left-color:var(--med)}
+.find[data-s="low"]{border-left-color:var(--low)}
+.find.hide{display:none}
+.find>summary{list-style:none;cursor:pointer;padding:14px 18px;display:flex;align-items:flex-start;gap:12px}
+.find>summary::-webkit-details-marker{display:none}
+.find>summary:hover{background:var(--surface-2)}
+.sev{font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;padding:4px 8px;border-radius:4px;flex-shrink:0;margin-top:1px}
+.sev.crit{background:var(--crit-bg);color:var(--crit)}
+.sev.high{background:var(--high-bg);color:var(--high)}
+.sev.med{background:var(--med-bg);color:var(--med)}
+.sev.low{background:var(--low-bg);color:var(--low)}
+.nuevo{font-size:9px;font-weight:800;letter-spacing:.08em;padding:3px 6px;border-radius:3px;background:var(--accent);color:#fff;flex-shrink:0;margin-top:2px}
+.find .ttl{font-weight:650;font-size:14.5px;color:var(--text);flex:1}
+.find .id{font-family:var(--mono);font-size:11px;color:var(--text-3);flex-shrink:0}
+.find .body{padding:2px 18px 18px 18px;border-top:1px solid var(--border)}
+.find .body>*:first-child{margin-top:14px}
+.kv{font-size:13px;margin-bottom:10px}
+.kv b{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-3);margin-bottom:3px;font-weight:700}
+.loc{font-family:var(--mono);font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:6px 9px;display:inline-block;word-break:break-all}
+pre{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:7px;padding:13px;overflow-x:auto;margin:10px 0;line-height:1.55;color:var(--text)}
+
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 16px;border-radius:0 8px 8px 0;margin:16px 0;font-size:14px}
+.note.danger{border-left-color:var(--crit);background:var(--crit-bg)}
+.note.good{border-left-color:var(--ok);background:var(--ok-bg)}
+.note b{display:block;margin-bottom:4px;color:var(--text)}
+.note p{margin:0;color:var(--text-2)}
+.note p+p{margin-top:8px}
+
+.bar{height:9px;border-radius:99px;background:var(--surface-2);border:1px solid var(--border);overflow:hidden;display:flex;margin:6px 0 18px}
+.bar i{display:block;height:100%}
+.bar i.k{background:var(--ok)} .bar i.p{background:var(--med)} .bar i.o{background:var(--crit)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text-3);margin-bottom:24px}
+.legend span{display:flex;align-items:center;gap:6px}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.dot.k{background:var(--ok)} .dot.p{background:var(--med)} .dot.o{background:var(--crit)}
+
+.phase{border:1px solid var(--border);border-radius:10px;background:var(--surface);margin-bottom:14px;overflow:hidden}
+.phase-h{padding:15px 18px;background:var(--surface-2);border-bottom:1px solid var(--border);display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.phase-h .num{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);letter-spacing:.05em}
+.phase-h .nm{font-weight:700;font-size:15.5px;flex:1;min-width:180px}
+.phase-h .when{font-size:11.5px;color:var(--text-3);font-family:var(--mono)}
+.phase-b{padding:16px 18px}
+.phase-b ol{margin:0 0 0 18px}
+.phase-b li{margin-bottom:9px;font-size:13.5px}
+.phase.done .phase-h{background:var(--ok-bg)}
+.phase.done .phase-h .num{color:var(--ok)}
+
+.flow{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;margin:18px 0;overflow-x:auto}
+.lane{display:flex;align-items:stretch;margin-bottom:18px}
+.lane:last-child{margin-bottom:0}
+.lane-label{writing-mode:vertical-rl;transform:rotate(180deg);font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--text-3);padding:0 12px 0 0;display:flex;align-items:center;justify-content:center;border-right:2px solid var(--border);margin-right:16px;min-width:34px}
+.steps{display:flex;align-items:center;flex-wrap:nowrap}
+.step{background:var(--surface-2);border:1px solid var(--border-strong);border-radius:8px;padding:11px 13px;min-width:132px;max-width:180px;font-size:12.5px;line-height:1.4}
+.step .st{font-weight:700;color:var(--text);display:block;margin-bottom:3px;font-size:12.5px}
+.step .sd{color:var(--text-3);font-size:11px;line-height:1.35}
+.step.acc{background:var(--accent-soft);border-color:var(--accent)}
+.step.acc .st{color:var(--accent)}
+.step.okstep{background:var(--ok-bg);border-color:var(--ok)}
+.step.okstep .st{color:var(--ok)}
+.arrow{color:var(--text-3);font-size:17px;padding:0 9px;flex-shrink:0;user-select:none}
+.branch{display:flex;flex-direction:column;gap:8px}
+
+footer{border-top:1px solid var(--border);padding:28px 0;color:var(--text-3);font-size:12.5px;background:var(--surface)}
+@media(max-width:640px){
+  .wrap{padding:0 16px}
+  header.hero{padding:36px 0 28px}
+  .lane-label{display:none}
+  .flow{padding:14px}
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Re-auditoría · 28 agosto 2026 · tras aplicar fases 1 y 2</div>
+    <h1>Impúlsate — plataforma de eventos IYEM</h1>
+    <p class="sub">Segunda pasada. De los 41 hallazgos originales se cerraron 22 y se verificaron uno por uno contra el código. Pero el trabajo hecho todavía no está a salvo, y el barrido nuevo encontró seis cosas que antes no se veían.</p>
+    <div class="meta">
+      <span class="chip ok">22 de 41 cerrados</span>
+      <span class="chip">6 críticos nuevos</span>
+      <span class="chip">Laravel 12 · Inertia · Vue 3</span>
+      <span class="chip">42 commits · 68 archivos sin commitear</span>
+      <span class="chip">5 tests · 0 ejecutables</span>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs">
+  <div class="wrap">
+    <button class="on" data-t="estado">Estado</button>
+    <button data-t="cerrados">Lo que se cerró</button>
+    <button data-t="hallazgos">Hallazgos abiertos</button>
+    <button data-t="arquitectura">Cómo funciona</button>
+    <button data-t="impulsate">Flujo Impúlsate</button>
+    <button data-t="bazar">Flujo Bazar</button>
+    <button data-t="plan">Plan</button>
+  </div>
+</nav>
+
+<main class="wrap">
+
+<!-- ══════════════ ESTADO ══════════════ -->
+<section class="panel on" id="p-estado">
+  <h2>Dónde estamos</h2>
+  <p class="lead">Las fases 1 y 2 se aplicaron bien: 41 de 42 comprobaciones automáticas pasan, y las correcciones que revisé están correctamente implementadas. El problema ahora no es la calidad del trabajo, es que <strong>todavía no está protegido</strong>.</p>
+
+  <div class="bar">
+    <i class="k" style="width:53.7%"></i><i class="p" style="width:12.2%"></i><i class="o" style="width:34.1%"></i>
+  </div>
+  <div class="legend">
+    <span><i class="dot k"></i> 22 cerrados por completo</span>
+    <span><i class="dot p"></i> 5 cerrados a medias (queda residuo)</span>
+    <span><i class="dot o"></i> 14 siguen abiertos</span>
+  </div>
+
+  <div class="grid g4" style="margin-bottom:28px">
+    <div class="stat k"><div class="n">22</div><div class="l">Hallazgos cerrados</div></div>
+    <div class="stat c"><div class="n">6</div><div class="l">Críticos abiertos</div></div>
+    <div class="stat h"><div class="n">10</div><div class="l">Altos abiertos</div></div>
+    <div class="stat m"><div class="n">17</div><div class="l">Medios y bajos</div></div>
+  </div>
+
+  <div class="note danger">
+    <b>Lo urgente cambió: ya no es lo que está mal, es lo que se puede perder</b>
+    <p><strong>1. Los 68 archivos sin commitear.</strong> Toda la corrección de seguridad —<code>DocumentoController</code>, las tres migraciones, el <code>.htaccess</code> blindado, 30 controladores— existe únicamente en el disco de una máquina. Un <code>git clean -fd</code> la borra entera. Es lo primero, antes que cualquier otra cosa de esta lista.</p>
+    <p><strong>2. La contraseña de Gmail sigue viva en el historial de GitHub.</strong> Se quitó del archivo, pero <code>git show d102da6</code> la devuelve. Si no se revocó en la cuenta de Google, sigue funcionando. Quitarla del archivo no revoca nada.</p>
+    <p><strong>3. Este mismo informe es descargable desde internet.</strong> El <code>.htaccess</code> blindado bloquea <code>.py</code>, <code>.txt</code>, <code>.md</code>, <code>.sql</code>… pero <strong>no <code>.html</code></strong>. Y el archivo de la auditoría vive en la raíz, que es el docroot.</p>
+  </div>
+
+  <div class="note good">
+    <b>Lo que sí quedó bien hecho — verificado, no asumido</b>
+    <p>Los documentos INE/CSF están en disco privado con nombre aleatorio y ruta autenticada que valida dueño o admin. Los GET destructivos ya no ejecutan nada: hay pantalla intermedia y POST con CSRF, y los correos ya enviados siguen funcionando. El token de TV vive en la BD, es rotable y ya no aparece en ningún archivo. Los 8 endpoints del bazar tienen su <code>abort_if</code> y los 8 <code>UPDATE</code> filtran por <code>tipo='expositor'</code>. Los criterios ya no se borran al editar el evento.</p>
+    <p>Además, el <code>.htaccess</code> muestra criterio propio: quien lo escribió notó que bloquear el directorio <code>storage</code> rompería las imágenes y lo dejó fuera de la lista, con el comentario explicando por qué. Y comprobó que <code>robots.txt</code> siguiera sirviéndose.</p>
+  </div>
+
+  <h3>Los seis críticos nuevos</h3>
+  <p>Cuatro son consecuencia directa de haber tocado el sistema; dos ya estaban y el barrido anterior no los alcanzó.</p>
+  <div class="tw">
+    <table>
+      <tr><th style="width:30%">Hallazgo</th><th>Por qué es nuevo</th></tr>
+      <tr><td><strong>68 archivos sin commitear</strong></td><td>Consecuencia de aplicar las fases sin cerrar con un commit</td></tr>
+      <tr><td><strong>Este informe es servible y contiene el secreto</strong></td><td>El <code>.htaccess</code> nuevo no cubre <code>.html</code>, y el informe se guardó en el docroot</td></tr>
+      <tr><td><strong>La migración de documentos puede borrarlos</strong></td><td>Código nuevo: borra el original sin verificar que la copia se escribió</td></tr>
+      <tr><td><strong><code>migrations-manual/</code> con bomba de fecha</strong></td><td>Carpeta creada a mano, sin versionar, con timestamp anterior a las migraciones reales</td></tr>
+      <tr><td><strong>RCE por extensión en subida de logo</strong></td><td>Ya existía. El barrido anterior no cruzó la validación con la regla de <code>/storage/</code> del <code>.htaccess</code></td></tr>
+      <tr><td><strong>La suite de tests no puede ejecutarse</strong></td><td>Ya existía. Antes se contaron los tests; ahora se intentó correrlos</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════ CERRADOS ══════════════ -->
+<section class="panel" id="p-cerrados">
+  <h2>Lo que se cerró</h2>
+  <p class="lead">Verificado contra el código, no contra el prompt. Cada línea de esta tabla se comprobó buscando el patrón viejo y confirmando que ya no está, y el patrón nuevo y confirmando que sí está.</p>
+
+  <h3>Cerrados por completo · 22</h3>
+  <div class="tw">
+    <table>
+      <tr><th style="width:34%">Hallazgo original</th><th style="width:11%">Estado</th><th>Evidencia</th></tr>
+      <tr><td>INE y CSF en disco público con ruta predecible</td><td class="yes">Cerrado</td><td>Disco <code>local</code> + <code>Str::random(40)</code>. <code>DocumentoController</code> valida dueño / admin / super-admin</td></tr>
+      <tr><td>Acciones destructivas por GET en correos</td><td class="yes">Cerrado</td><td>GET solo muestra; POST con CSRF y <code>throttle:10,1</code>. Los correos viejos redirigen sin ejecutar</td></tr>
+      <tr><td>Token de TV hardcodeado y publicado</td><td class="yes">Cerrado</td><td><code>eventos.tv_token</code>, <code>Str::random(48)</code>, rotable. Cero apariciones del literal viejo</td></tr>
+      <tr><td>Recordatorio de 1 h duplicado 6 veces</td><td class="yes">Cerrado</td><td><code>recordatorio_1h_enviado</code> en <code>$fillable</code></td></tr>
+      <tr><td>Rutas por token atrapadas por los middlewares</td><td class="yes">Cerrado</td><td>11 nombres eximidos en los 3 middlewares. Verifiqué que todos existen y que ningún comodín abre de más</td></tr>
+      <tr><td>Borrar agenda eliminaba citas ajenas</td><td class="yes">Cerrado</td><td>Vínculo <code>cita_id</code>; ahora cancela solo las suyas y notifica</td></tr>
+      <tr><td>Editar evento borraba las evaluaciones</td><td class="yes">Cerrado</td><td><code>updateOrCreate</code> por id con fallback por nombre. El frontend sí envía el id</td></tr>
+      <tr><td>Bazar contaminaba otras inscripciones</td><td class="yes">Cerrado</td><td>8 de 8 <code>UPDATE</code> filtran <code>tipo='expositor'</code></td></tr>
+      <tr><td>Faltaban 5 <code>abort_if(!esBazar())</code></td><td class="yes">Cerrado</td><td>8 de 8 endpoints cubiertos</td></tr>
+      <tr><td><code>criterio_id</code> sin validar pertenencia</td><td class="yes">Cerrado</td><td><code>Rule::exists(...)->where('evento_id', $evento->id)</code></td></tr>
+      <tr><td><code>toggleSeleccion</code> no exigía aprobado</td><td class="yes">Cerrado</td><td>Verifica registro y estado antes de seleccionar</td></tr>
+      <tr><td>Multi-evento rompía el agendado</td><td class="yes">Cerrado</td><td><code>queryActivos()</code> + resolución desde la inscripción aprobada</td></tr>
+      <tr><td>Se validaba el cierre pero no la apertura</td><td class="yes">Cerrado</td><td>Ambos extremos validados en comprador y proveedor</td></tr>
+      <tr><td>Encuesta sin validación ni throttle</td><td class="yes">Cerrado</td><td>Reglas por tipo de pregunta + <code>throttle:20,1</code>. Contrasté las reglas contra lo que envía el Vue: coinciden</td></tr>
+      <tr><td>Solo se notificaba al primer admin</td><td class="yes">Cerrado</td><td><code>User::role('admin')->first()</code> ya no aparece</td></tr>
+      <tr><td>Mismo correo para aceptar y rechazar reagenda</td><td class="yes">Cerrado</td><td>El rechazo manda <code>CitaCancelada</code></td></tr>
+      <tr><td><code>opcache_reset.php</code> público</td><td class="yes">Cerrado</td><td>Archivo eliminado</td></tr>
+      <tr><td><code>.gitignore</code> permisivo</td><td class="yes">Cerrado</td><td>Cubre <code>*.sql</code>, <code>*.sqlite</code>, <code>citas_db</code>, scratch de Python</td></tr>
+      <tr><td>Sin rate limit en autenticación</td><td class="yes">Cerrado</td><td>Fortify: login, 2FA y registro a 5/min</td></tr>
+      <tr><td>SQL crudo con interpolación</td><td class="yes">Cerrado</td><td>Barrido: 0 resultados. Nunca hubo inyección</td></tr>
+      <tr><td><code>v-html</code> con datos de usuario</td><td class="yes">Cerrado</td><td>16 usos, ninguno con dato de usuario</td></tr>
+      <tr><td>Mass assignment desde <code>$request->all()</code></td><td class="yes">Cerrado</td><td>0 ocurrencias en todo el proyecto</td></tr>
+    </table>
+  </div>
+
+  <h3>Cerrados a medias · 5</h3>
+  <p>Se hizo la parte de código, pero queda un residuo que anula parte del beneficio.</p>
+  <div class="tw">
+    <table>
+      <tr><th style="width:34%">Hallazgo</th><th style="width:11%">Estado</th><th>Qué falta</th></tr>
+      <tr><td>Contraseña de Gmail en el repo</td><td class="part">A medias</td><td>Fuera del archivo, <strong>sigue en el historial de GitHub</strong> (<code>d102da6</code>). Solo se cierra revocándola en Google</td></tr>
+      <tr><td>App dentro del docroot</td><td class="part">A medias</td><td><code>.htaccess</code> blindado, pero es lista negra y no cubre <code>.html</code>, <code>.json</code>, <code>.yml</code>, archivos sin extensión</td></tr>
+      <tr><td>Respaldos <code>.bak</code> en el docroot</td><td class="part">A medias</td><td>Scripts corregidos, pero los <code>.bak</code> ya subidos siguen en el servidor — incluido un <code>.env.bak</code> con credenciales</td></tr>
+      <tr><td>Dumps de BD en el repositorio</td><td class="part">A medias</td><td>Fuera del árbol de trabajo, siguen en el historial con 5 hashes bcrypt</td></tr>
+      <tr><td>Borrar agenda cancela solo las suyas</td><td class="part">A medias</td><td>Funciona para agendas nuevas. Las aceptadas antes del cambio tienen <code>cita_id</code> nulo: falta el backfill</td></tr>
+    </table>
+  </div>
+
+  <div class="note">
+    <b>Un detalle de calidad que vale la pena señalar</b>
+    <p>Encontré <code>_fase1/</code>, con cuatro scripts de despliegue. Es, con diferencia, el mejor código de operaciones del proyecto: lista blanca de archivos, respaldo de BD previo con aborto si falla, <code>artisan down</code>/<code>up</code> en <code>try/finally</code> y verificación posterior. Comparado con los 71 <code>deploy_*.py</code> ad-hoc, es otro nivel.</p>
+    <p>El problema es que no está commiteado ni en <code>.gitignore</code>: está en limbo. Debería ser <em>el</em> script de despliegue del proyecto y archivarse el resto.</p>
+  </div>
+</section>
+
+<!-- ══════════════ HALLAZGOS ══════════════ -->
+<section class="panel" id="p-hallazgos">
+  <h2>Hallazgos abiertos</h2>
+  <p class="lead">33 hallazgos vigentes: 14 que venían de la auditoría anterior y no se han tocado, más los nuevos. Los marcados <span class="nuevo" style="display:inline-block;vertical-align:middle">NUEVO</span> no aparecían en la primera pasada.</p>
+
+  <div class="filters">
+    <button class="on" data-f="all">Todos · 33</button>
+    <button data-f="crit">Críticos · 6</button>
+    <button data-f="high">Altos · 10</button>
+    <button data-f="med">Medios · 11</button>
+    <button data-f="low">Bajos · 6</button>
+  </div>
+  <div id="findings"></div>
+</section>
+
+<!-- ══════════════ ARQUITECTURA ══════════════ -->
+<section class="panel" id="p-arquitectura">
+  <h2>Cómo funciona la página</h2>
+  <p class="lead">Una sola aplicación Laravel sirve tres experiencias —público, participante y administración— y dos tipos de evento que comparten las mismas tablas.</p>
+
+  <div class="tw">
+    <table>
+      <tr><th>Capa</th><th>Tecnología</th><th>Detalle</th></tr>
+      <tr><td><strong>Backend</strong></td><td>Laravel 12 · PHP 8.2</td><td>35 controladores, 17 modelos, 75 migraciones</td></tr>
+      <tr><td><strong>Frontend</strong></td><td>Inertia 2 + Vue 3 + Tailwind</td><td>71 páginas Vue. Sin API REST: Inertia pasa props del controlador al componente</td></tr>
+      <tr><td><strong>Auth</strong></td><td>Jetstream + Fortify + Sanctum</td><td>Contraseña, 2FA, passkeys y Google OAuth. Rate limit correcto</td></tr>
+      <tr><td><strong>Roles</strong></td><td>spatie/laravel-permission</td><td><code>super-admin</code>, <code>admin</code>, <code>cliente</code>, <code>restaurantero</code></td></tr>
+      <tr><td><strong>Correo</strong></td><td>SMTP Gmail + plantillas en BD</td><td>14 Mailables + 17 plantillas editables. <strong>13 sin encolar</strong></td></tr>
+      <tr><td><strong>Colas</strong></td><td><code>database</code></td><td>Configurada. Sin worker garantizado en el servidor</td></tr>
+      <tr><td><strong>Documentos</strong></td><td>Disco <code>local</code> privado</td><td>Nombre aleatorio + ruta autenticada <span class="yes">(nuevo)</span></td></tr>
+    </table>
+  </div>
+
+  <h3>El vocabulario: tres nombres para lo mismo</h3>
+  <p>Es lo primero que hay que entender para leer el código, y la fuente número uno de confusión:</p>
+  <div class="tw">
+    <table>
+      <tr><th>En el negocio</th><th>En el código</th><th>Trampa</th></tr>
+      <tr><td><strong>Evento</strong></td><td>tabla <code>eventos</code></td><td>La clave ajena en <code>citas</code> se sigue llamando <code>edicion_id</code>: la tabla se renombró, la columna no</td></tr>
+      <tr><td><strong>Proveedor</strong></td><td>rol <code>restaurantero</code> + tabla <code>restauranteros</code></td><td>La interfaz y las URLs dicen "proveedor", el código dice "restaurantero"</td></tr>
+      <tr><td><strong>Comprador</strong></td><td>rol <code>cliente</code> + flag <code>es_restaurantero</code></td><td><code>es_restaurantero</code> significa "es dueño de un restaurante", <strong>no</strong> "es proveedor"</td></tr>
+      <tr><td><strong>Inscripción</strong></td><td>pivote <code>evento_usuario</code></td><td>Se maneja con <code>DB::table()</code> crudo, sin modelo Eloquent. Por eso los <code>UPDATE</code> olvidaban filtrar por <code>tipo</code></td></tr>
+    </table>
+  </div>
+
+  <h3>El embudo de onboarding</h3>
+  <div class="flow">
+    <div class="lane">
+      <div class="lane-label">Pipeline</div>
+      <div class="steps">
+        <div class="step"><span class="st">Login</span><span class="sd">Fortify o Google OAuth</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">Aviso de privacidad</span><span class="sd">¿<code>acepta_aviso_at</code>?</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">Selección de rol</span><span class="sd">comprador / proveedor / ambos</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">Perfil completo</span><span class="sd">¿<code>perfil_completo</code>?</span></div>
+        <span class="arrow">→</span>
+        <div class="step acc"><span class="st">/dashboard</span><span class="sd">Enruta según rol activo</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="note good">
+    <b>Este era el hallazgo A7 y ya está cerrado</b>
+    <p>Los tres middlewares ahora eximen las 11 rutas públicas por token. Verifiqué que todos los nombres existen y —lo importante— que ningún comodín abre de más: <code>'agenda.*'</code> no alcanza <code>admin.agenda.index</code> porque el patrón se ancla al inicio.</p>
+    <p>Queda un caso análogo sin cubrir: <code>documentos.ver</code> y los dos POST de perfil (hallazgo M1).</p>
+  </div>
+
+  <h3>Multi-evento: cómo se resuelve "cuál evento"</h3>
+  <div class="tw">
+    <table>
+      <tr><th>Método</th><th>Qué devuelve</th><th>Quién lo usa</th></tr>
+      <tr><td><code>Evento::queryActivos()</code></td><td>Todos los activos, con orden determinista</td><td>Agendado de citas <span class="yes">(nuevo)</span></td></tr>
+      <tr><td><code>Evento::activo()</code></td><td>El activo más próximo</td><td>Dashboard, directorio, <code>HandleInertiaRequests</code> — <span class="part">pendiente de alinear</span></td></tr>
+      <tr><td><code>Evento::contextoAdmin()</code></td><td>El del selector del panel</td><td>Agenda y citas del admin, token de TV</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ══════════════ IMPÚLSATE ══════════════ -->
+<section class="panel" id="p-impulsate">
+  <h2>Flujo 1 — Impúlsate <span style="font-family:var(--mono);font-size:14px;color:var(--text-3);font-weight:400">encuentro_negocios</span></h2>
+  <p class="lead">Rueda de negocios: compradores restauranteros agendan citas B2B con proveedores. Es el único flujo que llega hasta operación en sitio.</p>
+
+  <div class="flow">
+    <div class="lane">
+      <div class="lane-label">Comprador</div>
+      <div class="steps">
+        <div class="step"><span class="st">1 · Registro</span><span class="sd">Fortify, email auto-verificado</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">2 · Rol y perfil</span><span class="sd">Municipio, empresa, cámara, ¿es restaurantero?</span></div>
+        <span class="arrow">→</span>
+        <div class="step okstep"><span class="st">3 · Pendiente</span><span class="sd">Ya no se auto-aprueba: espera al admin</span></div>
+        <span class="arrow">→</span>
+        <div class="step acc"><span class="st">4 · Aprobado</span><span class="sd">Ve el directorio y puede agendar</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">5 · Agenda cita</span><span class="sd">Máx. 3 por defecto</span></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">Proveedor</div>
+      <div class="steps">
+        <div class="step"><span class="st">1 · Perfil de negocio</span><span class="sd">~40 campos: productos, crédito, logística</span></div>
+        <span class="arrow">→</span>
+        <div class="step okstep"><span class="st">2 · Perfil aprobado</span><span class="sd">Aparece en el directorio…</span></div>
+        <span class="arrow">→</span>
+        <div class="step okstep"><span class="st">3 · Evento pendiente</span><span class="sd">…pero su inscripción la decide el admin</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">4 · Recibe citas</span><span class="sd">Acepta / rechaza / propone otro horario</span></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">Día D</div>
+      <div class="steps">
+        <div class="step"><span class="st">Torre de control</span><span class="sd">Llamar → iniciar → finalizar</span></div>
+        <span class="arrow">→</span>
+        <div class="step okstep"><span class="st">Pantalla TV</span><span class="sd">Token en BD, rotable</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">Encuestas</span><span class="sd">Validadas por tipo de pregunta</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">Métricas</span><span class="sd">Excel, PDF, gráficas</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note good">
+    <b>Lo que cambió en este flujo</b>
+    <p>Nadie entra solo al evento: las tres puertas de auto-aprobación están cerradas y todo pasa por la pantalla de Solicitudes. El agendado ya no asume "el evento más próximo" sino que lo resuelve desde la inscripción aprobada. Se validan las dos ventanas de tiempo, no solo el cierre. El recordatorio de 1 hora ya no se duplica. Y borrar una propuesta de agenda ya no arrasa con las citas que el comprador agendó por su cuenta.</p>
+  </div>
+
+  <h3>Estados de una cita</h3>
+  <div class="tw">
+    <table>
+      <tr><th>Desde</th><th>Acción</th><th>Quién</th><th>Hacia</th></tr>
+      <tr><td>—</td><td>Crear cita</td><td>Comprador</td><td><code>pendiente</code></td></tr>
+      <tr><td>—</td><td>Crear cita</td><td>Admin</td><td><code>confirmada</code> — salta la aceptación del proveedor</td></tr>
+      <tr><td>—</td><td>Aceptar agenda (ahora POST)</td><td>Comprador</td><td><code>confirmada</code></td></tr>
+      <tr><td><code>pendiente</code></td><td>Aceptar / rechazar</td><td>Proveedor</td><td><code>confirmada</code> / <code>rechazada</code></td></tr>
+      <tr><td>cualquiera</td><td>Proponer otro horario</td><td>Proveedor</td><td><code>pendiente_reconfirmacion</code> + token</td></tr>
+      <tr><td><code>pendiente_reconfirmacion</code></td><td>Confirmar / rechazar (POST)</td><td>Comprador</td><td><code>confirmada</code> / <code>cancelada</code></td></tr>
+      <tr><td>cualquiera</td><td>Cambiar estado</td><td>Admin</td><td><strong>Libre</strong> — sigue sin validar transiciones</td></tr>
+      <tr><td>cualquiera</td><td>Finalizar en torre</td><td>Admin</td><td><code>completada</code></td></tr>
+    </table>
+  </div>
+  <p style="font-size:13.5px"><code>reagendada</code> y <code>estado_tv='reprogramada'</code> siguen sin escribirse nunca, pero se leen en 10 sitios. La pantalla TV construye "próximas citas" con condiciones que en parte son inalcanzables (hallazgo B5).</p>
+
+  <div class="note danger">
+    <b>Lo que sigue abierto en este flujo</b>
+    <p>El colchón entre citas sigue siendo asimétrico: 10 minutos para el comprador, solape exacto para el proveedor. La tabla <code>horarios</code> se sigue creando en cuatro sitios y no se consulta nunca, así que un proveedor no puede declarar disponibilidad real. La torre no cierra las citas ausentes, que siguen contando en métricas. Y aceptar una agenda propuesta sigue saltándose el cupo y los solapes.</p>
+  </div>
+</section>
+
+<!-- ══════════════ BAZAR ══════════════ -->
+<section class="panel" id="p-bazar">
+  <h2>Flujo 2 — Bazar / Exposición <span style="font-family:var(--mono);font-size:14px;color:var(--text-3);font-weight:400">bazar_exposicion</span></h2>
+  <p class="lead">Convocatoria con cupo: los expositores se postulan con documentos legales, un jurado los califica con rúbrica ponderada y se seleccionan los N mejores. Sigue abierto y sin cambios de comportamiento.</p>
+
+  <div class="flow">
+    <div class="lane">
+      <div class="lane-label">Expositor</div>
+      <div class="steps">
+        <div class="step okstep"><span class="st">1 · Documentos</span><span class="sd">INE + CSF, ahora en disco privado</span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">2 · Se postula</span><span class="sd"><code>tipo=expositor</code>, <code>pendiente</code></span></div>
+        <span class="arrow">→</span>
+        <div class="step"><span class="st">3 · Acuse</span><span class="sd">Plantilla <code>bazar_solicitud_recibida</code></span></div>
+      </div>
+    </div>
+    <div class="lane">
+      <div class="lane-label">Admin</div>
+      <div class="steps">
+        <div class="step"><span class="st">4 · Pre-aprueba</span><span class="sd"><code>aprobado</code> = "en evaluación"</span></div>
+        <span class="arrow">→</span>
+        <div class="step okstep"><span class="st">5 · Califica</span><span class="sd">Los criterios ya no se borran al editar el evento</span></div>
+        <span class="arrow">→</span>
+        <div class="step okstep"><span class="st">6 · Selecciona</span><span class="sd">Solo aprobados, cupo por tipo</span></div>
+        <span class="arrow">→</span>
+        <div class="branch">
+          <div class="step acc"><span class="st">7a · Aprobación</span><span class="sd"><code>bazar_seleccionado</code></span></div>
+          <div class="step"><span class="st">7b · Rechazo</span><span class="sd">+ token de evaluación</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note good">
+    <b>Lo que se cerró aquí</b>
+    <p>Los ocho endpoints tienen su <code>abort_if(!esBazar())</code>, así que ya no se puede puntuar dentro de un evento de encuentro por URL directa. Los ocho <code>UPDATE</code> filtran por <code>tipo='expositor'</code>, y el conteo de cupo también: se acabó la contaminación cruzada con inscripciones de comprador o proveedor. El criterio se valida contra el evento, no solo por existencia. Y no se puede seleccionar a alguien que no pasó la revisión inicial.</p>
+    <p>El arreglo de mayor impacto: <strong>editar el nombre de un evento ya no destruye la evaluación del jurado</strong>. Antes, cualquier <code>update()</code> borraba los criterios y, por cascada, todos los puntajes.</p>
+  </div>
+
+  <h3>La rúbrica</h3>
+  <pre>puntaje_total = Σ ( puntaje_criterio / 100 × porcentaje_criterio )
+// 80 pts en un criterio del 40%  →  aporta 32.00
+// resultado final en escala 0–100</pre>
+  <p>La página pública de retroalimentación al no seleccionado sigue siendo lo mejor del módulo: puntaje con semáforo, aportación de cada criterio en puntos y nota escrita del equipo. Muy pocas convocatorias devuelven eso.</p>
+
+  <div class="note danger">
+    <b>Lo que sigue abierto</b>
+    <p>No hay fecha de cierre de solicitudes: solo existe la de apertura, así que siguen entrando postulaciones después de haber seleccionado. No se valida cupo ni rol al postularse — un admin puede postularse. Quien queda aprobado pero no seleccionado no puede volver a intentarlo. Y el token de evaluación no caduca ni tiene throttle: expone puntaje, desglose y <code>notas_rechazo</code>, que es texto interno del admin (hallazgo M6).</p>
+    <p>Sigue abierto también el cruce con la pantalla genérica de Solicitudes: aprobar ahí a un expositor le anuncia por correo que ya tiene su espacio, con el texto de comprador, antes de que exista evaluación.</p>
+  </div>
+</section>
+
+<!-- ══════════════ PLAN ══════════════ -->
+<section class="panel" id="p-plan">
+  <h2>Plan actualizado</h2>
+  <p class="lead">Las fases 1 y 2 están hechas. Lo que sigue cambió de orden: primero proteger el trabajo, después cerrar lo que quedó a medias, y solo entonces la estructura.</p>
+
+  <div class="phase done">
+    <div class="phase-h"><span class="num">FASE 1</span><span class="nm">Contención</span><span class="when">completada</span></div>
+    <div class="phase-b">
+      <p style="font-size:13.5px;margin:0">Documentos privados, <code>.htaccess</code> blindado, <code>opcache_reset.php</code> eliminado, <code>.gitignore</code> corregido, dumps fuera del árbol. <strong>Pendiente de esta fase:</strong> revocar la contraseña de Gmail en la cuenta de Google y retirar los <code>.bak</code> del servidor.</p>
+    </div>
+  </div>
+
+  <div class="phase done">
+    <div class="phase-h"><span class="num">FASE 2</span><span class="nm">Bugs que afectan a usuarios</span><span class="when">completada</span></div>
+    <div class="phase-b">
+      <p style="font-size:13.5px;margin:0">Los 12 cambios aplicados y verificados. Quedan tres remates menores: el backfill de <code>cita_id</code>, la exención de <code>documentos.ver</code> y el 500 de <code>/admin/tv</code>.</p>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">FASE 2.5</span><span class="nm">Proteger lo hecho — HOY</span><span class="when">2 horas</span></div>
+    <div class="phase-b">
+      <p style="font-size:13.5px;margin-bottom:12px">Nada de esto es desarrollo. Es evitar perder o exponer lo que ya se hizo.</p>
+      <ol>
+        <li><strong>Commitear los 68 archivos.</strong> Toda la corrección de seguridad existe solo en un disco. Aunque sea un commit grande y poco elegante.</li>
+        <li><strong>Revocar la App Password de Gmail</strong> en la cuenta de Google. Sigue en el historial de GitHub y quitarla del archivo no revocó nada.</li>
+        <li><strong>Añadir <code>.html</code> al <code>FilesMatch</code></strong> y sacar este informe y los 15 mockups del docroot.</li>
+        <li><strong>Comprobar <code>crontab -l</code> y <code>SELECT COUNT(*) FROM jobs</code></strong> en producción. Es la causa más probable de correos que no llegan.</li>
+        <li><strong>Ejecutar <code>_fase1/11_limpieza.py</code></strong> para retirar los <code>.bak</code>, y rotar después las credenciales del <code>.env.bak</code> que hay en el servidor.</li>
+        <li><strong>Antes de correr la migración de documentos en producción:</strong> respaldar <code>storage/app/public/documentos</code> y reordenarla a verificar-antes-de-borrar.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">FASE 3</span><span class="nm">Correo, rendimiento y remates</span><span class="when">1 semana</span></div>
+    <div class="phase-b">
+      <ol>
+        <li><strong><code>implements ShouldQueue</code> en los 13 Mailables.</strong> Mejor retorno por esfuerzo de toda la lista: arregla ~25 puntos de envío de golpe.</li>
+        <li><strong>Sustituir los 12 <code>catch</code> vacíos por <code>Log::error()</code>.</strong> Hoy los fallos de correo no dejan rastro.</li>
+        <li><strong><code>getClientOriginalExtension()</code> → <code>$file->extension()</code></strong> y bloquear PHP bajo <code>/storage/</code>. Cierra el camino a ejecución remota.</li>
+        <li><strong><code>mimes:</code> en los tres uploads que solo tienen <code>image</code></strong>, para dejar de aceptar SVG.</li>
+        <li><strong><code>whereDate</code> → <code>whereBetween</code></strong> en torre y TV, y sacar la consulta de admins del bucle de recordatorios. Tres líneas, mucho alivio.</li>
+        <li><strong>Paginar Solicitudes y BazarEvaluacion</strong> y enviar solo los campos que la tabla pinta.</li>
+        <li><strong>Los tres remates de la Fase 2</strong>: backfill de <code>cita_id</code>, exención de <code>documentos.ver</code>, y el 500 de <code>/admin/tv</code>.</li>
+        <li><strong>Índices</strong> en <code>page_visits.url</code>, <code>restauranteros</code> y <code>evento_usuario(evento_id, estado)</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">FASE 4</span><span class="nm">Sacar la app del docroot</span><span class="when">3–5 días</span></div>
+    <div class="phase-b">
+      <p style="font-size:13.5px;margin-bottom:12px">Elimina de raíz N3, A5, B2 y la mitad de A7. El sistema pasa a fallar en cerrado en lugar de depender de una lista negra.</p>
+      <ol>
+        <li>Proyecto en <code>/home/usuario/impulsate/</code>, solo <code>public/</code> apuntado desde <code>public_html</code>. El <code>.htaccess</code> de blindaje deja de ser necesario.</li>
+        <li>Promover <code>_fase1/10_deploy.py</code> a script único de despliegue y archivar los 71 restantes. Ya es el mejor código de operaciones del proyecto.</li>
+        <li>Resolver los 7 archivos que ese script deliberadamente no sube: hoy dejan local y producción desincronizados.</li>
+        <li>Mover los 188 archivos de la raíz a <code>docs/</code> y <code>scripts/</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="phase">
+    <div class="phase-h"><span class="num">FASE 5</span><span class="nm">Red de seguridad</span><span class="when">2–4 semanas</span></div>
+    <div class="phase-b">
+      <ol>
+        <li><strong>Hacer que los tests corran.</strong> Cambiar <code>Edicion</code> por <code>Evento</code> y apuntar <code>phpunit.xml</code> a MySQL. Hasta entonces, cada corrección se hace a ciegas.</li>
+        <li><strong>Policies</strong> para <code>Cita</code>, <code>Evento</code>, <code>User</code> y <code>Agenda</code>. Prioridad: impedir que un admin toque a un super-admin.</li>
+        <li><strong>Tests de autorización</strong> sobre las rutas con parámetro de modelo.</li>
+        <li><strong>Form Requests</strong>, empezando por unificar <code>telefono</code> y <code>rfc</code>, cuyas reglas ya divergen y atrapan usuarios.</li>
+        <li><strong>Modelo Eloquent para <code>evento_usuario</code></strong>: manejarlo con <code>DB::table()</code> es lo que permitió olvidar el filtro por <code>tipo</code>.</li>
+        <li><strong>Extraer el booking a un servicio único</strong>: las dos copias ya divergieron en cómo calculan la duración.</li>
+        <li><strong>Limpiar el código muerto</strong>: <code>RegistroProveedorController</code>, los estados que nunca se escriben, <code>espaciosDisponibles()</code>.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="note">
+    <b>Una observación sobre el ritmo</b>
+    <p>Se cerraron 22 hallazgos en una sola tanda y la implementación fue buena: 41 de 42 comprobaciones automáticas pasan, y las decisiones de criterio —dejar <code>storage</code> fuera del bloqueo, verificar <code>robots.txt</code>— muestran que se entendió el porqué, no solo el qué.</p>
+    <p>Lo que falta ahora es más aburrido y más importante: commitear, revocar y verificar en producción. Cuatro de los seis críticos actuales no son bugs de código, son trabajo bien hecho que todavía no está a salvo.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    Re-auditoría sobre el árbol de trabajo en <code>C:\xampp\htdocs\citas</code>. Cada hallazgo verificado contra archivo y línea; los cierres se comprobaron buscando el patrón viejo y el nuevo. No se modificó ningún archivo del proyecto.
+  </div>
+</footer>
+
+<script>
+const F=[
+/* ───── CRÍTICOS ───── */
+{id:"N1",s:"crit",nuevo:1,t:"68 archivos sin commitear: toda la corrección de seguridad existe en un solo disco",
+loc:"git status --porcelain → 68 · git log → 42 commits",
+w:"Sin commitear están, entre otros: <code>app/Http/Controllers/DocumentoController.php</code> (la corrección completa de documentos privados), las tres migraciones <code>2026_08_27_*</code>, el <code>.htaccess</code> blindado, <code>routes/web.php</code>, <code>_fase1/</code> y unos 30 controladores y vistas modificados. El último commit sigue siendo <code>f447216</code>, anterior a todo este trabajo.",
+i:"Un <code>git checkout .</code>, un <code>git clean -fd</code>, un fallo de disco o un clon limpio borra semanas de trabajo de seguridad. Además <code>_fase1/10_deploy.py</code> tiene una lista blanca que incluye esos archivos sin commitear: si alguien restaura el árbol desde git, el despliegue aborta porque no los encuentra.",
+n:"<code>_fase1/</code> está en un limbo particular: ni versionado ni en <code>.gitignore</code>. Es el mejor código de despliegue del proyecto y hoy no lo protege nada.",
+r:"Antes que cualquier otra cosa de esta lista: <code>git add</code> + <code>git commit</code>. Aunque sea un commit grande y poco elegante — es recuperable, y ahora mismo nada lo es."},
+
+{id:"N2",s:"crit",t:"La contraseña de Gmail sigue viva en el historial de GitHub",
+loc:"commit d102da6 · deploy_convocatoria_correo.py:86 · github.com/diegomtr8-art/iyem-impulsate",
+w:"El archivo ya lee la contraseña de <code>os.environ.get('IMPULSATE_MAIL_PWD')</code> — eso está bien hecho. Pero <code>git log -S</code> confirma que el literal sigue recuperable en el commit <code>d102da6</code> con un simple <code>git show</code>.",
+i:"Quien tenga acceso al repositorio obtiene acceso SMTP a la cuenta de la organización: enviar correo suplantando a Impúlsate a toda la base de proveedores y compradores. <strong>Reescribir el archivo no revoca nada.</strong> Si la contraseña no se ha revocado en la cuenta de Google, sigue siendo funcional.",
+n:"GitHub conserva los objetos accesibles por SHA incluso tras un force-push, hasta que corre el recolector de basura.",
+r:"1) Revocar la App Password en la cuenta de Google. Es lo único que corta el acceso; todo lo demás es cosmético. 2) Generar una nueva y ponerla solo en el <code>.env</code> de producción. 3) Purgar el historial con <code>git filter-repo</code> y pedir el GC a GitHub. 4) Añadir <code>gitleaks</code> como pre-commit."},
+
+{id:"N3",s:"crit",nuevo:1,t:"Este informe de auditoría es descargable desde internet y contenía el secreto",
+loc:".htaccess:2-4 · AUDITORIA_IMPULSATE.html en la raíz del docroot",
+w:"El <code>FilesMatch</code> del <code>.htaccess</code> blindado es una lista negra por extensión: cubre <code>.py .txt .md .sql .log .sqlite .bak .docx .xlsx</code> y varios nombres concretos — pero <strong>no cubre <code>.html</code></strong>. Y la raíz del proyecto es el docroot.",
+i:"<code>https://impulsate.iyemyucatan.com/AUDITORIA_IMPULSATE.html</code> entregaba el mapa completo de vulnerabilidades del sistema, y hasta esta versión incluía además la contraseña de Gmail en claro. Es explotación de un solo GET, sin autenticación. Hay 16 archivos <code>.html</code> en la raíz en la misma situación (mockups, bocetos, flujos).",
+n:"Esta versión del informe ya no contiene el secreto — lo redacté. Pero el archivo sigue siendo servible, y los otros 15 también.",
+r:"Añadir <code>.html</code> al <code>FilesMatch</code> hoy mismo, y mover los 16 mockups y este informe a <code>docs/</code> fuera del docroot. La corrección de fondo es la Fase 3: apuntar el docroot a <code>public/</code>."},
+
+{id:"N4",s:"crit",nuevo:1,t:"Ejecución remota de código por extensión controlada por el cliente en la subida de logo",
+loc:"app/Http/Controllers/Admin/RestauranteroAdminController.php:249-263",
+w:"La validación es <code>mimes:jpg,jpeg,png,webp</code>, que Laravel comprueba contra la extensión <em>adivinada del contenido</em>. Pero el nombre del archivo se construye con <code>$file->getClientOriginalExtension()</code>, que es la extensión <strong>que envía el cliente</strong>. Un JPEG real renombrado a <code>evil.php</code> pasa la validación y acaba guardado como <code>.php</code>.",
+i:"La cadena se cierra en el propio <code>.htaccess</code>: la regla <code>RewriteRule ^storage/(.+)$ public/storage/$1</code> sirve ese directorio, y nada impide ejecutar PHP bajo <code>/storage/</code>. Un JPEG con código en un comentario EXIF, subido como <code>.php</code>, se ejecuta en el servidor. Requiere rol admin, así que es escalada de admin a RCE, no anónima — pero con cero Policies y varios admins, la superficie es real.",
+r:"Cambiar <code>getClientOriginalExtension()</code> por <code>$file->extension()</code> — una línea. Mejor aún, usar <code>$file->store('logos','public')</code> como hacen los otros cuatro puntos de subida. Y como defensa en profundidad, bloquear la ejecución de PHP bajo <code>/storage/</code> en el <code>.htaccess</code>."},
+
+{id:"N5",s:"crit",nuevo:1,t:"La migración de documentos puede borrar INE y CSF sin recuperación",
+loc:"database/migrations/2026_08_27_100000_mover_documentos_a_disco_privado.php:48-57",
+w:"El orden es <code>put()</code> → <code>delete()</code> del original → y solo al final el <code>UPDATE</code> de la base de datos. Además <code>config/filesystems.php</code> declara <code>'throw' => false</code> en ambos discos: si el <code>put()</code> falla por permisos o disco lleno, <strong>devuelve <code>false</code> en silencio y el original se borra igual</strong>.",
+i:"Dos formas de perder documentos de identidad de forma irrecuperable: un permiso mal puesto en <code>storage/app/private</code> convierte esto en un borrado masivo silencioso; y si el proceso muere entre el borrado y el <code>UPDATE</code>, el archivo queda con nombre aleatorio en privado y la base apunta a una ruta ya borrada.",
+n:"La guarda de idempotencia sí está bien: una segunda corrida no vuelve a mover lo ya migrado. El problema es la primera.",
+r:"Reordenar a <code>put</code> → verificar el retorno y el tamaño → <code>UPDATE</code> → <code>delete</code>. Sacarlo de <code>migrations</code> y convertirlo en un comando artisan con <code>--dry-run</code>. <strong>Y respaldar <code>storage/app/public/documentos</code> antes de ejecutarlo en producción.</strong>"},
+
+{id:"N6",s:"crit",nuevo:1,t:"database/migrations-manual/ — UPDATE destructivo, sin versionar, con bomba de fecha",
+loc:"database/migrations-manual/2026_08_26_120000_revertir_aprobados_encuentro_a_pendiente.php",
+w:"Un archivo suelto en una carpeta que Laravel no lee, que revierte en masa <code>estado='aprobado' → 'pendiente'</code> en <code>evento_usuario</code> y borra <code>respondido_at</code> y <code>motivo_rechazo</code>. No está en git ni referenciado en ningún sitio.",
+i:"Tres riesgos. Se pierde con un <code>git clean -fd</code> sin que nadie lo note. No pasa por la tabla <code>migrations</code>, así que no hay forma de saber si ya se aplicó. Y lo peor: su timestamp (<code>2026_08_26</code>) es <strong>anterior</strong> a las tres migraciones del 27, así que si alguien lo mueve a <code>database/migrations/</code>, el siguiente <code>migrate --force</code> del despliegue lo ejecuta solo en producción y des-aprueba a todos los inscritos de los eventos activos.",
+r:"Convertirlo en un comando de <code>app/Console/Commands/</code> con <code>--dry-run</code> y volcado previo de a quién va a afectar, y eliminar el directorio."},
+
+/* ───── ALTOS ───── */
+{id:"A1",s:"high",t:"El correo puede fallar en silencio por los dos caminos a la vez",
+loc:"app/Mail/ (13 de 14 sin ShouldQueue) · routes/console.php:11-12 · 12 catch vacíos",
+w:"Tres cosas que se suman. <strong>Trece de los catorce Mailables no implementan <code>ShouldQueue</code></strong> — solo <code>PlantillaCorreoMail</code>. Nada en el repositorio instala el cron de <code>schedule:run</code> ni arranca <code>queue:work</code>: <code>DEPLOY.md</code> lo deja como paso manual. Y hay <strong>12 bloques <code>try { Mail::send } catch (\\Exception $e) {}</code> completamente vacíos</strong>, sin siquiera un <code>Log::error</code>.",
+i:"Con <code>QUEUE_CONNECTION=database</code> y sin worker, cada <code>->queue()</code> inserta una fila en <code>jobs</code>, le dice al admin \"enviado\", y el correo no sale nunca. Y por el otro camino, los <code>->send()</code> síncronos que fallan se tragan la excepción sin dejar rastro. Si alguien ha reportado que \"los correos no llegan\", es casi seguro esto.",
+n:"Que exista <code>deploy_2026_08_26_registro_pendiente_check.py</code> con un <code>crontab -l</code> sugiere que ya se sospechaba.",
+r:"Comprobar hoy <code>crontab -l</code> y <code>SELECT COUNT(*) FROM jobs</code> en producción. Añadir <code>implements ShouldQueue</code> a los 13 Mailables — es la corrección con mejor retorno de toda la lista, porque <code>Mail::to()->send()</code> sobre un Mailable encolable encola automáticamente y arregla ~25 puntos de golpe. Y sustituir los <code>catch</code> vacíos por <code>Log::error()</code>."},
+
+{id:"A2",s:"high",t:"EncuestaEnvioService sigue enviando síncrono en bucle, con N+1 triple",
+loc:"app/Services/EncuestaEnvioService.php:38-70 · duplicado en Admin/EncuestaAdminController.php:673-703",
+w:"Dentro del <code>foreach</code> sobre los participantes hay un <code>exists()</code> por usuario, un <code>create()</code>, un <code>->load(['evento','user','plantilla'])</code> (tres consultas más) y un <code>Mail::to()->send()</code> síncrono.",
+i:"300 participantes son ~1.200 consultas y 300 conexiones SMTP secuenciales dentro de un solo request HTTP. A dos segundos por correo son diez minutos: <code>max_execution_time</code> mata el proceso mucho antes. Y como la fila se crea <strong>antes</strong> del envío, al reintentar el <code>exists()</code> devuelve <code>true</code>: <strong>los usuarios cuya fila se creó pero cuyo correo falló no reciben la encuesta jamás</strong>.",
+n:"<code>evento</code> y <code>plantilla</code> son el mismo objeto para todos y ya están en memoria: ese <code>load</code> es puro desperdicio.",
+r:"Encolar (queda resuelto con A1), sacar el <code>load</code> del bucle, y crear la fila <em>después</em> de encolar o marcarla como enviada solo al confirmar. Aplicar el arreglo en los dos sitios: el código está duplicado casi literal."},
+
+{id:"A3",s:"high",t:"Sigue sin existir ninguna capa de autorización: cero Policies, cero Gates",
+loc:"app/Policies/ no existe · Gate:: / authorize( / ->can( → 0 ocurrencias",
+w:"Toda la autorización son <code>if</code> a mano. Los puntos que revisé <strong>sí la tienen y es correcta</strong>: citas, documentos, notificaciones y los tokens públicos verifican pertenencia. El problema es que no hay red.",
+i:"Los IDOR que quedan son todos entre admins, por eso son altos y no críticos — es falta de segregación, no acceso anónimo. Un <code>admin</code> normal puede editar o borrar a <strong>cualquier</strong> usuario, incluido el <code>super-admin</code> (<code>UserAdminController</code>), sin comprobación de jerarquía. <code>AgendaController</code> no valida que la agenda pertenezca al evento del contexto. <code>EventoSolicitudesController</code> y <code>BazarEvaluacionController</code> reciben el par <code>{evento}/{user}</code> de la URL sin verificar coherencia.",
+r:"<code>EventoPolicy</code>, <code>CitaPolicy</code>, <code>UserPolicy</code>, <code>AgendaPolicy</code>. Empezar moviendo los <code>if</code> que ya existen, sin cambiar comportamiento. Prioridad uno: impedir que un admin toque a un super-admin."},
+
+{id:"A4",s:"high",t:"Tres subidas aceptan SVG → XSS almacenado en el directorio público",
+loc:"SuperAdmin/PublicidadController.php:98 · ProveedorPerfilController.php:72 y :101",
+w:"Estos tres puntos validan con <code>['nullable','image','max:4096']</code>, sin <code>mimes:</code>. La regla <code>image</code> de Laravel <strong>acepta SVG</strong>.",
+i:"Un SVG con <code>&lt;script&gt;</code> servido desde el mismo origen ejecuta JavaScript con la sesión de quien lo abra. En publicidad el archivo se muestra en la <strong>portada pública</strong>. En el perfil de proveedor, el propio proveedor sube su foto: cualquier proveedor registrado puede plantar XSS en el directorio público y robar la sesión de un admin que visite su perfil.",
+n:"No es desconocimiento: <code>EventoController</code> y <code>RestauranteroAdminController</code> sí usan <code>mimes:jpg,jpeg,png,webp</code>. Es inconsistencia entre archivos.",
+r:"Añadir <code>'mimes:jpg,jpeg,png,webp'</code> en los tres puntos. Nunca SVG en subidas de usuario."},
+
+{id:"A5",s:"high",t:"El .htaccess blindado es una lista negra, y las listas negras se olvidan cosas",
+loc:".htaccess:2-4 y :39",
+w:"Cubre <code>.env*</code>, <code>.log .sqlite .sql .bak* .py .pyc .md .txt .docx .xlsx</code>, <code>composer.*</code>, <code>package*.json</code>, <code>phpunit.xml</code>, <code>artisan</code>, <code>citas_db</code>. No cubre: <strong><code>.html</code></strong> (16 archivos, el agujero activo — ver N3), <code>.json</code> genérico, <code>.js</code> de configuración, <code>.yml</code>, <code>.sh</code>, <code>.ini</code>, <code>.pem</code>, <code>.key</code>, <code>.htpasswd</code>, ni archivos sin extensión.",
+i:"Y hay un fallo de diseño más sutil: <code>.git/</code> solo está bloqueado por un <code>RewriteRule</code> que vive <strong>dentro de <code>&lt;IfModule mod_rewrite.c&gt;</code></strong>. Si <code>mod_rewrite</code> se desactivara, el bloqueo desaparece y el <code>FilesMatch</code> no lo respalda: el historial completo de git, con el secreto de N2 dentro, quedaría descargable. Falla en abierto.",
+r:"Invertir el modelo: un <code>RedirectMatch 404</code> para los directorios <strong>fuera</strong> de <code>mod_rewrite</code>, y lista blanca de lo servible en la raíz en lugar de lista negra. La corrección real es apuntar el docroot a <code>public/</code>: elimina de un golpe N3, A5, y la mitad de A7."},
+
+{id:"A6",s:"high",nuevo:1,t:"La suite de tests no puede ejecutarse — y el único test de negocio está roto",
+loc:"tests/Feature/CitaDobleBookingTest.php:6 · phpunit.xml:24-25",
+w:"36 métodos de test, de los que 31 son el esqueleto de Jetstream y 2 son <code>ExampleTest</code>. El único de dominio es <code>CitaDobleBookingTest</code>, y hace <code>use App\\Models\\Edicion;</code> — <strong>esa clase no existe</strong>, se renombró a <code>Evento</code> en junio. <code>.phpunit.result.cache</code> marca sus 5 métodos con estado de error.",
+i:"Y aunque se arreglara, tampoco correría: <code>phpunit.xml</code> fija SQLite en memoria, pero las migraciones incluyen DDL exclusivo de MySQL (<code>MODIFY COLUMN ... ENUM</code>, <code>SET FOREIGN_KEY_CHECKS</code>). Los 15 tests de Feature usan <code>RefreshDatabase</code>, así que la suite entera es inejecutable. <strong>No hay ninguna red de seguridad automatizada en el proyecto.</strong>",
+n:"Además hay tres expresiones MySQL-only en <code>app/</code> (<code>FIELD()</code> ×2, <code>CAST AS DECIMAL</code>) justo en las tres pantallas con más incidencias.",
+r:"Cambiar <code>Edicion</code> por <code>Evento</code> en el test, y apuntar <code>phpunit.xml</code> a una base MySQL de pruebas. Sin esto, cada corrección de esta lista se hace a ciegas."},
+
+{id:"A7",s:"high",t:"Los .bak ya subidos siguen en el docroot de producción — incluido uno del .env",
+loc:"deploy_2026_08_26_check_smtp.py:45 → ls -la .env.bak-20260818-smtp",
+w:"Los scripts se corrigieron y ahora escriben en <code>~/backups/</code>. Pero los archivos ya subidos siguen ahí. Un script del 26 de agosto lista explícitamente <code>.env.bak-20260818-smtp</code>: existe un respaldo del <code>.env</code> con credenciales SMTP y de base de datos en claro dentro del docroot.",
+i:"Un <code>.bak</code> junto a un <code>.php</code> se sirve como texto plano: el código fuente completo. Y el <code>.env.bak</code> entrega credenciales funcionales. El <code>.htaccess</code> lo mitiga con <code>\\.bak.*$</code>, pero otra vez es lista negra.",
+n:"<code>_fase1/11_limpieza.py</code> está escrito para retirarlos y está bien diseñado (archiva en tar, verifica el conteo y solo entonces borra), pero no está commiteado y no consta que se haya ejecutado.",
+r:"Ejecutar <code>_fase1/11_limpieza.py</code>, verificar que el tar incluye el <code>.env.bak</code>, y <strong>después rotar las credenciales SMTP y de base de datos</strong> — hay que asumirlas comprometidas."},
+
+{id:"A8",s:"high",t:"N+1 en las dos pantallas de aterrizaje del sistema",
+loc:"CitaPublicaController.php:321-326 y :251-264 · RestauranteroPanelController.php:102-107",
+w:"Código idéntico en ambos paneles: un bucle sobre <strong>todos</strong> los eventos jamás creados, con una consulta a <code>evento_usuario</code> por iteración, sin filtro de <code>activa</code>. Y en <code>:251-264</code>, 1+3N consultas seguidas de un <code>->filter()</code> que descarta la mayoría de lo que acaba de traer.",
+i:"Con 20 eventos son 21 consultas en la primera pantalla que ve cada usuario autenticado. Crece con cada evento nuevo que se cree, para siempre.",
+r:"Filtrar por <code>activa</code> antes del bucle y resolver las inscripciones con una sola consulta agrupada por <code>evento_id</code>."},
+
+{id:"A9",s:"high",t:"Los listados que más crecen son los que no paginan",
+loc:"Admin/EventoSolicitudesController.php:23 · Admin/BazarEvaluacionController.php:43 · Admin/MetricasController.php:60-91",
+w:"Solo hay 11 <code>paginate()</code> en todo el proyecto, y no están donde más falta hacen. Solicitudes trae todos los inscritos con su <code>User</code> y su <code>restaurantero</code> (~15 campos cada uno); BazarEvaluacion trae todas las solicitudes más un N+1 de evaluaciones; Métricas hace 8 agregados sobre <code>page_visits</code> sin filtro de fecha.",
+i:"Inertia serializa el payload completo a JSON dentro del HTML: 400 inscritos son varios MB por request, sin caché posible. Y es además superficie de fuga: se envían email, teléfono y RFC de todos aunque la tabla muestre tres columnas.",
+n:"<code>EncuestaAdminController</code> sí pagina de 50 en 50. Es el patrón a replicar.",
+r:"Paginar y enviar solo los campos que la tabla realmente pinta."},
+
+{id:"A10",s:"high",t:"Índices faltantes en las columnas por las que más se filtra",
+loc:"page_visits.url · restauranteros(activo,aprobado,perfil_completo) · evento_usuario(estado,evento_id)",
+w:"<code>page_visits.url</code> es un <code>string(500)</code> sin índice, y <code>MetricasController:71-76</code> agrupa por él sin filtro de fecha. <code>restauranteros</code> no tiene índice compuesto y el directorio público hace tres escaneos por request (seis con paginación). <code>evento_usuario</code> solo tiene el <code>unique(evento_id,user_id,tipo)</code>, que no aplica por la izquierda a <code>where('estado','pendiente')</code>.",
+i:"Escaneo completo de la tabla que más crece cada vez que un admin abre Métricas, y tres escaneos por visita anónima al directorio.",
+n:"Los cinco índices de token sí están correctos, todos <code>unique</code>. Y hay 5 índices redundantes que duplican los que ya crea <code>constrained()</code>, encareciendo el INSERT de <code>page_visits</code> sin ganancia.",
+r:"Índice en <code>page_visits.url</code>, compuesto en <code>restauranteros</code>, y <code>(evento_id, estado)</code> en el pivote. Acotar Métricas a 90 días."},
+
+/* ───── MEDIOS ───── */
+{id:"M1",s:"med",nuevo:1,t:"La ruta de documentos no está exenta de los middlewares de onboarding",
+loc:"routes/web.php:133-135 vs los 3 middlewares",
+w:"La autorización de <code>DocumentoController</code> está bien y la ruta está correctamente dentro del grupo <code>auth</code>. Pero <code>documentos.ver</code> no aparece en ninguna de las tres listas de exención que se acaban de ampliar.",
+i:"Un proveedor con perfil de negocio incompleto que hace clic en \"Ver documento\" recibe un redirect a completar perfil en la pestaña nueva, en vez del PDF. Es el mismo tipo de bug que se acaba de arreglar para las rutas por token.",
+n:"Faltan también <code>perfil.comprador.actualizar</code> y <code>perfil.agregar-rol</code>: el GET de <code>user.perfil</code> está exento pero el POST que guarda no, así que un usuario con perfil incompleto que edita desde su perfil es redirigido en lugar de guardar.",
+r:"Añadir <code>'documentos.ver'</code>, <code>'perfil.comprador.actualizar'</code> y <code>'perfil.agregar-rol'</code> a las listas."},
+
+{id:"M2",s:"med",nuevo:1,t:"/admin/tv devuelve error 500 cuando no hay evento de contexto",
+loc:"Admin/PantallaTvController.php:18 · routes/web.php:249-251",
+w:"<code>getToken()</code> devuelve <code>''</code> si <code>contextoAdmin()</code> es null. La ruta hace <code>redirect()->route('tv.index', ['token' => getToken()])</code>, y el generador de URLs de Laravel <strong>ignora el valor vacío</strong>, deja el literal <code>{token}</code> en la URI y lanza <code>UrlGenerationException</code>.",
+i:"Error 500, no un 404 ni un mensaje. Y el enlace está siempre visible en el sidebar de admin, así que basta con no tener ningún evento activo para que un admin se tope con una pantalla rota.",
+r:"Comprobar el token vacío antes del redirect y devolver <code>back()->withErrors(...)</code> con un mensaje que explique que hace falta un evento activo."},
+
+{id:"M3",s:"med",nuevo:1,t:"La migración de tv_token no es idempotente y su backfill no se puede reanudar",
+loc:"database/migrations/2026_08_27_120000_add_tv_token_to_eventos_table.php:18-24",
+w:"Primero el DDL (que en MySQL hace commit implícito) y después un bucle que genera el token de cada evento. Si el bucle muere a la mitad, la columna ya existe, algunos eventos tienen token y otros no, y la fila no llegó a escribirse en la tabla <code>migrations</code>.",
+i:"El siguiente <code>migrate</code> falla con <em>Duplicate column name 'tv_token'</em> y bloquea el despliegue completo.",
+r:"Envolver el DDL en <code>if (!Schema::hasColumn(...))</code> y añadir <code>->whereNull('tv_token')</code> al backfill."},
+
+{id:"M4",s:"med",nuevo:1,t:"Las agendas aceptadas antes del cambio no se pueden deshacer, y el mensaje dice que sí",
+loc:"Admin/AgendaController.php:216 · migración 2026_08_27_110000",
+w:"<code>destroy()</code> ahora cancela solo las citas con <code>cita_id</code>, que es lo correcto. Pero ese campo solo se puebla desde el código nuevo, y la migración únicamente añade la columna, sin rellenarla hacia atrás.",
+i:"Para toda agenda aceptada antes del despliegue, la lista sale vacía, se borran las filas del pivote y las citas reales quedan vivas y huérfanas. El admin lee \"Propuesta de agenda eliminada correctamente\" y cree que se limpió.",
+r:"Migración de backfill que empareje por <code>(restaurantero_id, cliente_id, slot_inicio, evento_id)</code> sobre las agendas ya aceptadas, y cambiar el mensaje cuando no se canceló nada."},
+
+{id:"M5",s:"med",t:"El polling de la torre y la TV anula su propio índice",
+loc:"TorreControlController.php:43 · PantallaTvController.php:46,64 · NotificacionController.php:44-52",
+w:"<code>whereDate('inicio', $hoy)</code> aplica una función sobre la columna, lo que <strong>impide usar el índice</strong> y fuerza escaneo completo. Y el frontend hace polling cada 3 segundos. Aparte, el endpoint de notificaciones hace un <code>exists()</code> por cita y se llama cada 30 segundos por usuario conectado.",
+i:"Unos 40.000 escaneos de tabla al día por cada pantalla abierta. Con 5 admins y 40 citas, el endpoint de notificaciones sostiene ~205 consultas cada 30 segundos. Y ese endpoint de <em>lectura</em> además ejecuta <em>escrituras</em>.",
+r:"<code>whereBetween('inicio', [today(), today()->endOfDay()])</code> en los tres sitios: usa el índice. Y sacar <code>User::role('admin')->get()</code> del bucle en <code>EnviarRecordatorios.php:81</code>, que corre cada 5 minutos."},
+
+{id:"M6",s:"med",t:"Los tokens públicos no caducan, y dos no tienen ningún límite de peticiones",
+loc:"web.php:60,63,69,73 · BazarPublicoController.php:42-48",
+w:"La entropía de los cinco tokens es correcta (<code>Str::random</code> de 40 a 64), así que la fuerza bruta no es la amenaza. La permanencia sí: ninguno caduca. <code>token_evaluacion</code> del bazar además es reutilizable infinitas veces y no tiene throttle; <code>tv_token</code> tampoco.",
+i:"Un enlace de evaluación de bazar reenviado, indexado o filtrado da acceso indefinido al puntaje, al desglose por criterio y a <code>notas_rechazo</code> — que es texto interno del admin sobre por qué se rechazó a alguien. El GET de agenda y el de encuesta tampoco tienen throttle.",
+r:"<code>throttle:30,1</code> en los GET públicos por token y <code>throttle:60,1</code> en el de TV. Columna <code>token_expira_at</code> con caducidad de 30-90 días. Y revisar si <code>notas_rechazo</code> debe salir al exterior."},
+
+{id:"M7",s:"med",t:"Rutas sensibles sin límite de peticiones",
+loc:"web.php:86,98,128,130,132,138-140,279-289",
+w:"Solo 9 rutas tienen <code>throttle</code>. Sin límite: la subida de documentos (2 archivos × 5 MB), completar y actualizar perfil, aceptar aviso, los tres registros a evento (cada uno dispara un correo) y los envíos masivos del admin.",
+i:"<code>GET /proveedores/{restaurantero}</code> es el peor: hace un <code>INSERT</code> síncrono en <code>page_visits</code> por cada visita anónima, sin filtro de bots. Es escritura ilimitada desde internet en la tabla que más crece. Y en los envíos masivos, un doble clic duplica el envío a toda la base.",
+r:"<code>throttle:10,1</code> en subidas y escrituras de perfil, <code>throttle:60,1</code> en el perfil público con filtro de bots antes del INSERT, y <code>throttle:3,1</code> en los envíos masivos como red anti-doble-clic."},
+
+{id:"M8",s:"med",nuevo:1,t:"Los errores de validación de la encuesta no se muestran nunca",
+loc:"resources/js/Pages/Encuestas/Responder.vue:58,177",
+w:"Contrasté las reglas nuevas contra lo que el formulario envía de verdad, tipo por tipo: <strong>coinciden todas</strong>, incluido el acento de <code>'Sí'</code> y el rango 0-10 del NPS. La validación está bien hecha. Pero la vista solo pinta su ref local <code>errores</code> y nunca lee <code>page.props.errors</code>.",
+i:"Si el servidor devuelve 422 —texto libre de más de 2.000 caracteres, o una opción que ya no existe en la plantilla— el <code>onError</code> solo reactiva el botón. El usuario ve el formulario intacto, sin ningún mensaje, y pierde la respuesta que acababa de escribir.",
+r:"En <code>onError</code>, volcar los errores del servidor a la ref local. Y añadir <code>maxlength=\"2000\"</code> al textarea para que el límite se note antes de enviar."},
+
+{id:"M9",s:"med",nuevo:1,t:"El correo nuevo al proveedor contradice el estado real de la cita",
+loc:"Admin/CitaAdminController.php:152-154 · resources/views/mail/cita-agendada.blade.php:51",
+w:"El aviso al proveedor cuando el admin crea una cita ya funciona y no tiene null-pointer. Pero la cita se crea con estado <code>confirmada</code>, y el mailable elegido es <code>CitaAgendada</code>, cuyo cuerpo dice <em>\"Debes aceptar o rechazar esta solicitud para confirmarla\"</em>.",
+i:"En el panel del proveedor los botones de aceptar y rechazar solo aparecen para citas <code>pendiente</code>. El proveedor recibe un correo pidiéndole una acción que no puede hacer y que además no hace falta.",
+n:"Menor: si el correo al cliente lanza excepción, el del proveedor nunca se envía porque comparten el mismo <code>try</code>.",
+r:"Usar <code>CitaConfirmada</code>, que ya existe, o añadir un destinatario <code>'proveedor_asignada'</code> al mailable. Y separar los dos envíos en <code>try</code> distintos."},
+
+{id:"M10",s:"med",nuevo:1,t:"catch (\\Exception) no atrapa el error de un proveedor sin usuario",
+loc:"RestauranteroCitasController.php:186,210,215",
+w:"<code>Mail::to($cita->restaurantero->user->email)</code>: si <code>user_id</code> es null, acceder a <code>->email</code> sobre null lanza un <code>\\Error</code>, que <strong>no extiende <code>\\Exception</code></strong> y por tanto el <code>catch</code> no lo captura. La <code>Notificacion::crear()</code> añadida está además fuera del <code>try</code> y usa <code>->user_id</code> sin operador seguro.",
+i:"Error 500 en una ruta pública por token, justo en el momento en que el comprador responde a un reagendamiento.",
+r:"Extraer el email con <code>?-></code> y comprobarlo antes de enviar; cambiar <code>catch (\\Exception)</code> por <code>catch (\\Throwable)</code>."},
+
+{id:"M11",s:"med",t:"Sin Form Requests: 59 validaciones inline con reglas que ya divergen",
+loc:"app/Http/Requests/ no existe · 59 ->validate() en 23 controladores",
+w:"Las reglas del mismo campo discrepan entre archivos. <code>telefono</code> es <code>max:20</code> en cuatro controladores y <code>max:30</code> en otros dos. <code>rfc</code> es <code>max:13</code> en cinco y <code>max:20</code> en <code>UsuariosGestionController</code>.",
+i:"No es teórico: un RFC de 20 caracteres guardado por el superadmin <strong>rompe la validación posterior cuando el propio usuario intenta editar su perfil</strong>. Queda atrapado sin poder guardar y sin entender por qué.",
+r:"Form Requests por acción, empezando por unificar los campos que ya divergen."},
+
+/* ───── BAJOS ───── */
+{id:"B1",s:"low",t:"Las cuatro migraciones duplicadas siguen ahí",
+loc:"2026_06_04_111551 · 123009 · 2026_06_03_000003 · 2026_08_17_120000",
+w:"Dos son stubs con el cuerpo vacío que duplican el nombre lógico de las reales. Y hay un par funcionalmente duplicado: dos migraciones que hacen <code>UPDATE users SET email_verified_at = now()</code>.",
+i:"Los stubs vacíos no rompen nada hoy, pero confunden a quien lea el historial y revientan si alguien los \"rellena\". El par de verificación es más interesante: <strong>el segundo existe porque el bug de SMTP nunca se arregló</strong>, así que habrá un tercero. Y verificar a ciegas cuentas que nunca confirmaron su correo abre la puerta a suplantación por typo en el email.",
+r:"Borrar los stubs y limpiar sus filas en <code>migrations</code>. Y atacar la causa: encolar el correo (A1) elimina la necesidad de esos parches."},
+
+{id:"B2",s:"low",t:"188 archivos en la raíz, 3,2 MB — y la raíz es el docroot",
+loc:"raíz del proyecto · 127 versionados en git",
+w:"87 archivos <code>.py</code> (71 de despliegue), 63 <code>.txt</code> (60 <code>PROMPT_*</code>, 1,65 MB), 16 <code>.html</code>, más documentos y locks.",
+i:"Ya no es solo estética: los 16 <code>.html</code> se sirven (N3), y todo lo demás depende de que Apache siga leyendo el <code>.htaccess</code>.",
+r:"Mover a <code>docs/historial/</code> y <code>scripts/deploy/</code>. Promover <code>_fase1/10_deploy.py</code> a script único de despliegue y archivar los 71 restantes."},
+
+{id:"B3",s:"low",t:"God-classes: diez controladores por encima de 260 líneas",
+loc:"EncuestaAdminController 707 · EventoSolicitudes 448 · CitaPublica 382 · ProveedorPerfil 264",
+w:"<code>EncuestaAdminController</code> tiene 22 métodos y mezcla al menos cinco responsabilidades: listado, gráficas, dos exportadores, CRUD de plantillas y seis métodos de envío.",
+i:"Peor señal que el tamaño total es la densidad: <code>ProveedorPerfilController</code> tiene 2 métodos en 264 líneas — unas 130 por método. Y ninguno tiene un solo test que corra.",
+r:"Refactorizar <strong>después</strong> de tener tests ejecutables (A6), no antes. Tocar esto sin red es cambiar código a ciegas."},
+
+{id:"B4",s:"low",t:"El booking atómico está duplicado, y las dos copias ya divergieron",
+loc:"CitaPublicaController.php:115-155 ≡ Admin/CitaAdminController.php:93-130",
+w:"Unas 45 líneas copiadas literalmente, hasta los comentarios en inglés. Pero la duración de la cita sale de <code>$evento->tiempo_entre_citas_minutos</code> en la versión pública y de <code>$request->duracion</code> en la del admin.",
+i:"Es el núcleo del negocio y ya hay divergencia real: <strong>el admin puede crear citas cuya duración ignora la configuración del evento</strong>. Sin tests que corran, la próxima divergencia tampoco se detectará.",
+n:"Hay otras cuatro duplicaciones del mismo tipo: la validación de perfil dentro del propio <code>CompletarPerfilController</code>, el armado de <code>PlantillaCorreoMail</code> en 8 sitios, y el mapa de estados de cita en 5 componentes Vue, ya divergente en colores.",
+r:"Extraer el booking a un servicio único que reciba la duración como parámetro explícito."},
+
+{id:"B5",s:"low",t:"Código muerto que además está roto",
+loc:"Auth/RegistroProveedorController.php · citas.estado='reagendada' · Evento::espaciosDisponibles()",
+w:"<code>RegistroProveedorController</code> (114 líneas) no tiene ruta, importa <code>App\\Models\\Edicion</code> —clase que no existe— y renderiza una vista que tampoco existe. Los estados <code>'reagendada'</code> y <code>'reprogramada'</code> nunca se escriben pero se leen en 10 sitios. <code>Evento::espaciosDisponibles()</code> está definido y tiene 0 llamadas.",
+i:"Si alguien le restaura una ruta al controlador, 500 inmediato. Y <code>espaciosDisponibles()</code> es peor que inútil: sugiere que el aforo del bazar se controla, cuando el conteo real se recalcula a mano en otro sitio.",
+r:"Borrar el controlador, limpiar los valores muertos de los enums y de los filtros, y eliminar el método no usado."},
+
+{id:"B6",s:"low",t:"Documentación y props desincronizadas con el código nuevo",
+loc:"DEPLOY.md:68,259 · HandleInertiaRequests.php:80,99,136",
+w:"<code>DEPLOY.md</code> sigue instruyendo cambiar <code>TV_TOKEN</code> en el <code>.env</code> y correr <code>config:cache</code>. Eso ya no hace nada: el token vive en <code>eventos.tv_token</code>. Y <code>HandleInertiaRequests</code> sigue resolviendo con <code>Evento::activo()</code>, de un solo evento.",
+i:"Un operador siguiendo el manual <strong>creerá haber rotado el token de la pantalla TV y la dejará accesible con el anterior</strong>. Y con multi-evento, un usuario inscrito en el segundo evento activo ve \"no registrado\" en el sidebar aunque sí lo esté.",
+r:"Actualizar <code>DEPLOY.md</code> con el flujo real de rotación, y alinear <code>HandleInertiaRequests</code> con <code>queryActivos()</code>."}
+];
+const SEV={crit:"Crítico",high:"Alto",med:"Medio",low:"Bajo"};
+function render(){
+  const box=document.getElementById('findings');
+  box.innerHTML=F.map(f=>`
+  <details class="find" data-s="${f.s}">
+    <summary>
+      <span class="sev ${f.s}">${SEV[f.s]}</span>
+      ${f.nuevo?'<span class="nuevo">NUEVO</span>':''}
+      <span class="ttl">${f.t}</span>
+      <span class="id">${f.id}</span>
+    </summary>
+    <div class="body">
+      <div class="kv"><b>Ubicación</b><span class="loc">${f.loc}</span></div>
+      <div class="kv"><b>Qué ocurre</b>${f.w}</div>
+      <div class="kv"><b>Impacto</b>${f.i}</div>
+      ${f.n?`<div class="kv"><b>Matiz</b>${f.n}</div>`:''}
+      <div class="kv"><b>Recomendación</b>${f.r}</div>
+    </div>
+  </details>`).join('');
+}
+render();
+document.querySelectorAll('.filters button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.filters button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    const f=b.dataset.f;
+    document.querySelectorAll('.find').forEach(el=>el.classList.toggle('hide', f!=='all' && el.dataset.s!==f));
+  });
+});
+document.querySelectorAll('nav.tabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('nav.tabs button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+    document.getElementById('p-'+b.dataset.t).classList.add('on');
+    window.scrollTo({top:0,behavior:'smooth'});
+  });
+});
+</script>
+</body>
+</html>

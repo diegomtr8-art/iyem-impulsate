@@ -16,7 +16,7 @@ class ExportController extends Controller
 {
     public function index()
     {
-        $evento = Evento::activo();
+        $evento = Evento::contextoAdmin();
         return Inertia::render('Admin/Exportar/Index', [
             'evento' => $evento,
         ]);
@@ -31,7 +31,7 @@ class ExportController extends Controller
 
     public function eventoCompletoActivo()
     {
-        $evento = Evento::activo();
+        $evento = Evento::contextoAdmin();
         if (!$evento) {
             return back()->withErrors(['error' => 'No hay un evento activo para exportar.']);
         }

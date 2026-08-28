@@ -20,7 +20,17 @@ class EnsureAvisoAceptado
                     'logout',
                     'profile.*',
                     'verification.*',
-                    'password.*'
+                    'password.*',
+                    // Rutas publicas por token: deben funcionar aunque el usuario
+                    // tenga sesion abierta y el onboarding a medias.
+                    'agenda.*',
+                    'encuestas.responder',
+                    'encuestas.responder.store',
+                    'citas.confirmar-token*',
+                    'citas.rechazar-token*',
+                    'tv.index',
+                    'tv.publico',
+                    'bazar.evaluacion'
                 )) {
                     return redirect()->route('aviso.aceptar');
                 }

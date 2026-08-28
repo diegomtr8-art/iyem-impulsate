@@ -62,7 +62,7 @@ const submit = () => {
                                      bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                             ✓ Subido
                         </span>
-                        <a :href="'/storage/' + user.ine_path" target="_blank"
+                        <a :href="route('documentos.ver', { user: user.id, tipo: 'ine' })" target="_blank"
                            class="text-xs text-guinda-700 dark:text-guinda-400 hover:underline">
                             Ver documento
                         </a>
@@ -97,7 +97,7 @@ const submit = () => {
                               class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold">
                             {{ csfVencida ? '⚠ CSF vencida' : '✓ Subida' }}
                         </span>
-                        <a :href="'/storage/' + user.csf_path" target="_blank"
+                        <a :href="route('documentos.ver', { user: user.id, tipo: 'csf' })" target="_blank"
                            class="text-xs text-guinda-700 dark:text-guinda-400 hover:underline">
                             Ver documento
                         </a>

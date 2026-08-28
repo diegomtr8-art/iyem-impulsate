@@ -20,7 +20,16 @@ class EnsureRolSeleccionado
                 'logout',
                 'profile.*',
                 'verification.*',
-                'password.*'
+                'password.*',
+                // Rutas publicas por token (ver EnsureAvisoAceptado)
+                'agenda.*',
+                'encuestas.responder',
+                'encuestas.responder.store',
+                'citas.confirmar-token*',
+                'citas.rechazar-token*',
+                'tv.index',
+                'tv.publico',
+                'bazar.evaluacion'
             )
         ) {
             return redirect()->route('rol.seleccionar');

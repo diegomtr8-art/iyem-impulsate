@@ -70,6 +70,13 @@ class HandleInertiaRequests extends Middleware
                     ->where('rechazado', false)
                     ->count()
                 : 0,
+            // Evento sobre el que operan las pantallas de gestión del admin.
+            'eventoContexto' => function () use ($request) {
+                if (!$request->user()?->hasRole('admin') && !$request->user()?->hasRole('super-admin')) {
+                    return null;
+                }
+                return Evento::contextoAdmin()?->only(['id', 'nombre', 'tipo_evento']);
+            },
             'eventoActivo' => fn () => Evento::activo()?->only([
                 'id', 'nombre', 'sector_economico', 'max_citas_por_comprador',
                 'fecha_hora_inicio', 'fecha_hora_fin',

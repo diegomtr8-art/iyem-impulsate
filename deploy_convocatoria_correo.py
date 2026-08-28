@@ -83,7 +83,10 @@ run(ssh, 'cd ' + RROOT + ' && php artisan migrate --force 2>&1')
 
 # ── Configurar SMTP en .env ───────────────────────────────────────────────────
 print('\n=== Configurando SMTP en .env del servidor ===')
-APP_PWD = 'ldmblvwnzkvjipoc'
+import os
+APP_PWD = os.environ.get('IMPULSATE_MAIL_PWD')
+if not APP_PWD:
+    raise SystemExit('Falta la variable de entorno IMPULSATE_MAIL_PWD')
 env_path = RROOT + '/.env'
 
 # Leer .env actual

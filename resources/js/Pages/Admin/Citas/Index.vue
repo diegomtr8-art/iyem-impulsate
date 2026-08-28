@@ -1,5 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue';
+import SelectorEvento from '@/Components/SelectorEvento.vue';
 import { Link, router, useForm } from '@inertiajs/vue3';
 import { ref } from 'vue';
 
@@ -198,6 +199,8 @@ const cerrarModalNuevaCita = () => {
                 </div>
             </Transition>
         </Teleport>
+
+        <SelectorEvento />
 
         <!-- Filters -->
         <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 mb-6 flex flex-wrap gap-3 items-end shadow-sm dark:shadow-none transition-colors">

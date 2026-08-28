@@ -33,14 +33,18 @@ class CitaPublicaController extends Controller
             'productos_interes.*' => 'string|max:255',
         ]);
 
-        $evento = Evento::activo();
-        if (!$evento) {
-            return back()->withErrors(['edicion' => 'No hay un evento activo. Contacta al administrador.']);
+        // Con varios eventos activos NO se puede asumir "el mas proximo":
+        // el evento se resuelve desde la inscripcion APROBADA del comprador.
+        $eventosActivos = Evento::queryActivos()
+            ->where('tipo_evento', 'encuentro_negocios')
+            ->pluck('id');
+
+        if ($eventosActivos->isEmpty()) {
+            return back()->withErrors(['edicion' => 'No hay un encuentro de negocios activo. Contacta al administrador.']);
         }
 
-        // Verificar que el comprador esté aprobado en el evento activo
         $registroEvento = DB::table('evento_usuario')
-            ->where('evento_id', $evento->id)
+            ->whereIn('evento_id', $eventosActivos)
             ->where('user_id', $request->user()->id)
             ->where('tipo', 'comprador')
             ->where('estado', 'aprobado')
@@ -48,7 +52,7 @@ class CitaPublicaController extends Controller
 
         if (!$registroEvento) {
             $solicitudPendiente = DB::table('evento_usuario')
-                ->where('evento_id', $evento->id)
+                ->whereIn('evento_id', $eventosActivos)
                 ->where('user_id', $request->user()->id)
                 ->where('tipo', 'comprador')
                 ->where('estado', 'pendiente')
@@ -63,6 +67,11 @@ class CitaPublicaController extends Controller
             return back()->withErrors([
                 'error' => 'Debes estar registrado y aprobado en el evento para agendar citas.',
             ]);
+        }
+
+        $evento = Evento::find($registroEvento->evento_id);
+        if (!$evento) {
+            return back()->withErrors(['edicion' => 'No se encontro el evento de tu inscripcion. Contacta al administrador.']);
         }
 
         // Validar ventana temporal de compradores

@@ -23,6 +23,7 @@ class Cita extends Model
         'token_confirmacion',
         'recordatorio_24h_enviado',
         'recordatorio_2h_enviado',
+        'recordatorio_1h_enviado',
         'mesa',
         'estado_tv',
         'hora_real_inicio',
@@ -43,6 +44,7 @@ class Cita extends Model
             'llamada_at'               => 'datetime',
             'recordatorio_24h_enviado' => 'boolean',
             'recordatorio_2h_enviado'  => 'boolean',
+            'recordatorio_1h_enviado'  => 'boolean',
             'productos_interes'        => 'array',
         ];
     }

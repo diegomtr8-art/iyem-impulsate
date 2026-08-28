@@ -9,6 +9,7 @@ use App\Models\EventoCriterio;
 use App\Models\Restaurantero;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -71,9 +72,58 @@ class EventoController extends Controller
             'max_espacios'                    => 'nullable|integer|min:1|max:9999',
             'con_criterios_evaluacion'        => 'boolean',
             'criterios'                       => 'nullable|array',
+            'criterios.*.id'                  => 'nullable|integer',
             'criterios.*.nombre'              => 'required_with:criterios|string|max:200',
             'criterios.*.porcentaje'          => 'required_with:criterios|numeric|min:1|max:100',
         ];
+    }
+
+    private function validationAttributes(): array
+    {
+        return [
+            'nombre'                        => 'nombre del evento',
+            'convocatoria_url'              => 'liga de la convocatoria',
+            'imagen'                        => 'imagen del evento',
+            'imagen_carrusel'               => 'imagen para el carrusel',
+            'sector_economico'              => 'sector económico',
+            'fecha_hora_inicio'             => 'fecha de inicio del evento',
+            'fecha_hora_fin'                => 'fecha de fin del evento',
+            'fecha_hora_inicio_proveedores' => 'apertura de registro de proveedores',
+            'fecha_hora_fin_proveedores'    => 'cierre de registro de proveedores',
+            'fecha_hora_inicio_compradores' => 'apertura de registro de compradores',
+            'fecha_hora_fin_compradores'    => 'cierre de registro de compradores',
+            'max_citas_por_comprador'       => 'máximo de citas por comprador',
+            'tiempo_entre_citas_minutos'    => 'tiempo entre citas',
+            'max_espacios'                  => 'número máximo de espacios',
+            'fecha_aceptacion_solicitudes'  => 'apertura de solicitudes',
+        ];
+    }
+
+    private function validationMessages(): array
+    {
+        return [
+            'convocatoria_url.required' => 'La liga de la convocatoria es obligatoria.',
+            'convocatoria_url.url'      => 'La liga de la convocatoria debe ser una URL completa, incluyendo https:// (ej. https://ejemplo.com/convocatoria.pdf).',
+        ];
+    }
+
+    /**
+     * Valida la petición dejando rastro en el log cuando falla, para poder
+     * diagnosticar en producción qué regla rechazó un evento (los 422 no
+     * generan entrada en laravel.log por sí solos).
+     */
+    private function validarEvento(Request $request, string $accion): void
+    {
+        try {
+            $request->validate($this->validationRules(), $this->validationMessages(), $this->validationAttributes());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            \Illuminate\Support\Facades\Log::warning("Evento: validación fallida al {$accion}", [
+                'usuario' => optional($request->user())->email,
+                'errores' => $e->errors(),
+                'datos'   => $request->except(['imagen', 'imagen_carrusel', '_token', '_method']),
+            ]);
+            throw $e;
+        }
     }
 
     private function validarSumaCriterios(Request $request): ?\Illuminate\Http\RedirectResponse
@@ -87,19 +137,64 @@ class EventoController extends Controller
         return null;
     }
 
+    /**
+     * Sincroniza los criterios SIN borrarlos todos.
+     * Borrar y recrear destruye evento_evaluaciones por cascadeOnDelete,
+     * perdiendo el trabajo del jurado en cualquier edicion del evento.
+     */
     private function sincronizarCriterios(Evento $evento, Request $request): void
     {
-        $evento->criterios()->delete();
+        // Si el evento no usa rubrica, no se toca nada: desactivar la casilla
+        // no debe destruir evaluaciones ya hechas.
+        if (!$request->boolean('con_criterios_evaluacion')) {
+            return;
+        }
 
-        if ($request->boolean('con_criterios_evaluacion') && !empty($request->criterios)) {
-            foreach ($request->criterios as $index => $criterio) {
-                EventoCriterio::create([
+        $enviados = $request->criterios ?? [];
+
+        // Sin criterios en el formulario tampoco borramos: seria el mismo
+        // accidente por otra via.
+        if (empty($enviados)) {
+            return;
+        }
+
+        $idsConservados = [];
+
+        foreach ($enviados as $index => $criterio) {
+            $id = $criterio['id'] ?? null;
+
+            $existente = $id
+                ? EventoCriterio::where('evento_id', $evento->id)->find($id)
+                : EventoCriterio::where('evento_id', $evento->id)
+                    ->where('nombre', $criterio['nombre'])
+                    ->first();
+
+            if ($existente) {
+                $existente->update([
+                    'nombre'     => $criterio['nombre'],
+                    'porcentaje' => $criterio['porcentaje'],
+                    'orden'      => $index,
+                ]);
+                $idsConservados[] = $existente->id;
+            } else {
+                $nuevo = EventoCriterio::create([
                     'evento_id'  => $evento->id,
                     'nombre'     => $criterio['nombre'],
                     'porcentaje' => $criterio['porcentaje'],
                     'orden'      => $index,
                 ]);
+                $idsConservados[] = $nuevo->id;
             }
+        }
+
+        // Solo se borran los que el admin quito explicitamente del formulario.
+        $eliminados = EventoCriterio::where('evento_id', $evento->id)
+            ->whereNotIn('id', $idsConservados)
+            ->get();
+
+        foreach ($eliminados as $criterio) {
+            Log::info("[criterios] Eliminando criterio {$criterio->id} ('{$criterio->nombre}') del evento {$evento->id}. Se perderan sus evaluaciones.");
+            $criterio->delete();
         }
     }
 
@@ -129,7 +224,7 @@ class EventoController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate($this->validationRules());
+        $this->validarEvento($request, 'crear');
 
         if ($error = $this->validarSumaCriterios($request)) {
             return $error;
@@ -157,7 +252,7 @@ class EventoController extends Controller
 
     public function update(Request $request, Evento $evento)
     {
-        $request->validate($this->validationRules());
+        $this->validarEvento($request, 'editar');
 
         if ($error = $this->validarSumaCriterios($request)) {
             return $error;
@@ -210,13 +305,18 @@ class EventoController extends Controller
             'fecha_corte' => now()->toDateString(),
         ]);
 
-        return back()->with('success', 'Evento archivado correctamente. Ahora puedes activar uno nuevo.');
+        // Si el admin estaba operando sobre este evento, se limpia el contexto.
+        if (session('admin_evento_id') == $evento->id) {
+            session()->forget('admin_evento_id');
+        }
+
+        return back()->with('success', 'Evento "' . $evento->nombre . '" archivado correctamente.');
     }
 
     public function activar(Evento $evento)
     {
-        Evento::query()->update(['activa' => false]);
-
+        // Se pueden tener varios eventos activos a la vez: activar uno ya no
+        // desactiva los demás.
         $evento->update([
             'activa'      => true,
             'fecha_corte' => null,
@@ -236,6 +336,32 @@ class EventoController extends Controller
         }
 
         return back()->with('success', 'Evento "' . $evento->nombre . '" activado.');
+    }
+
+    /**
+     * Cambia el evento sobre el que operan las pantallas de gestión (citas,
+     * agenda, exportaciones). La elección vive en la sesión del admin.
+     */
+    public function contexto(Request $request)
+    {
+        $request->validate([
+            'evento_id' => 'nullable|integer',
+        ]);
+
+        if (!$request->evento_id) {
+            session()->forget('admin_evento_id');
+            return back()->with('success', 'Ahora se usa el evento activo más próximo.');
+        }
+
+        $evento = Evento::queryActivos()->where('id', $request->evento_id)->first();
+
+        if (!$evento) {
+            return back()->withErrors(['evento_id' => 'Ese evento ya no está activo.']);
+        }
+
+        session(['admin_evento_id' => $evento->id]);
+
+        return back()->with('success', 'Ahora estás trabajando sobre "' . $evento->nombre . '".');
     }
 
     public function destroy(Evento $evento)

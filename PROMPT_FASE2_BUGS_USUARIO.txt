@@ -1,0 +1,1528 @@
+═══════════════════════════════════════════════════════════════════════════
+FASE 2 — BUGS QUE AFECTAN A USUARIOS REALES
+12 cambios. Cada uno ya está produciendo un efecto visible, o lo hará en
+el próximo evento.
+Duración estimada: 1–2 semanas
+═══════════════════════════════════════════════════════════════════════════
+
+⚠ APLICA PRIMERO LA FASE 1 (PROMPT_FASE1_CONTENCION.txt).
+   No hay dependencia técnica entre ambas, pero la Fase 1 cierra exposición
+   de datos y eso va antes que cualquier bug funcional.
+
+
+ESTADO ACTUAL VERIFICADO
+========================
+Ya aplicaste PROMPT_REGISTRO_PENDIENTE_ENCUENTRO.txt. Confirmado en código:
+  ✓ CompletarPerfilController ya inserta 'pendiente' con guard de tipo_evento
+  ✓ Restaurantero::autoAprobar ya inserta 'pendiente'
+  ✓ EventoRegistroController ya notifica a TODOS los admins en comprador
+    y proveedor (líneas 68 y 143)
+  ✓ Ya existe enviarAcuseSolicitud() y la plantilla evento_solicitud_recibida
+
+  ✗ FALTA: la migración del CAMBIO 6 de aquel prompt
+    (revertir a pendiente los ya auto-aprobados). Si aún la quieres, créala
+    antes de empezar esta fase — está en aquel documento.
+  ✗ FALTA: registrarBazar() sigue usando User::role('admin')->first()
+    en la línea 252. Se corrige aquí, en el CAMBIO 11.
+
+
+ORDEN RECOMENDADO
+=================
+Los 12 cambios son independientes salvo donde se indica. Si tienes que
+partirlo en sprints:
+
+  Sprint A (1 día, alto impacto / bajo riesgo):  1, 2, 8, 11
+  Sprint B (2-3 días, corrigen pérdida de datos): 4, 5, 6
+  Sprint C (2-3 días, tocan UI):                  3, 9
+  Sprint D (1-2 días):                            7, 10, 12
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 1 — El recordatorio de 1 hora se dispara 6 veces
+app/Models/Cita.php · UNA LÍNEA
+─────────────────────────────────────────────────────────────
+
+EnviarRecordatorios.php:93 hace $cita->update(['recordatorio_1h_enviado' => true])
+pero ese campo NO está en $fillable, así que Eloquent lo descarta en silencio.
+El scheduler corre cada 5 minutos y la ventana dura 30 → ~6 notificaciones
+duplicadas al comprador, al proveedor y a CADA admin, por cada cita.
+
+BUSCA en $fillable:
+
+        'recordatorio_24h_enviado',
+        'recordatorio_2h_enviado',
+
+REEMPLAZA POR:
+
+        'recordatorio_24h_enviado',
+        'recordatorio_2h_enviado',
+        'recordatorio_1h_enviado',
+
+VERIFICACIÓN: en tinker, sobre una cita de prueba:
+
+    $c = App\Models\Cita::first();
+    $c->update(['recordatorio_1h_enviado' => true]);
+    $c->fresh()->recordatorio_1h_enviado;   // debe dar true, no false
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 2 — Las rutas por token quedan atrapadas por los middlewares
+3 archivos de middleware
+─────────────────────────────────────────────────────────────
+
+Los tres middlewares de onboarding se aplican a TODO el grupo web y no
+eximen las rutas públicas por token. Un usuario CON SESIÓN ABIERTA y perfil
+incompleto que hace clic en el enlace de su agenda desde el correo es
+redirigido a /completar-perfil y nunca la acepta. Sin sesión sí funciona
+— por eso el fallo es intermitente y difícil de reportar.
+
+Rutas que hay que eximir en los tres:
+
+    'agenda.*'                → ver / aceptar / rechazar propuesta
+    'encuestas.responder'     → GET de la encuesta
+    'encuestas.responder.store' → POST de la encuesta
+    'citas.confirmar-token'   → confirmar reagendamiento
+    'citas.rechazar-token'    → rechazar reagendamiento
+    'tv.index'                → pantalla TV
+    'tv.publico'              → API de la pantalla TV
+    'bazar.evaluacion'        → retroalimentación del bazar
+
+
+2.1 — app/Http/Middleware/EnsureAvisoAceptado.php
+
+BUSCA:
+
+                if (!$request->routeIs(
+                    'aviso.aceptar',
+                    'aviso.aceptar.post',
+                    'aviso.privacidad',
+                    'logout',
+                    'profile.*',
+                    'verification.*',
+                    'password.*'
+                )) {
+
+REEMPLAZA POR:
+
+                if (!$request->routeIs(
+                    'aviso.aceptar',
+                    'aviso.aceptar.post',
+                    'aviso.privacidad',
+                    'logout',
+                    'profile.*',
+                    'verification.*',
+                    'password.*',
+                    // Rutas públicas por token: deben funcionar aunque el usuario
+                    // tenga sesión abierta y el onboarding a medias.
+                    'agenda.*',
+                    'encuestas.responder',
+                    'encuestas.responder.store',
+                    'citas.confirmar-token',
+                    'citas.rechazar-token',
+                    'tv.index',
+                    'tv.publico',
+                    'bazar.evaluacion'
+                )) {
+
+
+2.2 — app/Http/Middleware/EnsureRolSeleccionado.php
+
+BUSCA:
+
+            && !$request->routeIs(
+                'rol.seleccionar',
+                'rol.seleccionar.store',
+                'logout',
+                'profile.*',
+                'verification.*',
+                'password.*'
+            )
+
+REEMPLAZA POR:
+
+            && !$request->routeIs(
+                'rol.seleccionar',
+                'rol.seleccionar.store',
+                'logout',
+                'profile.*',
+                'verification.*',
+                'password.*',
+                'agenda.*',
+                'encuestas.responder',
+                'encuestas.responder.store',
+                'citas.confirmar-token',
+                'citas.rechazar-token',
+                'tv.index',
+                'tv.publico',
+                'bazar.evaluacion'
+            )
+
+
+2.3 — app/Http/Middleware/EnsureProfileComplete.php
+
+BUSCA:
+
+        if ($request->routeIs(
+            'perfil.completar',
+            'perfil.completar.store',
+            'perfil.necesidades',
+            'user.perfil',
+            'perfil.documentos.subir',
+
+REEMPLAZA POR:
+
+        if ($request->routeIs(
+            'perfil.completar',
+            'perfil.completar.store',
+            'perfil.necesidades',
+            'user.perfil',
+            'perfil.documentos.subir',
+            'agenda.*',
+            'encuestas.responder',
+            'encuestas.responder.store',
+            'citas.confirmar-token',
+            'citas.rechazar-token',
+            'tv.index',
+            'tv.publico',
+            'bazar.evaluacion',
+
+(el resto de la lista — 'restaurantero.*', 'logout', etc. — se queda igual)
+
+PRUEBA: inicia sesión con un usuario de perfil incompleto, y con esa sesión
+abierta pega en el navegador el enlace de una propuesta de agenda. Debe
+abrir la página de la agenda, no redirigir a completar perfil.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 3 — Acciones destructivas por GET
+routes/web.php + 2 controladores + 1 vista Vue
+─────────────────────────────────────────────────────────────
+
+GET /agenda/aceptar/{token} abre una transacción y CREA citas en estado
+'confirmada'. GET /citas/{cita}/confirmar/{token} reescribe inicio y fin.
+
+Outlook SafeLinks, el proxy de Gmail, los antivirus corporativos y el
+prefetch del navegador siguen enlaces GET automáticamente. Una agenda
+completa se acepta —o se rechaza— sin que el usuario abra nada.
+
+ESTRATEGIA: el GET renderiza una página de confirmación; la acción va en POST.
+
+
+3.1 — routes/web.php
+
+BUSCA:
+
+Route::get('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'confirmarToken'])->name('citas.confirmar-token');
+Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'rechazarToken'])->name('citas.rechazar-token');
+
+REEMPLAZA POR:
+
+// GET solo muestra la página de confirmación; la acción va por POST.
+Route::get('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'mostrarConfirmacion'])->name('citas.confirmar-token');
+Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'mostrarConfirmacion'])->name('citas.rechazar-token');
+Route::post('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'confirmarToken'])->name('citas.confirmar-token.post')->middleware('throttle:10,1');
+Route::post('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'rechazarToken'])->name('citas.rechazar-token.post')->middleware('throttle:10,1');
+
+BUSCA el grupo de agenda:
+
+Route::prefix('agenda')->name('agenda.')->group(function () {
+    Route::get('/propuesta/{token}', [AgendaPublicaController::class, 'ver'])->name('ver');
+    Route::get('/aceptar/{token}',   [AgendaPublicaController::class, 'aceptar'])->name('aceptar');
+    Route::get('/rechazar/{token}',  [AgendaPublicaController::class, 'rechazar'])->name('rechazar');
+});
+
+REEMPLAZA POR:
+
+Route::prefix('agenda')->name('agenda.')->group(function () {
+    Route::get('/propuesta/{token}', [AgendaPublicaController::class, 'ver'])->name('ver');
+    // Los GET de aceptar/rechazar ahora solo redirigen a la página de la
+    // propuesta: los enlaces viejos de correos ya enviados siguen funcionando
+    // sin ejecutar nada, y el usuario confirma con un botón.
+    Route::get('/aceptar/{token}',  [AgendaPublicaController::class, 'verDesdeEnlace'])->name('aceptar');
+    Route::get('/rechazar/{token}', [AgendaPublicaController::class, 'verDesdeEnlace'])->name('rechazar');
+    Route::post('/aceptar/{token}',  [AgendaPublicaController::class, 'aceptar'])->name('aceptar.post')->middleware('throttle:10,1');
+    Route::post('/rechazar/{token}', [AgendaPublicaController::class, 'rechazar'])->name('rechazar.post')->middleware('throttle:10,1');
+});
+
+
+3.2 — app/Http/Controllers/AgendaPublicaController.php
+
+AÑADE este método justo después de ver():
+
+    /**
+     * Los correos ya enviados apuntan a GET /agenda/aceptar|rechazar.
+     * Ese GET ya no ejecuta nada: manda al usuario a la página de la propuesta,
+     * donde confirma con un botón (POST). Evita que los escáneres de correo
+     * acepten agendas solos.
+     */
+    public function verDesdeEnlace(string $token)
+    {
+        return redirect()->route('agenda.ver', $token);
+    }
+
+NO cambies nada más de aceptar() ni rechazar(): siguen recibiendo el token
+igual, solo que ahora por POST.
+
+
+3.3 — app/Http/Controllers/RestauranteroCitasController.php
+
+AÑADE este método antes de confirmarToken():
+
+    /**
+     * Página intermedia: el GET del correo ya no ejecuta la acción.
+     * Muestra la cita y dos botones que hacen POST.
+     */
+    public function mostrarConfirmacion(Cita $cita, string $token)
+    {
+        if (!$cita->token_confirmacion
+            || !hash_equals($cita->token_confirmacion, $token)
+            || $cita->estado !== 'pendiente_reconfirmacion') {
+            abort(404, 'El enlace no es válido o ya fue utilizado.');
+        }
+
+        $cita->load(['restaurantero', 'cliente']);
+
+        return Inertia::render('Citas/ConfirmarReagenda', [
+            'cita'  => [
+                'id'               => $cita->id,
+                'proveedor'        => $cita->restaurantero->nombre_restaurante ?? '',
+                'inicio_original'  => $cita->inicio,
+                'propuesta_inicio' => $cita->propuesta_inicio,
+                'propuesta_fin'    => $cita->propuesta_fin,
+            ],
+            'token' => $token,
+        ]);
+    }
+
+⚠ AÑADE el import si no está:
+
+        use Inertia\Inertia;
+
+
+3.4 — NUEVA vista resources/js/Pages/Citas/ConfirmarReagenda.vue
+
+CREA el archivo:
+
+<script setup>
+import { router } from '@inertiajs/vue3';
+import { ref } from 'vue';
+
+const props = defineProps({ cita: Object, token: String });
+const enviando = ref(false);
+
+const fmt = (f) => f
+    ? new Date(f).toLocaleString('es-MX', { dateStyle: 'full', timeStyle: 'short' })
+    : '—';
+
+const responder = (accion) => {
+    if (enviando.value) return;
+    enviando.value = true;
+    const ruta = accion === 'confirmar'
+        ? route('citas.confirmar-token.post', { cita: props.cita.id, token: props.token })
+        : route('citas.rechazar-token.post',  { cita: props.cita.id, token: props.token });
+    router.post(ruta, {}, { onFinish: () => { enviando.value = false; } });
+};
+</script>
+
+<template>
+    <div class="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div class="w-full max-w-lg bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+            <h1 class="text-xl font-bold text-gray-900 mb-1">Nueva fecha propuesta</h1>
+            <p class="text-sm text-gray-600 mb-6">
+                <strong>{{ cita.proveedor }}</strong> propuso mover tu cita.
+            </p>
+
+            <div class="rounded-xl bg-gray-50 border border-gray-200 p-4 mb-6 space-y-3">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Fecha original</p>
+                    <p class="text-sm text-gray-500 line-through">{{ fmt(cita.inicio_original) }}</p>
+                </div>
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-gray-400 font-semibold mb-0.5">Nueva propuesta</p>
+                    <p class="text-base font-bold text-guinda-800">{{ fmt(cita.propuesta_inicio) }}</p>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <button :disabled="enviando" @click="responder('confirmar')"
+                    class="flex-1 py-3 rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50
+                           text-white text-sm font-bold transition-colors">
+                    Aceptar la nueva fecha
+                </button>
+                <button :disabled="enviando" @click="responder('rechazar')"
+                    class="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 disabled:opacity-50
+                           text-gray-700 text-sm font-bold transition-colors">
+                    No puedo, cancelar la cita
+                </button>
+            </div>
+
+            <p class="text-xs text-gray-400 mt-5 text-center">
+                Este enlace es de un solo uso.
+            </p>
+        </div>
+    </div>
+</template>
+
+
+3.5 — resources/js/Pages/Agenda/Responder.vue
+
+Esta vista hoy tiene enlaces a las rutas GET. Cámbialos a POST.
+
+BUSCA los dos <a> o <Link> que apuntan a route('agenda.aceptar', ...) y
+route('agenda.rechazar', ...) y sustitúyelos por botones:
+
+    <button :disabled="enviando" @click="responder('aceptar')" ...>
+        Aceptar mi agenda
+    </button>
+    <button :disabled="enviando" @click="responder('rechazar')" ...>
+        Rechazar
+    </button>
+
+Y en el <script setup> AÑADE:
+
+    import { router } from '@inertiajs/vue3';
+    import { ref } from 'vue';
+
+    const enviando = ref(false);
+    const responder = (accion) => {
+        if (enviando.value) return;
+        enviando.value = true;
+        const ruta = accion === 'aceptar'
+            ? route('agenda.aceptar.post', props.token)
+            : route('agenda.rechazar.post', props.token);
+        router.post(ruta, {}, { onFinish: () => { enviando.value = false; } });
+    };
+
+⚠ Conserva las clases CSS que ya tenían los enlaces para no romper el diseño.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 4 — Borrar una agenda elimina citas ajenas
+app/Http/Controllers/Admin/AgendaController.php + migración
+─────────────────────────────────────────────────────────────
+
+destroy() borra TODAS las citas del comprador en ese evento, incluidas las
+que él mismo agendó desde el directorio. Y es delete() duro, no cancelación:
+no queda rastro y los proveedores pierden la cita sin enterarse.
+
+La causa raíz es que no se guarda qué cita salió de qué renglón de la
+propuesta. Hay que guardarlo.
+
+
+4.1 — NUEVA migración database/migrations/2026_08_27_110000_add_cita_id_to_agenda_propuesta_citas.php
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('agenda_propuesta_citas', function (Blueprint $table) {
+            $table->foreignId('cita_id')->nullable()->after('slot_fin')
+                  ->constrained('citas')->nullOnDelete();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('agenda_propuesta_citas', function (Blueprint $table) {
+            $table->dropConstrainedForeignKey('cita_id');
+        });
+    }
+};
+
+
+4.2 — app/Models/AgendaPropuestaCita.php
+
+BUSCA:
+
+    protected $fillable = [
+        'agenda_propuesta_id', 'restaurantero_id', 'slot_inicio', 'slot_fin',
+    ];
+
+REEMPLAZA POR:
+
+    protected $fillable = [
+        'agenda_propuesta_id', 'restaurantero_id', 'slot_inicio', 'slot_fin', 'cita_id',
+    ];
+
+Y AÑADE la relación al final de la clase:
+
+    // La cita real creada a partir de este renglón (si el comprador aceptó)
+    public function cita(): BelongsTo
+    {
+        return $this->belongsTo(Cita::class, 'cita_id');
+    }
+
+
+4.3 — app/Http/Controllers/AgendaPublicaController.php
+
+En aceptar(), dentro del foreach, BUSCA:
+
+                $cita = Cita::create([
+                    'edicion_id'       => $propuesta->evento_id,
+                    'restaurantero_id' => $citaPropuesta->restaurantero_id,
+                    'servicio_id'      => $servicio->id,
+                    'cliente_id'       => $propuesta->user_id,
+                    'inicio'           => $citaPropuesta->slot_inicio,
+                    'fin'              => $citaPropuesta->slot_fin,
+                    'estado'           => 'confirmada',
+                ]);
+
+AÑADE JUSTO DEBAJO:
+
+                // Guardar el vínculo para poder deshacer SOLO estas citas
+                $citaPropuesta->update(['cita_id' => $cita->id]);
+
+
+4.4 — app/Http/Controllers/Admin/AgendaController.php
+
+BUSCA el método destroy() completo:
+
+    public function destroy(AgendaPropuesta $agenda)
+    {
+        DB::transaction(function () use ($agenda) {
+            if ($agenda->estado === 'aceptada') {
+                Cita::where('cliente_id', $agenda->user_id)
+                    ->where('edicion_id', $agenda->evento_id)
+                    ->delete();
+            }
+
+            $agenda->citas()->delete();
+            $agenda->delete();
+        });
+
+        return redirect()->route('admin.agenda.index')
+            ->with('success', 'Propuesta de agenda eliminada correctamente.');
+    }
+
+REEMPLÁZALO POR:
+
+    public function destroy(AgendaPropuesta $agenda)
+    {
+        $canceladas = 0;
+
+        DB::transaction(function () use ($agenda, &$canceladas) {
+            if ($agenda->estado === 'aceptada') {
+                // SOLO las citas que salieron de esta propuesta, y se CANCELAN
+                // (no se borran) para conservar el histórico y poder notificar.
+                $citaIds = $agenda->citas()->whereNotNull('cita_id')->pluck('cita_id');
+
+                $citas = Cita::whereIn('id', $citaIds)
+                    ->whereNotIn('estado', ['cancelada', 'completada'])
+                    ->with('restaurantero')
+                    ->get();
+
+                foreach ($citas as $cita) {
+                    $cita->update(['estado' => 'cancelada']);
+                    $canceladas++;
+
+                    if ($cita->restaurantero?->user_id) {
+                        Notificacion::crear(
+                            $cita->restaurantero->user_id,
+                            'cita_cancelada',
+                            'Cita cancelada',
+                            'Se canceló tu cita del ' . $cita->inicio->format('d/m/Y H:i') .
+                            ' porque el administrador eliminó la propuesta de agenda asociada.'
+                        );
+                    }
+                }
+            }
+
+            $agenda->citas()->delete();
+            $agenda->delete();
+        });
+
+        return redirect()->route('admin.agenda.index')
+            ->with('success', $canceladas > 0
+                ? "Propuesta eliminada. Se cancelaron {$canceladas} cita(s) generadas por ella."
+                : 'Propuesta de agenda eliminada correctamente.');
+    }
+
+⚠ Asegúrate de que el archivo importe Notificacion:
+
+        use App\Models\Notificacion;
+
+⚠ NOTA sobre agendas ya aceptadas ANTES de este cambio: sus renglones tendrán
+   cita_id = null, así que destroy() no cancelará nada. Es el comportamiento
+   seguro: mejor no tocar nada que borrar de más. Si necesitas limpiarlas,
+   hazlo a mano desde el panel de citas.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 5 — Editar un evento borra todas las evaluaciones del bazar
+app/Http/Controllers/Admin/EventoController.php
+─────────────────────────────────────────────────────────────
+
+sincronizarCriterios() hace $evento->criterios()->delete() en CADA update(),
+aunque el admin solo haya corregido una fecha. Como evento_evaluaciones.criterio_id
+tiene cascadeOnDelete, se borran todos los puntajes.
+
+evento_usuario.puntaje_total queda intacto → ranking con puntajes huérfanos
+que ya no se pueden justificar, todos marcados "sin evaluar", y la página
+pública de retroalimentación muestra 0 en cada criterio con un total distinto
+de cero.
+
+BUSCA el método completo:
+
+    private function sincronizarCriterios(Evento $evento, Request $request): void
+    {
+        $evento->criterios()->delete();
+
+        if ($request->boolean('con_criterios_evaluacion') && !empty($request->criterios)) {
+            foreach ($request->criterios as $index => $criterio) {
+                EventoCriterio::create([
+                    'evento_id'  => $evento->id,
+                    'nombre'     => $criterio['nombre'],
+                    'porcentaje' => $criterio['porcentaje'],
+                    'orden'      => $index,
+                ]);
+            }
+        }
+    }
+
+REEMPLÁZALO POR:
+
+    /**
+     * Sincroniza los criterios SIN borrarlos todos.
+     * Borrar y recrear destruye evento_evaluaciones por cascadeOnDelete,
+     * perdiendo el trabajo del jurado en cualquier edición del evento.
+     */
+    private function sincronizarCriterios(Evento $evento, Request $request): void
+    {
+        // Si el evento no usa rúbrica, no se toca nada: desactivar la casilla
+        // no debe destruir evaluaciones ya hechas.
+        if (!$request->boolean('con_criterios_evaluacion')) {
+            return;
+        }
+
+        $enviados = $request->criterios ?? [];
+
+        // Sin criterios en el formulario tampoco borramos: sería el mismo
+        // accidente por otra vía.
+        if (empty($enviados)) {
+            return;
+        }
+
+        $idsConservados = [];
+
+        foreach ($enviados as $index => $criterio) {
+            $id = $criterio['id'] ?? null;
+
+            $existente = $id
+                ? EventoCriterio::where('evento_id', $evento->id)->find($id)
+                : EventoCriterio::where('evento_id', $evento->id)
+                    ->where('nombre', $criterio['nombre'])
+                    ->first();
+
+            if ($existente) {
+                $existente->update([
+                    'nombre'     => $criterio['nombre'],
+                    'porcentaje' => $criterio['porcentaje'],
+                    'orden'      => $index,
+                ]);
+                $idsConservados[] = $existente->id;
+            } else {
+                $nuevo = EventoCriterio::create([
+                    'evento_id'  => $evento->id,
+                    'nombre'     => $criterio['nombre'],
+                    'porcentaje' => $criterio['porcentaje'],
+                    'orden'      => $index,
+                ]);
+                $idsConservados[] = $nuevo->id;
+            }
+        }
+
+        // Solo se borran los que el admin quitó explícitamente del formulario.
+        $eliminados = EventoCriterio::where('evento_id', $evento->id)
+            ->whereNotIn('id', $idsConservados)
+            ->get();
+
+        foreach ($eliminados as $criterio) {
+            \Log::info("[criterios] Eliminando criterio {$criterio->id} ('{$criterio->nombre}') del evento {$evento->id}. Se perderán sus evaluaciones.");
+            $criterio->delete();
+        }
+    }
+
+⚠ REQUISITO DE FRONTEND: para que el emparejamiento por id funcione,
+   resources/js/Pages/Admin/Eventos/Index.vue debe enviar el id de cada
+   criterio existente. Busca dónde arma el array `criterios` para editar y
+   asegúrate de incluir `id: c.id`. Si no lo haces, el fallback por nombre
+   sigue funcionando (mientras no se renombre el criterio).
+
+⚠ EFECTO SECUNDARIO INTENCIONAL: ahora desmarcar "con criterios de evaluación"
+   ya NO borra los criterios. Si de verdad quieres borrarlos, quítalos uno por
+   uno del formulario. Es deliberado: destruir la evaluación del jurado no
+   puede ser un efecto colateral de desmarcar una casilla.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 6 — El módulo de bazar contamina otras inscripciones
+app/Http/Controllers/Admin/BazarEvaluacionController.php
+─────────────────────────────────────────────────────────────
+
+Tres UPDATE filtran por (evento_id, user_id) sin incluir tipo='expositor'.
+Si un usuario tiene también fila de comprador o proveedor en ese evento, se
+le escriben encima puntaje_total, seleccionado y notas_rechazo. Y el conteo
+de cupo tampoco filtra: max_espacios puede agotarse con filas que no son
+expositores.
+
+Además faltan 5 abort_if: un admin puede puntuar dentro de un evento
+Impúlsate escribiendo la URL.
+
+
+6.1 — evaluar()
+
+BUSCA:
+
+    public function evaluar(Request $request, Evento $evento, int $userId)
+    {
+        $request->validate([
+            'evaluaciones'               => 'required|array',
+            'evaluaciones.*.criterio_id' => 'required|exists:evento_criterios,id',
+            'evaluaciones.*.puntaje'     => 'required|numeric|min:0|max:100',
+        ]);
+
+REEMPLAZA POR:
+
+    public function evaluar(Request $request, Evento $evento, int $userId)
+    {
+        abort_if(!$evento->esBazar(), 404);
+
+        $request->validate([
+            'evaluaciones'               => 'required|array',
+            // El criterio debe pertenecer A ESTE evento: si no, se podría
+            // inyectar el porcentaje de otro evento y falsear el puntaje.
+            'evaluaciones.*.criterio_id' => [
+                'required',
+                \Illuminate\Validation\Rule::exists('evento_criterios', 'id')
+                    ->where('evento_id', $evento->id),
+            ],
+            'evaluaciones.*.puntaje'     => 'required|numeric|min:0|max:100',
+        ]);
+
+Y MÁS ABAJO, en el mismo método, BUSCA:
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $userId)
+            ->update(['puntaje_total' => round($puntajeTotal, 2)]);
+
+REEMPLAZA POR:
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $userId)
+            ->where('tipo', 'expositor')
+            ->update(['puntaje_total' => round($puntajeTotal, 2)]);
+
+
+6.2 — toggleSeleccion()
+
+BUSCA:
+
+    public function toggleSeleccion(Request $request, Evento $evento)
+    {
+        $request->validate([
+            'user_id'      => 'required|integer|exists:users,id',
+            'seleccionado' => 'required|boolean',
+        ]);
+
+        if ($request->seleccionado && $evento->max_espacios) {
+            $actuales = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('seleccionado', true)
+                ->count();
+
+            if ($actuales >= $evento->max_espacios) {
+                return back()->withErrors(['error' => "Ya alcanzaste el límite de {$evento->max_espacios} espacios."]);
+            }
+        }
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $request->user_id)
+            ->update(['seleccionado' => $request->seleccionado]);
+
+REEMPLAZA POR:
+
+    public function toggleSeleccion(Request $request, Evento $evento)
+    {
+        abort_if(!$evento->esBazar(), 404);
+
+        $request->validate([
+            'user_id'      => 'required|integer|exists:users,id',
+            'seleccionado' => 'required|boolean',
+        ]);
+
+        // Solo se puede seleccionar a alguien que pasó la revisión inicial.
+        // Sin esto se podía seleccionar a un 'pendiente' o 'rechazado' y
+        // acababa recibiendo el correo de "¡Fuiste seleccionado!".
+        if ($request->seleccionado) {
+            $registro = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $request->user_id)
+                ->where('tipo', 'expositor')
+                ->first();
+
+            if (!$registro) {
+                return back()->withErrors(['error' => 'Ese participante no tiene una solicitud de expositor en este evento.']);
+            }
+
+            if ($registro->estado !== 'aprobado') {
+                return back()->withErrors(['error' => 'Solo puedes seleccionar participantes que ya pasaron la revisión inicial.']);
+            }
+        }
+
+        if ($request->seleccionado && $evento->max_espacios) {
+            $actuales = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('tipo', 'expositor')
+                ->where('seleccionado', true)
+                ->count();
+
+            if ($actuales >= $evento->max_espacios) {
+                return back()->withErrors(['error' => "Ya alcanzaste el límite de {$evento->max_espacios} espacios."]);
+            }
+        }
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $request->user_id)
+            ->where('tipo', 'expositor')
+            ->update(['seleccionado' => $request->seleccionado]);
+
+
+6.3 — guardarNotasRechazo()
+
+BUSCA:
+
+    public function guardarNotasRechazo(Request $request, Evento $evento, int $userId)
+    {
+        $request->validate([
+            'notas_rechazo' => 'required|string|max:2000',
+        ]);
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $userId)
+            ->update(['notas_rechazo' => $request->notas_rechazo]);
+
+REEMPLAZA POR:
+
+    public function guardarNotasRechazo(Request $request, Evento $evento, int $userId)
+    {
+        abort_if(!$evento->esBazar(), 404);
+
+        $request->validate([
+            'notas_rechazo' => 'required|string|max:2000',
+        ]);
+
+        DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $userId)
+            ->where('tipo', 'expositor')
+            ->update(['notas_rechazo' => $request->notas_rechazo]);
+
+
+6.4 — enviarAprobacion() y enviarRechazo()
+
+En AMBOS métodos, añade el guard como PRIMERA línea del cuerpo:
+
+    public function enviarAprobacion(Evento $evento)
+    {
+        abort_if(!$evento->esBazar(), 404);
+        ...
+
+    public function enviarRechazo(Evento $evento)
+    {
+        abort_if(!$evento->esBazar(), 404);
+        ...
+
+
+6.5 — El KPI de espacios disponibles (index)
+
+BUSCA en index():
+
+            'seleccionados'     => $solicitudes->where('seleccionado', true)->count(),
+
+Y también:
+
+            'disponibles'       => max(0, ($evento->max_espacios ?? 0) - $solicitudes->where('seleccionado', true)->count()),
+
+Estos SÍ están bien porque $solicitudes ya viene filtrada por tipo='expositor'
+en la query de arriba. NO los cambies. Se listan aquí solo para que no los
+toques por error.
+
+VERIFICACIÓN FINAL DEL CAMBIO 6: este comando no debe devolver ninguna línea
+de evaluar/toggleSeleccion/guardarNotasRechazo sin ->where('tipo','expositor'):
+
+    grep -n "DB::table('evento_usuario')" -A 4 app/Http/Controllers/Admin/BazarEvaluacionController.php
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 7 — Multi-evento rompe el agendado
+app/Http/Controllers/CitaPublicaController.php
+─────────────────────────────────────────────────────────────
+
+store() resuelve el evento con Evento::activo(), que devuelve el activo MÁS
+PRÓXIMO por fecha. Desde que se permiten varios eventos activos, un comprador
+aprobado en el evento B —con el evento A también activo y más próximo— falla
+la comprobación de evento_usuario y no puede agendar nada.
+
+SOLUCIÓN: resolver el evento desde la inscripción aprobada del usuario, no
+desde "el más próximo".
+
+BUSCA:
+
+        $evento = Evento::activo();
+        if (!$evento) {
+            return back()->withErrors(['edicion' => 'No hay un evento activo. Contacta al administrador.']);
+        }
+
+        // Verificar que el comprador esté aprobado en el evento activo
+        $registroEvento = DB::table('evento_usuario')
+            ->where('evento_id', $evento->id)
+            ->where('user_id', $request->user()->id)
+            ->where('tipo', 'comprador')
+            ->where('estado', 'aprobado')
+            ->first();
+
+        if (!$registroEvento) {
+            $solicitudPendiente = DB::table('evento_usuario')
+                ->where('evento_id', $evento->id)
+                ->where('user_id', $request->user()->id)
+                ->where('tipo', 'comprador')
+                ->where('estado', 'pendiente')
+                ->exists();
+
+            if ($solicitudPendiente) {
+                return back()->withErrors([
+                    'error' => 'Tu solicitud de registro al evento está pendiente de aprobación. Recibirás una notificación cuando sea aprobada.',
+                ]);
+            }
+
+            return back()->withErrors([
+                'error' => 'Debes estar registrado y aprobado en el evento para agendar citas.',
+            ]);
+        }
+
+REEMPLAZA POR:
+
+        // Con varios eventos activos NO se puede asumir "el más próximo":
+        // el evento se resuelve desde la inscripción APROBADA del comprador.
+        $eventosActivos = Evento::queryActivos()
+            ->where('tipo_evento', 'encuentro_negocios')
+            ->pluck('id');
+
+        if ($eventosActivos->isEmpty()) {
+            return back()->withErrors(['edicion' => 'No hay un encuentro de negocios activo. Contacta al administrador.']);
+        }
+
+        $registroEvento = DB::table('evento_usuario')
+            ->whereIn('evento_id', $eventosActivos)
+            ->where('user_id', $request->user()->id)
+            ->where('tipo', 'comprador')
+            ->where('estado', 'aprobado')
+            ->first();
+
+        if (!$registroEvento) {
+            $solicitudPendiente = DB::table('evento_usuario')
+                ->whereIn('evento_id', $eventosActivos)
+                ->where('user_id', $request->user()->id)
+                ->where('tipo', 'comprador')
+                ->where('estado', 'pendiente')
+                ->exists();
+
+            if ($solicitudPendiente) {
+                return back()->withErrors([
+                    'error' => 'Tu solicitud de registro al evento está pendiente de aprobación. Recibirás una notificación cuando sea aprobada.',
+                ]);
+            }
+
+            return back()->withErrors([
+                'error' => 'Debes estar registrado y aprobado en el evento para agendar citas.',
+            ]);
+        }
+
+        $evento = Evento::find($registroEvento->evento_id);
+        if (!$evento) {
+            return back()->withErrors(['edicion' => 'No se encontró el evento de tu inscripción. Contacta al administrador.']);
+        }
+
+⚠ El resto del método (ventanas, cupo, colchón, lockForUpdate) ya usa $evento
+   y NO necesita cambios.
+
+⚠ CASO BORDE: si un comprador está aprobado en DOS encuentros activos a la vez,
+   esta versión toma el primero que encuentre. Es mejor que hoy (que falla),
+   pero si eso llega a pasar de verdad, el arreglo correcto es pasar el
+   evento_id explícito desde el frontend. Anótalo como pendiente.
+
+TAMBIÉN revisa dashboard() en el mismo archivo: usa Evento::activo() para
+decidir qué mostrar. No es crítico (solo afecta lo que se pinta), pero si
+ves inconsistencias, aplica el mismo criterio.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 8 — Se valida el cierre de ventana pero no la apertura
+app/Http/Controllers/EventoRegistroController.php
+─────────────────────────────────────────────────────────────
+
+Uno se puede inscribir ANTES de que abra la ventana, saltándose el calendario
+de la convocatoria. Los métodos del modelo que sí verifican ambos extremos
+(registroCompradoresAbierto / registroProveedoresAbierto) solo se usan para
+pintar la interfaz.
+
+8.1 — En registrarComprador(), BUSCA:
+
+        $finCompradores = $evento->fecha_hora_fin_compradores ?? $evento->fecha_hora_fin;
+        if ($finCompradores && now()->gt($finCompradores)) {
+            throw ValidationException::withMessages(['error' => 'El período de registro de compradores ya cerró.']);
+        }
+
+REEMPLAZA POR:
+
+        if ($evento->fecha_hora_inicio_compradores && now()->lt($evento->fecha_hora_inicio_compradores)) {
+            throw ValidationException::withMessages([
+                'error' => 'El registro de compradores aún no ha abierto. Apertura: ' .
+                    $evento->fecha_hora_inicio_compradores->format('d/m/Y H:i') . '.',
+            ]);
+        }
+
+        $finCompradores = $evento->fecha_hora_fin_compradores ?? $evento->fecha_hora_fin;
+        if ($finCompradores && now()->gt($finCompradores)) {
+            throw ValidationException::withMessages(['error' => 'El período de registro de compradores ya cerró.']);
+        }
+
+8.2 — En registrarProveedor(), BUSCA:
+
+        if ($evento->fecha_hora_fin_proveedores && now()->gt($evento->fecha_hora_fin_proveedores)) {
+
+AÑADE JUSTO ANTES:
+
+        if ($evento->fecha_hora_inicio_proveedores && now()->lt($evento->fecha_hora_inicio_proveedores)) {
+            throw ValidationException::withMessages([
+                'error' => 'El registro de proveedores aún no ha abierto. Apertura: ' .
+                    $evento->fecha_hora_inicio_proveedores->format('d/m/Y H:i') . '.',
+            ]);
+        }
+
+⚠ registrarBazar() YA valida la apertura (fecha_aceptacion_solicitudes).
+   No lo toques.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 9 — El token de la pantalla TV es una constante publicada
+Migración + modelo + controlador + rutas + panel
+─────────────────────────────────────────────────────────────
+
+VERIFICADO: config/app.php NO define tv_token, y .env tampoco tiene TV_TOKEN.
+Es decir, getToken() SIEMPRE devuelve el literal 'impulsate-tv-2026', que
+además está escrito en DEPLOY.md y en deploy_tv_system.py, ambos en el repo.
+
+GET /api/tv/impulsate-tv-2026/publico devuelve, sin autenticación y con
+polling cada 3 segundos, todas las citas del día con nombre completo de
+comprador y proveedor.
+
+9.1 — NUEVA migración 2026_08_27_120000_add_tv_token_to_eventos_table.php
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->string('tv_token', 64)->nullable()->unique()->after('activa');
+        });
+
+        // Generar uno para cada evento existente
+        foreach (DB::table('eventos')->pluck('id') as $id) {
+            DB::table('eventos')->where('id', $id)->update(['tv_token' => Str::random(48)]);
+        }
+    }
+
+    public function down(): void
+    {
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->dropColumn('tv_token');
+        });
+    }
+};
+
+9.2 — app/Models/Evento.php
+
+AÑADE 'tv_token' al $fillable, y añade este método:
+
+    /** Devuelve el token de TV, generándolo si aún no existe. */
+    public function tokenTv(): string
+    {
+        if (!$this->tv_token) {
+            $this->forceFill(['tv_token' => \Illuminate\Support\Str::random(48)])->saveQuietly();
+        }
+        return $this->tv_token;
+    }
+
+    /** Rota el token: invalida cualquier pantalla abierta. */
+    public function rotarTokenTv(): string
+    {
+        $this->forceFill(['tv_token' => \Illuminate\Support\Str::random(48)])->saveQuietly();
+        return $this->tv_token;
+    }
+
+9.3 — app/Http/Controllers/Admin/PantallaTvController.php
+
+BUSCA:
+
+    public static function getToken(): string
+    {
+        return config('app.tv_token', 'impulsate-tv-2026');
+    }
+
+REEMPLAZA POR:
+
+    /**
+     * El token vive en la fila del evento, no en una constante del código.
+     * Antes era 'impulsate-tv-2026', publicado en DEPLOY.md y en el repo.
+     */
+    public static function getToken(): string
+    {
+        return \App\Models\Evento::contextoAdmin()?->tokenTv() ?? '';
+    }
+
+    /** Resuelve el evento a partir del token recibido. */
+    private static function eventoPorToken(string $token): ?\App\Models\Evento
+    {
+        if ($token === '') return null;
+        return \App\Models\Evento::where('tv_token', $token)->first();
+    }
+
+Y en index() y datosPublicos(), BUSCA (aparece dos veces):
+
+        if ($token !== static::getToken()) {
+            abort(404);
+        }
+
+REEMPLAZA CADA UNA POR:
+
+        $evento = static::eventoPorToken($token);
+        abort_if(!$evento, 404);
+
+⚠ Después de esto, dentro de datosPublicos() puedes acotar la consulta al
+   evento con ->where('edicion_id', $evento->id) para no mezclar eventos.
+   Recomendado pero opcional.
+
+9.4 — Reducir lo que se expone
+
+En datosPublicos(), busca el mapeo que arma la respuesta pública (mapPublico)
+y sustituye los nombres completos por algo no identificable:
+
+    // ANTES: 'comprador' => $c->cliente->name
+    // DESPUÉS:
+    'comprador' => \Illuminate\Support\Str::of($c->cliente->nombre_empresa ?? $c->cliente->name)->limit(28),
+    'proveedor' => \Illuminate\Support\Str::of($c->restaurantero->nombre_restaurante ?? '')->limit(28),
+
+⚠ Decide con el equipo: en una pantalla de sala tiene sentido mostrar el
+   nombre de la EMPRESA (que es información comercial pública), no el nombre
+   de la persona. Lo que hay que evitar es que esa API sea un directorio de
+   asistentes descargable desde internet.
+
+9.5 — Botón de rotar token en el panel
+
+En routes/web.php, dentro del grupo admin, AÑADE junto a la ruta admin.tv:
+
+        Route::post('/tv/rotar-token', function () {
+            $evento = \App\Models\Evento::contextoAdmin();
+            abort_if(!$evento, 404);
+            $evento->rotarTokenTv();
+            return back()->with('success', 'Token de la pantalla TV rotado. Las pantallas abiertas dejarán de funcionar.');
+        })->name('tv.rotar-token');
+
+9.6 — Limpieza
+
+Quita el token viejo de la documentación:
+
+    grep -rn "impulsate-tv-2026" . --include=*.md --include=*.py --include=*.php --include=*.txt
+
+Edita DEPLOY.md y deploy_tv_system.py para que no lo mencionen.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 10 — La encuesta no valida nada y no tiene rate limit
+app/Http/Controllers/EncuestaController.php + routes/web.php
+─────────────────────────────────────────────────────────────
+
+store() hace EncuestaRespuesta::create() sin ningún validate(). Sin límite de
+longitud, sin tipo, sin throttle. Y (string) $respuesta lanza
+"Array to string conversion" → error 500 si llega un array en una pregunta
+que no está marcada como 'multiple'.
+
+Los tipos de pregunta existentes son: escala, texto, binario, multiple.
+
+10.1 — BUSCA el método store() completo:
+
+    public function store(Request $request, string $token)
+    {
+        $encuesta = EncuestaSatisfaccion::with('plantilla')->where('token', $token)->firstOrFail();
+
+        if ($encuesta->completada()) {
+            return back()->withErrors(['error' => 'Esta encuesta ya fue respondida.']);
+        }
+
+        $preguntas = $encuesta->plantilla?->preguntas ?? config('encuestas.preguntas');
+
+        foreach ($preguntas as $pregunta) {
+            $respuesta = $request->input($pregunta['id']);
+
+            if ($pregunta['tipo'] === 'multiple' && is_array($respuesta)) {
+                $respuesta = implode(', ', array_filter($respuesta));
+            }
+
+            if ($respuesta !== null && $respuesta !== '' && $respuesta !== []) {
+                EncuestaRespuesta::create([
+                    'encuesta_satisfaccion_id' => $encuesta->id,
+                    'pregunta'                 => $pregunta['texto'],
+                    'tipo'                     => $pregunta['tipo'],
+                    'respuesta'                => (string) $respuesta,
+                ]);
+            }
+        }
+
+        $encuesta->update(['completada_at' => now()]);
+
+        return Inertia::render('Encuestas/Gracias', [
+            'evento' => $encuesta->evento?->only(['nombre']),
+        ]);
+    }
+
+REEMPLÁZALO POR:
+
+    public function store(Request $request, string $token)
+    {
+        $encuesta = EncuestaSatisfaccion::with('plantilla')->where('token', $token)->firstOrFail();
+
+        if ($encuesta->completada()) {
+            return back()->withErrors(['error' => 'Esta encuesta ya fue respondida.']);
+        }
+
+        $preguntas = $encuesta->plantilla?->preguntas ?? config('encuestas.preguntas');
+
+        // Reglas por tipo de pregunta. Sin esto se aceptaba texto de tamaño
+        // ilimitado y un array inesperado tumbaba la petición con un 500.
+        $reglas = [];
+        foreach ($preguntas as $pregunta) {
+            $id = $pregunta['id'];
+            $reglas[$id] = match ($pregunta['tipo']) {
+                'escala'   => ['nullable', 'integer', 'min:1', 'max:5'],
+                'binario'  => ['nullable', 'in:si,no,Sí,No,1,0,true,false'],
+                'multiple' => ['nullable', 'array', 'max:20'],
+                default    => ['nullable', 'string', 'max:2000'],
+            };
+            if ($pregunta['tipo'] === 'multiple') {
+                $reglas[$id . '.*'] = ['string', 'max:255'];
+            }
+        }
+
+        $datos = $request->validate($reglas);
+
+        foreach ($preguntas as $pregunta) {
+            $respuesta = $datos[$pregunta['id']] ?? null;
+
+            if (is_array($respuesta)) {
+                $respuesta = implode(', ', array_filter($respuesta));
+            }
+
+            if ($respuesta === null || $respuesta === '' || $respuesta === []) {
+                continue;
+            }
+
+            EncuestaRespuesta::create([
+                'encuesta_satisfaccion_id' => $encuesta->id,
+                'pregunta'                 => $pregunta['texto'],
+                'tipo'                     => $pregunta['tipo'],
+                'respuesta'                => (string) $respuesta,
+            ]);
+        }
+
+        $encuesta->update(['completada_at' => now()]);
+
+        return Inertia::render('Encuestas/Gracias', [
+            'evento' => $encuesta->evento?->only(['nombre']),
+        ]);
+    }
+
+⚠ AJUSTA el rango de 'escala' (min:1 max:5) al que use realmente tu formulario.
+   Revisa resources/js/Pages/Encuestas/Responder.vue antes de dar esto por bueno:
+   si la escala es de 1 a 10, cambia el max.
+
+⚠ AJUSTA los valores de 'binario' a los que envía el formulario.
+
+10.2 — routes/web.php
+
+BUSCA:
+
+Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])->name('encuestas.responder.store');
+
+REEMPLAZA POR:
+
+Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])
+    ->name('encuestas.responder.store')
+    ->middleware('throttle:20,1');
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 11 — El registro al bazar solo avisa al primer admin
+app/Http/Controllers/EventoRegistroController.php · línea ~252
+─────────────────────────────────────────────────────────────
+
+Los otros dos métodos ya se corrigieron. Falta este.
+
+BUSCA:
+
+        $admin = User::role('admin')->first();
+
+(en registrarBazar, alrededor de la línea 252, con su bloque if)
+
+REEMPLAZA todo el bloque:
+
+        $admin = User::role('admin')->first();
+        if ($admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de bazar',
+                ...
+            );
+        }
+
+POR:
+
+        foreach (User::role('admin')->get() as $admin) {
+            Notificacion::crear(
+                $admin->id,
+                'solicitud_registro',
+                'Nueva solicitud de bazar',
+                $user->name . ' solicita participar como expositor en "' . $evento->nombre . '".'
+            );
+        }
+
+VERIFICACIÓN: este comando no debe devolver nada:
+
+    grep -n "User::role('admin')->first()" app/Http/Controllers/EventoRegistroController.php
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 12 — Correos de cita que confunden o no llegan
+2 archivos
+─────────────────────────────────────────────────────────────
+
+12.1 — El proveedor no distingue aceptación de rechazo
+
+confirmarToken() y rechazarToken() envían EXACTAMENTE el mismo mailable:
+CitaReagendada($cita, 'proveedor'). El proveedor recibe un correo idéntico
+tanto si la cita quedó confirmada como si quedó cancelada.
+
+En app/Http/Controllers/RestauranteroCitasController.php,
+dentro de rechazarToken(), BUSCA:
+
+        try {
+            Mail::to($cita->restaurantero->user->email)->send(new CitaReagendada($cita, 'proveedor'));
+        } catch (\Exception $e) {}
+
+        return view('mail.confirmacion-exitosa', ['mensaje' => 'Has rechazado la propuesta. La cita quedó cancelada.']);
+
+REEMPLAZA POR:
+
+        try {
+            // El comprador rechazó: la cita quedó CANCELADA. Antes se mandaba
+            // el mismo correo que en la aceptación y el proveedor no podía
+            // distinguir un caso del otro.
+            Mail::to($cita->restaurantero->user->email)->send(new CitaCancelada($cita));
+        } catch (\Exception $e) {
+            \Log::warning('Error notificando cancelación al proveedor: ' . $e->getMessage());
+        }
+
+        Notificacion::crear(
+            $cita->restaurantero->user_id,
+            'cita_cancelada',
+            'Propuesta de reagenda rechazada',
+            'El comprador rechazó la nueva fecha propuesta. La cita del ' .
+            $cita->inicio->format('d/m/Y H:i') . ' quedó cancelada.'
+        );
+
+        return view('mail.confirmacion-exitosa', ['mensaje' => 'Has rechazado la propuesta. La cita quedó cancelada.']);
+
+⚠ AÑADE los imports que falten al inicio del archivo:
+
+        use App\Mail\CitaCancelada;
+        use App\Models\Notificacion;
+
+⚠ Revisa que resources/views/mail/cita-cancelada.blade.php tenga sentido
+   leído por un PROVEEDOR. Si está escrito solo para el comprador, añádele
+   una rama como hacen los otros mailables.
+
+
+12.2 — El proveedor no se entera cuando el admin le crea una cita
+
+En app/Http/Controllers/Admin/CitaAdminController.php, método store(),
+BUSCA la línea que envía el correo (alrededor de la línea 147):
+
+            Mail::to($cliente->email)->send(new CitaAgendada($cita, 'cliente'));
+
+REEMPLAZA POR:
+
+            Mail::to($cliente->email)->send(new CitaAgendada($cita, 'cliente'));
+
+            // El proveedor también debe enterarse: en el alta pública sí se le
+            // avisa, en el alta desde el panel no se le avisaba nunca.
+            $emailProveedor = $cita->restaurantero?->user?->email;
+            if ($emailProveedor) {
+                Mail::to($emailProveedor)->send(new CitaAgendada($cita, 'proveedor'));
+            }
+
+            if ($cita->restaurantero?->user_id) {
+                Notificacion::crear(
+                    $cita->restaurantero->user_id,
+                    'cita_nueva',
+                    'Nueva cita asignada',
+                    'El administrador te asignó una cita el ' . $cita->inicio->format('d/m/Y H:i') . '.',
+                    $cita->id
+                );
+            }
+
+⚠ Verifica que $cita tenga cargada la relación restaurantero antes de esa
+   línea. Si no, añade $cita->load('restaurantero.user'); justo antes.
+
+⚠ Asegúrate del import: use App\Models\Notificacion;
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+CAMBIO 1 — recordatorios
+  □ El campo recordatorio_1h_enviado se persiste (prueba de tinker de arriba)
+  □ Correr php artisan citas:enviar-recordatorios dos veces seguidas NO
+    duplica notificaciones
+
+CAMBIO 2 — rutas por token
+  □ Con sesión abierta y perfil INCOMPLETO, el enlace de agenda abre la agenda
+  □ Con sesión abierta y aviso NO aceptado, el enlace de encuesta abre la encuesta
+  □ Sin sesión, todo sigue funcionando como antes
+  □ El resto del onboarding sigue forzándose en las páginas normales
+
+CAMBIO 3 — GET → POST
+  □ GET /agenda/aceptar/{token} ya NO crea citas: redirige a la propuesta
+  □ El botón "Aceptar" de la página sí crea las citas
+  □ Un enlace de un correo YA ENVIADO sigue funcionando (redirige, no rompe)
+  □ GET /citas/{id}/confirmar/{token} muestra la página de confirmación
+  □ El botón confirma y el token queda inutilizable a la segunda vez
+  □ Un token inválido sigue dando 404
+
+CAMBIO 4 — borrar agenda
+  □ Crear propuesta → aceptarla → borrarla: SOLO se cancelan esas citas
+  □ Una cita que el comprador agendó por su cuenta NO se toca
+  □ Las citas quedan 'cancelada', no borradas
+  □ El proveedor recibe notificación
+
+CAMBIO 5 — criterios del bazar
+  □ Evaluar a 2 expositores → editar el NOMBRE del evento → los puntajes siguen
+  □ Editar un criterio (cambiar su %) conserva las evaluaciones
+  □ Quitar un criterio del formulario sí lo borra
+  □ Desmarcar "con criterios" ya NO borra nada
+
+CAMBIO 6 — aislamiento del bazar
+  □ Un usuario con fila de comprador Y de expositor en el mismo evento:
+    evaluarlo como expositor NO le escribe puntaje en la fila de comprador
+  □ El cupo cuenta solo expositores
+  □ No se puede seleccionar a un 'pendiente' ni a un 'rechazado'
+  □ Las 5 URLs de bazar dan 404 en un evento de encuentro de negocios
+
+CAMBIO 7 — multi-evento
+  □ Con DOS encuentros activos, un comprador aprobado en el segundo SÍ puede agendar
+  □ Un comprador pendiente sigue viendo el mensaje de "pendiente de aprobación"
+  □ Un comprador sin inscripción sigue viendo el mensaje correcto
+
+CAMBIO 8 — ventanas
+  □ Antes de la apertura, registrarse da error con la fecha de apertura
+  □ Durante la ventana, funciona
+  □ Después del cierre, sigue dando el error de cierre
+
+CAMBIO 9 — pantalla TV
+  □ /tv/impulsate-tv-2026 ahora da 404
+  □ /admin/tv redirige al token nuevo y la pantalla funciona
+  □ Rotar el token deja de servir la pantalla vieja
+  □ La API ya no expone nombres de personas
+
+CAMBIO 10 — encuesta
+  □ Responder normalmente sigue funcionando y se guarda
+  □ Mandar un array en una pregunta de texto da 422, no 500
+  □ Mandar 10 000 caracteres da 422
+  □ 21 envíos en un minuto dan 429
+
+CAMBIO 11 — admins
+  □ Registro al bazar notifica a TODOS los admins
+
+CAMBIO 12 — correos
+  □ Rechazar un reagendamiento manda "cancelada" al proveedor, no "reagendada"
+  □ Crear una cita desde el panel admin manda correo AL PROVEEDOR también
+
+REGRESIÓN GENERAL
+  □ Agendar una cita normal desde el directorio sigue funcionando
+  □ El test existente sigue pasando: php artisan test --filter=CitaDobleBooking
+  □ No hay errores 500 en el log después de una vuelta completa
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS TOCADOS
+═══════════════════════════════════════════════════════════════════════════
+
+  app/Models/Cita.php                                          (C1)
+  app/Models/Evento.php                                        (C9)
+  app/Models/AgendaPropuestaCita.php                           (C4)
+  app/Http/Middleware/EnsureAvisoAceptado.php                  (C2)
+  app/Http/Middleware/EnsureRolSeleccionado.php                (C2)
+  app/Http/Middleware/EnsureProfileComplete.php                (C2)
+  app/Http/Controllers/AgendaPublicaController.php             (C3, C4)
+  app/Http/Controllers/RestauranteroCitasController.php        (C3, C12)
+  app/Http/Controllers/CitaPublicaController.php               (C7)
+  app/Http/Controllers/EncuestaController.php                  (C10)
+  app/Http/Controllers/EventoRegistroController.php            (C8, C11)
+  app/Http/Controllers/Admin/AgendaController.php              (C4)
+  app/Http/Controllers/Admin/EventoController.php              (C5)
+  app/Http/Controllers/Admin/BazarEvaluacionController.php     (C6)
+  app/Http/Controllers/Admin/CitaAdminController.php           (C12)
+  app/Http/Controllers/Admin/PantallaTvController.php          (C9)
+  routes/web.php                                               (C3, C9, C10)
+
+  resources/js/Pages/Citas/ConfirmarReagenda.vue               (C3 · NUEVO)
+  resources/js/Pages/Agenda/Responder.vue                      (C3)
+  resources/js/Pages/Admin/Eventos/Index.vue                   (C5 · enviar id)
+
+  database/migrations/2026_08_27_110000_add_cita_id_to_agenda_propuesta_citas.php  (NUEVO)
+  database/migrations/2026_08_27_120000_add_tv_token_to_eventos_table.php          (NUEVO)
+
+⚠ HAY CAMBIOS DE VUE → npm run build y subir public/build/ completo.
+
+
+COMANDOS EN EL SERVIDOR
+========================
+
+  php artisan down
+  # subir código + public/build/
+  php artisan migrate --force
+  php artisan optimize:clear
+  php artisan up
+
+  # Después, avisar al equipo del nuevo enlace de la pantalla TV:
+  #   entra a /admin/tv y copia la URL a la que redirige.

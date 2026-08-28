@@ -70,4 +70,4 @@ run(ssh, 'cd ' + RROOT + ' && php artisan migrate --force --no-ansi 2>&1', 'migr
 run(ssh, 'cd ' + RROOT + ' && php artisan config:clear && php artisan optimize 2>&1', 'optimize')
 run(ssh, 'cd ' + RROOT + ' && php artisan view:clear 2>&1', 'view:clear')
 ssh.close()
-print('DONE - Torre de Control: /admin/torre | Pantalla TV: /tv/impulsate-tv-2026')
+print('DONE - Torre de Control: /admin/torre | Pantalla TV: /tv/<token-generado-por-evento-ver-/admin/tv>')

@@ -25,6 +25,7 @@ class Evento extends Model
         'fecha_inicio',
         'fecha_corte',
         'activa',
+        'tv_token',
         'tipo_evento',
         'fecha_aceptacion_solicitudes',
         'max_espacios',
@@ -103,18 +104,85 @@ class Evento extends Model
         return $diff > 0 ? $diff : null;
     }
 
-    public static function activo(): ?self
+    /**
+     * Consulta base de eventos activos y vigentes.
+     *
+     * Un evento está activo desde que el admin lo activa hasta que llega fecha_hora_fin.
+     * No se bloquea por fecha_hora_inicio: ese campo marca cuándo ocurre físicamente el
+     * evento, no cuándo abren las inscripciones. Los controladores manejan sus propias
+     * ventanas temporales (agendado, inscripciones, etc.).
+     *
+     * El orden es determinista (el más próximo primero, y los que no tienen fecha al
+     * final) porque desde que se admiten varios eventos activos a la vez, un `first()`
+     * sin orden devolvería un evento arbitrario.
+     */
+    /** Devuelve el token de TV, generandolo si aun no existe. */
+    public function tokenTv(): string
     {
-        // Un evento está activo desde que el admin lo activa hasta que llega fecha_hora_fin.
-        // No se bloquea por fecha_hora_inicio: ese campo marca cuándo ocurre físicamente el
-        // evento, no cuándo abren las inscripciones. Los controladores manejan sus propias
-        // ventanas temporales (agendado, inscripciones, etc.).
+        if (!$this->tv_token) {
+            $this->forceFill(['tv_token' => \Illuminate\Support\Str::random(48)])->saveQuietly();
+        }
+        return $this->tv_token;
+    }
+
+    /** Rota el token: invalida cualquier pantalla abierta. */
+    public function rotarTokenTv(): string
+    {
+        $this->forceFill(['tv_token' => \Illuminate\Support\Str::random(48)])->saveQuietly();
+        return $this->tv_token;
+    }
+
+    public static function queryActivos()
+    {
         return static::where('activa', true)
             ->where(function ($q) {
                 $q->whereNull('fecha_hora_fin')
                   ->orWhere('fecha_hora_fin', '>=', now());
             })
-            ->first();
+            ->orderByRaw('fecha_hora_inicio IS NULL')
+            ->orderBy('fecha_hora_inicio')
+            ->orderBy('id');
+    }
+
+    /**
+     * Todos los eventos activos y vigentes. Puede haber varios simultáneos.
+     */
+    public static function activos()
+    {
+        return static::queryActivos()->get();
+    }
+
+    /**
+     * El evento activo principal: el más próximo a ocurrir.
+     *
+     * Se mantiene para el flujo público y para los puntos que operan sobre un solo
+     * evento. Con varios activos devuelve el más próximo, nunca uno arbitrario.
+     */
+    public static function activo(): ?self
+    {
+        return static::queryActivos()->first();
+    }
+
+    /**
+     * Evento sobre el que está operando el admin en las pantallas de gestión
+     * (citas, agenda, exportaciones).
+     *
+     * Respeta el evento elegido con el selector siempre que siga activo; si no hay
+     * elección o la guardada ya no es válida, cae al evento activo más próximo.
+     */
+    public static function contextoAdmin(): ?self
+    {
+        $id = session('admin_evento_id');
+
+        if ($id) {
+            $elegido = static::queryActivos()->where('id', $id)->first();
+            if ($elegido) {
+                return $elegido;
+            }
+            session()->forget('admin_evento_id');
+        }
+
+        return static::activo();
     }
 
     public function citas()
@@ -166,9 +234,19 @@ class Evento extends Model
         return max(0, $this->max_espacios - $seleccionados);
     }
 
+    /**
+     * Registra al proveedor en el evento sobre el que opera el admin.
+     *
+     * Con varios eventos activos ya no existe "el" evento al que inscribir por
+     * defecto, así que se usa el evento del selector del panel (contextoAdmin).
+     */
     public static function registrarProveedorEnEventoActivo(int $userId, bool $aprobadoAutomatico = false): void
     {
-        $evento = self::activo();
+        self::registrarProveedorEnEvento($userId, self::contextoAdmin(), $aprobadoAutomatico);
+    }
+
+    public static function registrarProveedorEnEvento(int $userId, ?self $evento, bool $aprobadoAutomatico = false): void
+    {
         if (!$evento) return;
 
         $existe = DB::table('evento_usuario')

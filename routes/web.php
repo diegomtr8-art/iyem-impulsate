@@ -47,8 +47,13 @@ Route::get('/seleccionar-rol',  [SeleccionarRolController::class, 'create'])->na
 Route::post('/seleccionar-rol', [SeleccionarRolController::class, 'store'])->name('rol.seleccionar.store')->middleware('auth:sanctum');
 
 // Confirmación/rechazo de reagendamiento por token (rutas públicas)
-Route::get('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'confirmarToken'])->name('citas.confirmar-token');
-Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'rechazarToken'])->name('citas.rechazar-token');
+// GET solo muestra la pagina de confirmacion; la accion va por POST.
+// Outlook SafeLinks, el proxy de Gmail y el prefetch del navegador siguen
+// enlaces GET solos: antes eso aceptaba o cancelaba citas sin que nadie tocara nada.
+Route::get('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'mostrarConfirmacion'])->name('citas.confirmar-token');
+Route::get('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'mostrarConfirmacion'])->name('citas.rechazar-token');
+Route::post('/citas/{cita}/confirmar/{token}', [RestauranteroCitasController::class, 'confirmarToken'])->name('citas.confirmar-token.post')->middleware('throttle:10,1');
+Route::post('/citas/{cita}/rechazar/{token}',  [RestauranteroCitasController::class, 'rechazarToken'])->name('citas.rechazar-token.post')->middleware('throttle:10,1');
 
 // Pantalla TV pública (acceso por token)
 Route::get('/tv/{token}',              [\App\Http\Controllers\Admin\PantallaTvController::class, 'index'])->name('tv.index');
@@ -56,7 +61,9 @@ Route::get('/api/tv/{token}/publico',  [\App\Http\Controllers\Admin\PantallaTvCo
 
 // Encuestas de satisfacción (sin autenticación — acceso por token)
 Route::get('/encuesta/{token}',  [EncuestaController::class, 'show'])->name('encuestas.responder');
-Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])->name('encuestas.responder.store');
+Route::post('/encuesta/{token}', [EncuestaController::class, 'store'])
+    ->name('encuestas.responder.store')
+    ->middleware('throttle:20,1');
 
 // Evaluación de bazar/exposición para el no seleccionado (sin autenticación — acceso por token)
 Route::get('/bazar/evaluacion/{token}', [BazarPublicoController::class, 'evaluacion'])->name('bazar.evaluacion');
@@ -64,8 +71,13 @@ Route::get('/bazar/evaluacion/{token}', [BazarPublicoController::class, 'evaluac
 // Respuesta del proveedor a una propuesta de agenda (sin autenticación — acceso por token)
 Route::prefix('agenda')->name('agenda.')->group(function () {
     Route::get('/propuesta/{token}', [AgendaPublicaController::class, 'ver'])->name('ver');
-    Route::get('/aceptar/{token}',   [AgendaPublicaController::class, 'aceptar'])->name('aceptar');
-    Route::get('/rechazar/{token}',  [AgendaPublicaController::class, 'rechazar'])->name('rechazar');
+    // Los GET de aceptar/rechazar ahora solo redirigen a la pagina de la
+    // propuesta: los enlaces viejos de correos ya enviados siguen funcionando
+    // sin ejecutar nada, y el usuario confirma con un boton.
+    Route::get('/aceptar/{token}',  [AgendaPublicaController::class, 'verDesdeEnlace'])->name('aceptar');
+    Route::get('/rechazar/{token}', [AgendaPublicaController::class, 'verDesdeEnlace'])->name('rechazar');
+    Route::post('/aceptar/{token}',  [AgendaPublicaController::class, 'aceptar'])->name('aceptar.post')->middleware('throttle:10,1');
+    Route::post('/rechazar/{token}', [AgendaPublicaController::class, 'rechazar'])->name('rechazar.post')->middleware('throttle:10,1');
 });
 
 // Aceptación del Aviso de Privacidad (solo auth, sin aviso.aceptado para evitar loop)
@@ -118,6 +130,9 @@ Route::middleware([
     Route::post('/mi-panel/perfil',      [CompletarPerfilController::class, 'actualizarComprador'])->name('perfil.comprador.actualizar');
     Route::post('/perfil/agregar-rol',   [CompletarPerfilController::class, 'agregarRol'])->name('perfil.agregar-rol');
     Route::post('/perfil/documentos', [CompletarPerfilController::class, 'subirDocumentos'])->name('perfil.documentos.subir');
+    Route::get('/documentos/{user}/{tipo}', [\App\Http\Controllers\DocumentoController::class, 'mostrar'])
+        ->whereIn('tipo', ['ine', 'csf'])
+        ->name('documentos.ver');
 
     // Registro al evento
     Route::post('/eventos/{evento}/registrar-comprador', [EventoRegistroController::class, 'registrarComprador'])->name('evento.registrar-comprador');
@@ -185,6 +200,8 @@ Route::middleware([
         Route::prefix('eventos')->name('eventos.')->group(function () {
             Route::get('/', [EventoController::class, 'index'])->name('index');
             Route::post('/', [EventoController::class, 'store'])->name('store');
+            // Debe ir antes de /{evento}: si no, el comodín capturaría "contexto".
+            Route::post('/contexto', [EventoController::class, 'contexto'])->name('contexto');
             Route::post('/{evento}', [EventoController::class, 'update'])->name('update');
             Route::patch('/{evento}', [EventoController::class, 'update']);
             Route::post('/{evento}/archivar', [EventoController::class, 'archivar'])->name('archivar');
@@ -232,6 +249,13 @@ Route::middleware([
         Route::get('/tv', fn() => redirect()->route('tv.index', [
             'token' => \App\Http\Controllers\Admin\PantallaTvController::getToken()
         ]))->name('tv.index');
+
+        Route::post('/tv/rotar-token', function () {
+            $evento = \App\Models\Evento::contextoAdmin();
+            abort_if(!$evento, 404);
+            $evento->rotarTokenTv();
+            return back()->with('success', 'Token de la pantalla TV rotado. Las pantallas abiertas dejaran de funcionar.');
+        })->name('tv.rotar-token');
 
         // Torre de Control
         Route::get('/torre', [TorreControlController::class, 'index'])->name('torre.index');

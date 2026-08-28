@@ -107,6 +107,14 @@ class PlantillasCorreoSeeder extends Seeder
                 'contenido'          => $this->tplEventoSolicitudRechazada(),
             ],
             [
+                'clave'              => 'evento_solicitud_recibida',
+                'nombre'             => 'Solicitud al Evento Recibida',
+                'asunto'             => 'Recibimos tu solicitud para {{nombre_evento}} — Impulsate',
+                'tipo_destinatario'  => 'ambos',
+                'es_sistema'         => true,
+                'contenido'          => $this->tplEventoSolicitudRecibida(),
+            ],
+            [
                 'clave'              => 'agenda_propuesta',
                 'nombre'             => 'Propuesta de agenda al comprador',
                 'asunto'             => 'IMPULSATE: Tu propuesta de agenda — {{nombre_evento}}',
@@ -370,6 +378,29 @@ HTML;
 <p style="margin:0;font-size:13px;color:#9ca3af;">Este enlace es de un solo uso. Si tienes dudas, escríbenos a impulsate@iyemyucatan.com</p>
 HTML;
         return $this->wrap('Propuesta de Agenda', '📅 Nueva propuesta de agenda', $cuerpo);
+    }
+
+    private function tplEventoSolicitudRecibida(): string
+    {
+        $cuerpo = <<<HTML
+<p style="margin:0 0 8px;font-size:16px;color:#374151;">Hola, <strong>{{nombre_usuario}}</strong></p>
+<p style="margin:0 0 16px;font-size:15px;color:#374151;">Recibimos tu solicitud de registro como <strong>{{tipo_participante}}</strong> para <strong>{{nombre_evento}}</strong>. Tu solicitud está en revisión.</p>
+<div style="background:#fff7f7;border:1px solid #fbc4cd;border-radius:12px;padding:20px 24px;margin-bottom:24px;">
+  <p style="margin:0 0 8px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#9ca3af;font-weight:600;">¿Qué sigue?</p>
+  <ul style="margin:0;padding-left:20px;font-size:14px;color:#374151;line-height:1.8;">
+    <li>El equipo de Impulsate revisará tu perfil y tu solicitud</li>
+    <li>Recibirás un correo con el resultado</li>
+    <li>Una vez aprobada, podrás participar en el encuentro</li>
+  </ul>
+</div>
+<p style="margin:0 0 16px;font-size:14px;color:#6b7280;">Mientras tanto puedes revisar y completar tu perfil para agilizar la revisión.</p>
+<div style="text-align:center;margin-bottom:24px;">
+  <a href="https://impulsate.iyemyucatan.com" style="display:inline-block;background:linear-gradient(135deg,#8b1028,#45060f);color:#ffffff;font-weight:700;font-size:15px;padding:14px 32px;border-radius:12px;text-decoration:none;">
+    Ver mi perfil
+  </a>
+</div>
+HTML;
+        return $this->wrap('Solicitud Recibida', '📋 Tu solicitud está en revisión', $cuerpo);
     }
 
     private function tplBazarSolicitudRecibida(): string

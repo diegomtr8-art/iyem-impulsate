@@ -28,6 +28,17 @@ class AgendaPublicaController extends Controller
         ]);
     }
 
+    /**
+     * Los correos ya enviados apuntan a GET /agenda/aceptar|rechazar.
+     * Ese GET ya no ejecuta nada: manda al usuario a la pagina de la propuesta,
+     * donde confirma con un boton (POST). Evita que los escaneres de correo
+     * acepten agendas solos.
+     */
+    public function verDesdeEnlace(string $token)
+    {
+        return redirect()->route('agenda.ver', $token);
+    }
+
     public function aceptar(string $token)
     {
         $propuesta = AgendaPropuesta::where('token', $token)
@@ -78,6 +89,9 @@ class AgendaPublicaController extends Controller
                     'fin'              => $citaPropuesta->slot_fin,
                     'estado'           => 'confirmada',
                 ]);
+
+                // Guardar el vinculo para poder deshacer SOLO estas citas
+                $citaPropuesta->update(['cita_id' => $cita->id]);
 
                 $proveedor = $citaPropuesta->proveedor;
                 if ($proveedor) {

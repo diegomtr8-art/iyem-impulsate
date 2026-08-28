@@ -21,13 +21,13 @@ const formatHora = (iso) => new Date(iso).toLocaleTimeString('es-MX', { hour: '2
 
 const aceptar = () => {
     procesando.value = true;
-    router.get(route('agenda.aceptar', props.token), {}, { onFinish: () => procesando.value = false });
+    router.post(route('agenda.aceptar.post', props.token), {}, { onFinish: () => procesando.value = false });
 };
 
 const rechazar = () => {
     if (!confirm('¿Seguro que quieres rechazar esta propuesta de agenda?')) return;
     procesando.value = true;
-    router.get(route('agenda.rechazar', props.token), {}, { onFinish: () => procesando.value = false });
+    router.post(route('agenda.rechazar.post', props.token), {}, { onFinish: () => procesando.value = false });
 };
 </script>
 

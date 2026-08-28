@@ -73,7 +73,8 @@ print('Conectado OK')
 sftp = ssh.open_sftp()
 
 print('\n=== Backup remoto de routes/web.php ===')
-run(ssh, f'cp {RROOT}/routes/web.php {RROOT}/routes/web.php.bak-20260812')
+run(ssh, 'mkdir -p ~/backups/20260812')
+run(ssh, f'cp {RROOT}/routes/web.php ~/backups/20260812/web.php')
 
 print('\n=== Backend PHP: Bazar Solicitudes + Documentos ===')
 up(sftp, 'app/Models/User.php')

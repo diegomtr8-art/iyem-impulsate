@@ -135,8 +135,11 @@ class Restaurantero extends Model
     }
 
     /**
-     * Perfil completo = aprobado automático (sin revisión manual del admin).
-     * Vincula al evento activo con estado='aprobado' en evento_usuario.
+     * Perfil completo = PERFIL aprobado automáticamente (sin revisión manual del
+     * admin) para que el proveedor aparezca en el directorio público.
+     *
+     * Su inscripción al ENCUENTRO se crea en estado='pendiente': quién entra al
+     * evento lo decide el admin en /admin/eventos/{evento}/solicitudes.
      */
     protected function autoAprobar(): void
     {
@@ -154,7 +157,10 @@ class Restaurantero extends Model
             $this->user->update(['perfil_completo' => true]);
         }
 
-        if ($evento) {
+        // El PERFIL se aprueba solo (arriba: aprobado=true, activo=true) para que
+        // el proveedor aparezca en el directorio público. Pero su inscripción al
+        // ENCUENTRO queda PENDIENTE: la decide el admin en /admin/eventos/{id}/solicitudes.
+        if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
             $registro = \Illuminate\Support\Facades\DB::table('evento_usuario')
                 ->where('evento_id', $evento->id)
                 ->where('user_id', $this->user_id)
@@ -166,16 +172,23 @@ class Restaurantero extends Model
                     'evento_id'     => $evento->id,
                     'user_id'       => $this->user_id,
                     'tipo'          => 'proveedor',
-                    'estado'        => 'aprobado',
-                    'respondido_at' => now(),
+                    'estado'        => 'pendiente',
+                    'respondido_at' => null,
                     'created_at'    => now(),
                     'updated_at'    => now(),
                 ]);
-            } elseif ($registro->estado !== 'aprobado') {
-                \Illuminate\Support\Facades\DB::table('evento_usuario')
-                    ->where('id', $registro->id)
-                    ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
+
+                foreach (\App\Models\User::role('admin')->get() as $admin) {
+                    Notificacion::crear(
+                        $admin->id,
+                        'solicitud_registro',
+                        'Nueva solicitud de proveedor',
+                        ($this->user?->name ?? 'Un proveedor') . ' completó su perfil y solicita unirse al evento "' . $evento->nombre . '".'
+                    );
+                }
             }
+            // Si ya existe un registro NO se toca: no se puede re-aprobar por
+            // encima de una decisión del admin.
         }
 
         if ($this->user?->email) {
@@ -185,13 +198,15 @@ class Restaurantero extends Model
         }
 
         if ($this->user) {
+            $esEncuentro = $evento && $evento->tipo_evento === 'encuentro_negocios';
+
             Notificacion::crear(
                 $this->user->id,
                 'solicitud_aprobada',
-                '🎉 ¡Perfil completo y aprobado!',
-                $evento
-                    ? "Tu perfil está completo y fuiste aprobado automáticamente en el evento \"{$evento->nombre}\". Ya apareces en el directorio de proveedores."
-                    : 'Tu perfil está completo y fue aprobado automáticamente.'
+                '🎉 ¡Tu perfil está completo!',
+                $esEncuentro
+                    ? "Tu perfil quedó completo y ya apareces en el directorio de proveedores. Tu solicitud para el evento \"{$evento->nombre}\" está en revisión: te avisaremos cuando el equipo la apruebe."
+                    : 'Tu perfil está completo y ya apareces en el directorio de proveedores.'
             );
         }
     }

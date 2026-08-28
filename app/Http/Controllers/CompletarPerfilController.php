@@ -7,6 +7,7 @@ use App\Models\Horario;
 use App\Models\Notificacion;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -86,10 +87,15 @@ class CompletarPerfilController extends Controller
             'es_restaurantero'       => $request->boolean('es_restaurantero'),
         ]);
 
-        // Auto-registro y auto-aprobación al evento activo si es restaurantero
+        // Auto-registro al encuentro de negocios activo si es restaurantero.
+        // IMPORTANTE: queda en 'pendiente'. La aprobación la decide el admin
+        // desde /admin/eventos/{evento}/solicitudes.
         if ($request->boolean('es_restaurantero')) {
             $evento = Evento::activo();
-            if ($evento) {
+
+            // Solo encuentro de negocios. Si el evento activo más próximo es un
+            // bazar, no se inscribe aquí (el bazar tiene su propio flujo).
+            if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
                 $registro = DB::table('evento_usuario')
                     ->where('evento_id', $evento->id)
                     ->where('user_id', $user->id)
@@ -101,23 +107,32 @@ class CompletarPerfilController extends Controller
                         'evento_id'     => $evento->id,
                         'user_id'       => $user->id,
                         'tipo'          => 'comprador',
-                        'estado'        => 'aprobado',
-                        'respondido_at' => now(),
+                        'estado'        => 'pendiente',
+                        'respondido_at' => null,
                         'created_at'    => now(),
                         'updated_at'    => now(),
                     ]);
-                } elseif ($registro->estado !== 'aprobado') {
-                    DB::table('evento_usuario')
-                        ->where('id', $registro->id)
-                        ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
-                }
 
-                Notificacion::crear(
-                    $user->id,
-                    'solicitud_aprobada',
-                    '¡Bienvenido al evento!',
-                    'Tu registro al evento "' . $evento->nombre . '" fue aprobado automáticamente. Ya puedes ver el directorio de proveedores y agendar citas.'
-                );
+                    Notificacion::crear(
+                        $user->id,
+                        'solicitud_registro',
+                        'Tu solicitud está en revisión',
+                        'Registramos tu solicitud para el evento "' . $evento->nombre . '". El equipo la revisará y te avisaremos por correo cuando sea aprobada.'
+                    );
+
+                    // Avisar a TODOS los administradores
+                    foreach (User::role('admin')->get() as $admin) {
+                        Notificacion::crear(
+                            $admin->id,
+                            'solicitud_registro',
+                            'Nueva solicitud de comprador',
+                            $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
+                        );
+                    }
+                }
+                // Si ya existía un registro (pendiente, aprobado o rechazado)
+                // NO se toca: el estado lo gobierna el admin o el propio flujo
+                // de re-postulación de EventoRegistroController.
             }
         }
 
@@ -165,10 +180,12 @@ class CompletarPerfilController extends Controller
             'es_restaurantero'       => $request->boolean('es_restaurantero'),
         ]);
 
-        // Si acaba de marcar "¿Eres restaurantero?", auto-registrarlo al evento activo
+        // Si acaba de marcar "¿Eres restaurantero?", registrarlo al encuentro
+        // activo como PENDIENTE. La aprobación la decide el admin.
         if ($seAcabaDeVolverRestaurantero) {
             $evento = Evento::activo();
-            if ($evento) {
+
+            if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
                 $registro = DB::table('evento_usuario')
                     ->where('evento_id', $evento->id)
                     ->where('user_id', $user->id)
@@ -180,23 +197,28 @@ class CompletarPerfilController extends Controller
                         'evento_id'     => $evento->id,
                         'user_id'       => $user->id,
                         'tipo'          => 'comprador',
-                        'estado'        => 'aprobado',
-                        'respondido_at' => now(),
+                        'estado'        => 'pendiente',
+                        'respondido_at' => null,
                         'created_at'    => now(),
                         'updated_at'    => now(),
                     ]);
-                } elseif ($registro->estado !== 'aprobado') {
-                    DB::table('evento_usuario')
-                        ->where('id', $registro->id)
-                        ->update(['estado' => 'aprobado', 'motivo_rechazo' => null, 'respondido_at' => now()]);
-                }
 
-                Notificacion::crear(
-                    $user->id,
-                    'solicitud_aprobada',
-                    '¡Ahora eres parte del evento!',
-                    'Tu registro como restaurantero al evento "' . $evento->nombre . '" fue activado automáticamente.'
-                );
+                    Notificacion::crear(
+                        $user->id,
+                        'solicitud_registro',
+                        'Tu solicitud está en revisión',
+                        'Registramos tu solicitud para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
+                    );
+
+                    foreach (User::role('admin')->get() as $admin) {
+                        Notificacion::crear(
+                            $admin->id,
+                            'solicitud_registro',
+                            'Nueva solicitud de comprador',
+                            $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
+                        );
+                    }
+                }
             }
         }
 
@@ -295,20 +317,27 @@ class CompletarPerfilController extends Controller
         $user = $request->user();
         $datos = [];
 
-        if ($request->hasFile('ine')) {
-            if ($user->ine_path && \Storage::disk('public')->exists($user->ine_path)) {
-                \Storage::disk('public')->delete($user->ine_path);
-            }
-            $datos['ine_path'] = $request->file('ine')
-                ->storeAs("documentos/{$user->id}", 'ine.' . $request->file('ine')->extension(), 'public');
-        }
+        // Disco 'local' = storage/app/private (NO servido por el servidor web).
+        // Nombre aleatorio para que la ruta no sea adivinable ni enumerable.
+        foreach (['ine', 'csf'] as $campo) {
+            if (!$request->hasFile($campo)) continue;
 
-        if ($request->hasFile('csf')) {
-            if ($user->csf_path && \Storage::disk('public')->exists($user->csf_path)) {
-                \Storage::disk('public')->delete($user->csf_path);
+            $columna = $campo . '_path';
+
+            // Borrar el anterior, este donde este (publico viejo o privado nuevo)
+            if ($user->$columna) {
+                foreach (['local', 'public'] as $disco) {
+                    if (\Storage::disk($disco)->exists($user->$columna)) {
+                        \Storage::disk($disco)->delete($user->$columna);
+                    }
+                }
             }
-            $datos['csf_path'] = $request->file('csf')
-                ->storeAs("documentos/{$user->id}", 'csf.' . $request->file('csf')->extension(), 'public');
+
+            $archivo   = $request->file($campo);
+            $extension = strtolower($archivo->extension());
+            $nombre    = $campo . '_' . \Illuminate\Support\Str::random(40) . '.' . $extension;
+
+            $datos[$columna] = $archivo->storeAs("documentos/{$user->id}", $nombre, 'local');
         }
 
         if ($request->filled('csf_fecha')) {

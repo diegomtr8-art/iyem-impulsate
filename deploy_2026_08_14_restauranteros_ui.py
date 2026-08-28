@@ -54,7 +54,8 @@ print('Conectado OK')
 sftp = ssh.open_sftp()
 
 print('\n=== Backup remoto de manifest.json ===')
-run(ssh, f'cp {RROOT}/public/build/manifest.json {RROOT}/public/build/manifest.json.bak-20260814')
+run(ssh, 'mkdir -p ~/backups/20260814')
+run(ssh, f'cp {RROOT}/public/build/manifest.json ~/backups/20260814/manifest.json')
 
 print('\n=== Assets compilados (JS/CSS) -- a AMBAS rutas ===')
 updir(sftp, 'public/build', 'public/build')
