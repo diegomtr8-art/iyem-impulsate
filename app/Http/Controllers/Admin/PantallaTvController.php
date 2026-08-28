@@ -43,7 +43,10 @@ class PantallaTvController extends Controller
         $hoy  = now()->toDateString();
         $ahora = now();
 
-        $citas = Cita::whereDate('inicio', $hoy)
+        $citas = Cita::whereBetween('inicio', [
+                \Carbon\Carbon::parse($hoy)->startOfDay(),
+                \Carbon\Carbon::parse($hoy)->endOfDay(),
+            ])
             ->where('edicion_id', $evento->id)
             ->whereNotIn('estado', ['cancelada', 'rechazada'])
             ->whereNotIn('estado_tv', ['pendiente'])
@@ -61,7 +64,10 @@ class PantallaTvController extends Controller
             ->map(fn($c) => $this->mapPublico($c, $ahora))
             ->values();
 
-        $proximas = Cita::whereDate('inicio', $hoy)
+        $proximas = Cita::whereBetween('inicio', [
+                \Carbon\Carbon::parse($hoy)->startOfDay(),
+                \Carbon\Carbon::parse($hoy)->endOfDay(),
+            ])
             ->where('edicion_id', $evento->id)
             ->whereIn('estado', ['confirmada', 'reagendada'])
             ->whereIn('estado_tv', ['pendiente', 'reprogramada'])

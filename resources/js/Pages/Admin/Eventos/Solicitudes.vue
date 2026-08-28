@@ -345,13 +345,13 @@ const csfVigente = (csf_fecha) => {
                                                 <span v-if="s.user?.telefono" class="text-gray-500 dark:text-gray-400">{{ s.user.telefono }}</span>
                                                 <span v-if="s.user?.nombre_empresa" class="text-gray-500 dark:text-gray-400">{{ s.user.nombre_empresa }}</span>
                                                 <!-- Indicadores de documentos -->
-                                                <span v-if="s.user?.ine_path"
+                                                <span v-if="s.user?.tiene_ine"
                                                     class="text-emerald-600 dark:text-emerald-400 font-medium">✓ INE</span>
                                                 <span v-else
                                                     class="text-red-500 dark:text-red-400 font-medium">✗ Sin INE</span>
-                                                <span v-if="s.user?.csf_path && csfVigente(s.user?.csf_fecha)"
+                                                <span v-if="s.user?.tiene_csf && csfVigente(s.user?.csf_fecha)"
                                                     class="text-emerald-600 dark:text-emerald-400 font-medium">✓ CSF vigente</span>
-                                                <span v-else-if="s.user?.csf_path"
+                                                <span v-else-if="s.user?.tiene_csf"
                                                     class="text-amber-600 dark:text-amber-400 font-medium">⚠ CSF vencida</span>
                                                 <span v-else
                                                     class="text-red-500 dark:text-red-400 font-medium">✗ Sin CSF</span>
@@ -842,7 +842,7 @@ const csfVigente = (csf_fecha) => {
                                     <!-- INE -->
                                     <div class="flex flex-col gap-2">
                                         <div class="flex items-center gap-2">
-                                            <span v-if="solicitudPreview.user?.ine_path"
+                                            <span v-if="solicitudPreview.user?.tiene_ine"
                                                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
                                                        bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                                                 ✓ INE subida
@@ -853,7 +853,7 @@ const csfVigente = (csf_fecha) => {
                                                 ✗ Sin INE
                                             </span>
                                         </div>
-                                        <a v-if="solicitudPreview.user?.ine_path"
+                                        <a v-if="solicitudPreview.user?.tiene_ine"
                                            :href="route('documentos.ver', { user: solicitudPreview.user_id, tipo: 'ine' })"
                                            target="_blank"
                                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold
@@ -869,12 +869,12 @@ const csfVigente = (csf_fecha) => {
                                     <!-- CSF -->
                                     <div class="flex flex-col gap-2">
                                         <div class="flex items-center gap-2 flex-wrap">
-                                            <span v-if="solicitudPreview.user?.csf_path && csfVigente(solicitudPreview.user?.csf_fecha)"
+                                            <span v-if="solicitudPreview.user?.tiene_csf && csfVigente(solicitudPreview.user?.csf_fecha)"
                                                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
                                                        bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
                                                 ✓ CSF vigente
                                             </span>
-                                            <span v-else-if="solicitudPreview.user?.csf_path"
+                                            <span v-else-if="solicitudPreview.user?.tiene_csf"
                                                 class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold
                                                        bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
                                                 ⚠ CSF vencida
@@ -889,7 +889,7 @@ const csfVigente = (csf_fecha) => {
                                                 Emitida: {{ formatFechaCorta(solicitudPreview.user.csf_fecha) }}
                                             </span>
                                         </div>
-                                        <a v-if="solicitudPreview.user?.csf_path"
+                                        <a v-if="solicitudPreview.user?.tiene_csf"
                                            :href="route('documentos.ver', { user: solicitudPreview.user_id, tipo: 'csf' })"
                                            target="_blank"
                                            class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold
@@ -904,7 +904,7 @@ const csfVigente = (csf_fecha) => {
                                 </div>
 
                                 <!-- Alerta si documentos incompletos/vencidos -->
-                                <div v-if="!solicitudPreview.user?.ine_path || !solicitudPreview.user?.csf_path || !csfVigente(solicitudPreview.user?.csf_fecha)"
+                                <div v-if="!solicitudPreview.user?.tiene_ine || !solicitudPreview.user?.tiene_csf || !csfVigente(solicitudPreview.user?.csf_fecha)"
                                      class="mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg">
                                     <p class="text-xs text-amber-700 dark:text-amber-400 font-medium">
                                         ⚠ Los documentos de este expositor están incompletos o vencidos. Revisa antes de aprobar.

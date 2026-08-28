@@ -209,6 +209,10 @@ class AgendaController extends Controller
     {
         $canceladas = 0;
 
+        // Se guarda ANTES de la transaccion: despues del delete() el modelo ya
+        // no conserva el estado y el mensaje de abajo saldria vacio.
+        $estadoOriginal = $agenda->estado;
+
         DB::transaction(function () use ($agenda, &$canceladas) {
             if ($agenda->estado === 'aceptada') {
                 // SOLO las citas que salieron de esta propuesta, y se CANCELAN
@@ -240,10 +244,13 @@ class AgendaController extends Controller
             $agenda->delete();
         });
 
-        return redirect()->route('admin.agenda.index')
-            ->with('success', $canceladas > 0
-                ? "Propuesta eliminada. Se cancelaron {$canceladas} cita(s) generadas por ella."
+        $mensaje = $canceladas > 0
+            ? "Propuesta eliminada. Se cancelaron {$canceladas} cita(s) generadas por ella."
+            : ($estadoOriginal === 'aceptada'
+                ? 'Propuesta eliminada, pero NO se canceló ninguna cita: esta agenda es anterior al registro de vínculos. Revisa las citas del comprador a mano si hace falta.'
                 : 'Propuesta de agenda eliminada correctamente.');
+
+        return redirect()->route('admin.agenda.index')->with('success', $mensaje);
     }
 
     private function enviarCorreo(AgendaPropuesta $propuesta): void

@@ -40,7 +40,10 @@ class TorreControlController extends Controller
     {
         $hoy = now()->toDateString();
 
-        $citas = Cita::whereDate('inicio', $hoy)
+        $citas = Cita::whereBetween('inicio', [
+                \Carbon\Carbon::parse($hoy)->startOfDay(),
+                \Carbon\Carbon::parse($hoy)->endOfDay(),
+            ])
             ->whereNotIn('estado', ['cancelada', 'rechazada'])
             ->with(['cliente', 'restaurantero'])
             ->orderBy('inicio')

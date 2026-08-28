@@ -28,6 +28,12 @@ Options -Indexes
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
+    # Nada ejecutable bajo /storage/: son archivos que suben los usuarios.
+    # OJO: va ANTES de la reescritura de /storage/ de abajo, o no llega a
+    # evaluarse. Respalda al .htaccess de storage/app/public/, que depende de
+    # que Apache lo lea a traves del symlink.
+    RewriteRule ^storage/.*\.(php|phtml|php[0-9]|phar|pl|py|cgi|sh)$ - [F,L]
+
     # Route /storage/ requests to public/storage/ (Laravel symlink lives there)
     RewriteRule ^storage/(.+)$ public/storage/$1 [L]
 

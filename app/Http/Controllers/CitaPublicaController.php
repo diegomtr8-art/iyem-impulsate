@@ -177,7 +177,9 @@ class CitaPublicaController extends Controller
             if ($cita->restaurantero->user?->email) {
                 Mail::to($cita->restaurantero->user->email)->send(new CitaAgendada($cita, 'proveedor'));
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            \Log::warning('Error enviando correo de cita agendada al proveedor: ' . $e->getMessage());
+        }
 
         // Notificaciones en sistema
         $fechaFmt = $cita->inicio->format('d/m/Y H:i');

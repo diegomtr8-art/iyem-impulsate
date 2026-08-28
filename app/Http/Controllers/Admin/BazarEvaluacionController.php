@@ -56,6 +56,12 @@ class BazarEvaluacionController extends Controller
 
                 $s->ine_url = $s->ine_path ? route('documentos.ver', ['user' => $s->user_id, 'tipo' => 'ine']) : null;
                 $s->csf_url = $s->csf_path ? route('documentos.ver', ['user' => $s->user_id, 'tipo' => 'csf']) : null;
+                $s->tiene_ine = (bool) $s->ine_path;
+                $s->tiene_csf = (bool) $s->csf_path;
+
+                // Las rutas internas ya no hacen falta: la vista usa las _url y
+                // los booleanos. No se envian al navegador.
+                unset($s->ine_path, $s->csf_path);
 
                 $s->csf_vigente = false;
                 if ($s->csf_fecha) {

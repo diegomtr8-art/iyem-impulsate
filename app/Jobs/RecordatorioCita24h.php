@@ -28,7 +28,9 @@ class RecordatorioCita24h implements ShouldQueue
             if ($this->cita->restaurantero->user?->email) {
                 Mail::to($this->cita->restaurantero->user->email)->send(new RecordatorioCita($this->cita, '24h', 'proveedor'));
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            \Log::warning('Error enviando correo de recordatorio 24h: ' . $e->getMessage());
+        }
 
         Notificacion::crear(
             $this->cita->cliente_id,

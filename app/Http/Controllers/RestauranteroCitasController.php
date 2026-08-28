@@ -63,7 +63,9 @@ class RestauranteroCitasController extends Controller
 
         try {
             Mail::to($cita->cliente->email)->send(new CitaAceptada($cita));
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            Log::warning('Error enviando correo de cita aceptada al comprador: ' . $e->getMessage());
+        }
 
         $fechaFmt = $cita->inicio->format('d/m/Y H:i');
         Notificacion::crear(
@@ -87,7 +89,9 @@ class RestauranteroCitasController extends Controller
 
         try {
             Mail::to($cita->cliente->email)->send(new CitaRechazada($cita, 'cliente'));
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            Log::warning('Error enviando correo de cita rechazada al comprador: ' . $e->getMessage());
+        }
 
         $fechaFmt = $cita->inicio->format('d/m/Y H:i');
         Notificacion::crear(
@@ -126,7 +130,9 @@ class RestauranteroCitasController extends Controller
 
         try {
             Mail::to($cita->cliente->email)->send(new CitaReagendada($cita, 'cliente'));
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            Log::warning('Error enviando correo de propuesta de reagenda al comprador: ' . $e->getMessage());
+        }
 
         $fechaNueva = $propuestaInicio->format('d/m/Y H:i');
         Notificacion::crear(
@@ -184,7 +190,9 @@ class RestauranteroCitasController extends Controller
 
         try {
             Mail::to($cita->restaurantero->user->email)->send(new CitaReagendada($cita, 'proveedor'));
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            Log::warning('Error enviando correo de confirmación de reagenda al proveedor: ' . $e->getMessage());
+        }
 
         return view('mail.confirmacion-exitosa', ['mensaje' => '¡Cita confirmada con la nueva fecha! Nos vemos pronto.']);
     }
@@ -208,17 +216,21 @@ class RestauranteroCitasController extends Controller
             // el mismo correo que en la aceptacion y el proveedor no podia
             // distinguir un caso del otro.
             Mail::to($cita->restaurantero->user->email)->send(new CitaCancelada($cita));
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::warning('Error notificando cancelacion al proveedor: ' . $e->getMessage());
         }
 
-        Notificacion::crear(
-            $cita->restaurantero->user_id,
-            'cita_cancelada',
-            'Propuesta de reagenda rechazada',
-            'El comprador rechazo la nueva fecha propuesta. La cita del ' .
-            $cita->inicio->format('d/m/Y H:i') . ' quedo cancelada.'
-        );
+        // Sin el operador seguro, un restaurantero sin user_id lanzaba \Error
+        // aqui fuera del try y la ruta publica devolvia 500.
+        if ($cita->restaurantero?->user_id) {
+            Notificacion::crear(
+                $cita->restaurantero->user_id,
+                'cita_cancelada',
+                'Propuesta de reagenda rechazada',
+                'El comprador rechazo la nueva fecha propuesta. La cita del ' .
+                $cita->inicio->format('d/m/Y H:i') . ' quedo cancelada.'
+            );
+        }
 
         return view('mail.confirmacion-exitosa', ['mensaje' => 'Has rechazado la propuesta. La cita quedó cancelada.']);
     }

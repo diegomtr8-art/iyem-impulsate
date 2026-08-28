@@ -15,11 +15,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('eventos', function (Blueprint $table) {
-            $table->string('tv_token', 64)->nullable()->unique()->after('activa');
-        });
+        // El DDL hace commit implicito en MySQL: si el backfill muere despues,
+        // la columna existe pero la migracion no queda registrada, y el
+        // siguiente migrate falla con "Duplicate column name".
+        if (!Schema::hasColumn('eventos', 'tv_token')) {
+            Schema::table('eventos', function (Blueprint $table) {
+                $table->string('tv_token', 64)->nullable()->unique()->after('activa');
+            });
+        }
 
-        foreach (DB::table('eventos')->pluck('id') as $id) {
+        // Solo los que aun no tienen token: reanudable sin efectos secundarios.
+        foreach (DB::table('eventos')->whereNull('tv_token')->pluck('id') as $id) {
             DB::table('eventos')->where('id', $id)->update(['tv_token' => Str::random(48)]);
         }
     }

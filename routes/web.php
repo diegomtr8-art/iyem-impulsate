@@ -246,9 +246,19 @@ Route::middleware([
         Route::get('/calendario/eventos', [CalendarioController::class, 'events'])->name('calendario.events');
 
         // Pantalla TV pública (redirige al token)
-        Route::get('/tv', fn() => redirect()->route('tv.index', [
-            'token' => \App\Http\Controllers\Admin\PantallaTvController::getToken()
-        ]))->name('tv.index');
+        Route::get('/tv', function () {
+            $token = \App\Http\Controllers\Admin\PantallaTvController::getToken();
+
+            // Sin evento de contexto el token viene vacio, y route() lanzaria
+            // UrlGenerationException (error 500) en vez de un mensaje util.
+            if ($token === '') {
+                return back()->withErrors([
+                    'error' => 'No hay un evento activo. Activa uno para generar el enlace de la Pantalla TV.',
+                ]);
+            }
+
+            return redirect()->route('tv.index', ['token' => $token]);
+        })->name('tv.index');
 
         Route::post('/tv/rotar-token', function () {
             $evento = \App\Models\Evento::contextoAdmin();

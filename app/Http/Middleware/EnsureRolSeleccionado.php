@@ -29,7 +29,10 @@ class EnsureRolSeleccionado
                 'citas.rechazar-token*',
                 'tv.index',
                 'tv.publico',
-                'bazar.evaluacion'
+                'bazar.evaluacion',
+                'documentos.ver',
+                'perfil.comprador.actualizar',
+                'perfil.agregar-rol'
             )
         ) {
             return redirect()->route('rol.seleccionar');

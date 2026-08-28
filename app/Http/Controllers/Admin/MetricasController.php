@@ -68,8 +68,11 @@ class MetricasController extends Controller
             ->orderBy('fecha')
             ->get();
 
+        // Acotado a 90 dias: sin filtro esta agrupacion crece para siempre
+        // aunque tenga indice, y page_visits es la tabla que mas crece.
         $visitasPorPagina = DB::table('page_visits')
             ->selectRaw('url as pagina, count(*) as total')
+            ->where('created_at', '>=', now()->subDays(90)->startOfDay())
             ->groupBy('url')
             ->orderByDesc('total')
             ->limit(10)

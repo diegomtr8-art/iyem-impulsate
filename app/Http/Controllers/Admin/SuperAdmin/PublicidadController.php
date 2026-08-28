@@ -95,7 +95,9 @@ class PublicidadController extends Controller
 
     private function validar(Request $request, bool $forUpdate = false): array
     {
-        $imageRule = $forUpdate ? ['nullable', 'image', 'max:4096'] : ['nullable', 'image', 'max:4096'];
+        // 'image' a secas acepta SVG, y un SVG con <script> es XSS almacenado
+        // servido desde nuestro propio origen. La publicidad se pinta en la portada.
+        $imageRule = ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'];
 
         return $request->validate([
             'titulo'               => ['required', 'string', 'max:255'],

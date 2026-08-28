@@ -69,7 +69,7 @@ class ProveedorPerfilController extends Controller
             'municipio'               => ['nullable', 'string', 'max:100'],
             'rfc'                     => ['nullable', 'string', 'max:13'],
             'sitio_web'               => ['nullable', 'string', 'max:200'],
-            'foto'                    => ['nullable', 'image', 'max:4096'],
+            'foto'                    => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
             'productos'               => ['nullable', 'array', 'max:5'],
             'productos.*.nombre'      => ['nullable', 'string', 'max:200'],
             'productos.*.descripcion' => ['nullable', 'string', 'max:500'],
@@ -98,7 +98,7 @@ class ProveedorPerfilController extends Controller
         ];
 
         foreach (range(0, 4) as $i) {
-            $rules["producto_foto_{$i}"] = ['nullable', 'image', 'max:4096'];
+            $rules["producto_foto_{$i}"] = ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'];
         }
 
         $request->validate($rules);

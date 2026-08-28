@@ -194,7 +194,9 @@ class Restaurantero extends Model
         if ($this->user?->email) {
             try {
                 \Illuminate\Support\Facades\Mail::to($this->user->email)->send(new \App\Mail\ProveedorAprobado($this));
-            } catch (\Exception $e) {}
+            } catch (\Throwable $e) {
+                \Log::warning('Error enviando correo de auto-aprobación de proveedor: ' . $e->getMessage());
+            }
         }
 
         if ($this->user) {

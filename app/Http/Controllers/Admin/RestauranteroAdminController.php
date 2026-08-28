@@ -247,8 +247,19 @@ class RestauranteroAdminController extends Controller
         }
 
         if ($request->hasFile('logo')) {
-            $file     = $request->file('logo');
-            $filename = 'logo_' . $restaurantero->id . '_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $file = $request->file('logo');
+
+            // extension() adivina la extension a partir del CONTENIDO real.
+            // getClientOriginalExtension() devuelve lo que mande el cliente:
+            // un JPEG renombrado a .php pasaba la validacion de mimes y se
+            // guardaba como .php dentro de storage, que el servidor sirve.
+            $extension = strtolower($file->extension());
+
+            if (!in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                return back()->withErrors(['logo' => 'El archivo debe ser una imagen JPG, PNG o WEBP.']);
+            }
+
+            $filename = 'logo_' . $restaurantero->id . '_' . uniqid() . '.' . $extension;
             $dir      = storage_path('app/public/logos');
 
             if (!is_dir($dir)) {
@@ -308,7 +319,9 @@ class RestauranteroAdminController extends Controller
             if ($restaurantero->user?->email) {
                 Mail::to($restaurantero->user->email)->send(new ProveedorAprobado($restaurantero));
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            \Log::warning('Error enviando correo de aprobación de proveedor: ' . $e->getMessage());
+        }
 
         if ($restaurantero->user) {
             Notificacion::crear(
@@ -341,7 +354,9 @@ class RestauranteroAdminController extends Controller
             if ($restaurantero->user?->email) {
                 Mail::to($restaurantero->user->email)->send(new ProveedorRechazado($restaurantero, $request->motivo));
             }
-        } catch (\Exception $e) {}
+        } catch (\Throwable $e) {
+            \Log::warning('Error enviando correo de rechazo de proveedor: ' . $e->getMessage());
+        }
 
         if ($restaurantero->user) {
             Notificacion::crear(

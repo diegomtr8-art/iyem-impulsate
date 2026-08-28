@@ -56,8 +56,11 @@ class EventoSolicitudesController extends Controller
                 'nombre_establecimiento' => $users[$reg->user_id]->nombre_establecimiento ?? null,
                 'created_at'        => $users[$reg->user_id]->created_at,
                 'citas_historico'   => $citasHistoricoPorUser[$reg->user_id] ?? 0,
-                'ine_path'  => $users[$reg->user_id]->ine_path ?? null,
-                'csf_path'  => $users[$reg->user_id]->csf_path ?? null,
+                // Booleanos en vez de rutas: el frontend solo los usa como
+                // bandera v-if, y los enlaces reales van por route('documentos.ver').
+                // No hay razon para exponer rutas internas del filesystem.
+                'tiene_ine' => !empty($users[$reg->user_id]->ine_path),
+                'tiene_csf' => !empty($users[$reg->user_id]->csf_path),
                 'csf_fecha' => $users[$reg->user_id]->csf_fecha ?? null,
             ] : null,
             'restaurantero'  => ($reg->tipo === 'proveedor' && isset($users[$reg->user_id]))

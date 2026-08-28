@@ -54,6 +54,9 @@ class EnviarRecordatorios extends Command
             ->with(['cliente', 'restaurantero.user'])
             ->get();
 
+        // Una sola consulta para todo el comando
+        $admins = User::role('admin')->get();
+
         foreach ($citas1h as $cita) {
             // Notificación in-app al comprador
             Notificacion::crear(
@@ -77,8 +80,8 @@ class EnviarRecordatorios extends Command
                 );
             }
 
-            // Notificar a todos los admins
-            $admins = User::role('admin')->get();
+            // Notificar a todos los admins ($admins se resuelve una sola vez
+            // fuera del bucle: antes era una consulta por cita, cada 5 minutos)
             foreach ($admins as $admin) {
                 Notificacion::crear(
                     $admin->id,
