@@ -3,84 +3,35 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Mail\CitaCancelada;
-use App\Mail\CitaConfirmada;
 use App\Models\Cita;
 use App\Models\Evento;
-use App\Models\Restaurantero;
-use App\Models\User;
-use App\Services\AgendaCitaService;
-use Carbon\Carbon;
+use App\Services\Admin\AdminCitasService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
+/** La logica vive en AdminCitasService (compartido con la API v1). */
 class CitaAdminController extends Controller
 {
+    public function __construct(private AdminCitasService $citas) {}
+
     public function index(Request $request)
     {
-        $query = Cita::with(['restaurantero.user', 'servicio', 'cliente'])
-            ->orderByDesc('inicio');
-
-        if ($request->filled('estado')) {
-            $query->where('estado', $request->estado);
-        }
-
-        if ($request->filled('search')) {
-            $query->whereHas('cliente', function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                  ->orWhere('email', 'like', '%' . $request->search . '%');
-            });
-        }
-
-        $citas = $query->paginate(20)->withQueryString();
-
-        $clientes = User::role('cliente')->orderBy('name')->get(['id', 'name', 'email']);
-        $restauranteros = Restaurantero::where('activo', true)->orderBy('nombre_restaurante')->get(['id', 'nombre_restaurante']);
-
         return Inertia::render('Admin/Citas/Index', [
-            'citas'         => $citas,
-            'filters'       => $request->only(['estado', 'search']),
-            'clientes'      => $clientes,
-            'restauranteros' => $restauranteros,
+            'citas'          => $this->citas->listar($request->only(['estado', 'search'])),
+            'filters'        => $request->only(['estado', 'search']),
+            'clientes'       => $this->citas->clientes(),
+            'restauranteros' => $this->citas->proveedores(),
         ]);
     }
 
-    public function store(Request $request, AgendaCitaService $agenda)
+    public function store(Request $request)
     {
-        $request->validate([
-            'cliente_id'       => 'required|exists:users,id',
-            'restaurantero_id' => 'required|exists:restauranteros,id',
-            'fecha'            => 'required|date',
-            'hora'             => 'required|date_format:H:i',
-            'duracion'         => 'required|integer|min:5|max:480',
-            'notas'            => 'nullable|string|max:1000',
-        ]);
+        $datos = $request->validate(AdminCitasService::REGLAS_ALTA);
 
-        $evento = Evento::contextoAdmin();
-        if (!$evento) {
-            return back()->withErrors(['edicion' => 'No hay un evento activo.']);
-        }
+        // El evento de la cita es el del selector del panel (sesion).
+        $cita = $this->citas->crear(Evento::contextoAdmin(), $datos);
 
-        $cliente = User::findOrFail($request->cliente_id);
-
-        // Verificar que el cliente no sea admin
-        if ($cliente->hasRole('admin')) {
-            return back()->withErrors(['cliente' => 'No se puede agendar una cita para un administrador.']);
-        }
-
-        // Cupo, solapes y bloqueo viven en AgendaCitaService. La duracion la
-        // fija el admin en el formulario; nace confirmada.
-        $agenda->agendar(
-            $cliente,
-            (int) $request->restaurantero_id,
-            $evento,
-            Carbon::parse($request->fecha . ' ' . $request->hora),
-            (int) $request->duracion,
-            ['estado' => 'confirmada', 'notas' => $request->notas, 'origen' => 'admin'],
-        );
-
-        return back()->with('success', 'Cita agendada correctamente para ' . $cliente->name . '.');
+        return back()->with('success', 'Cita agendada correctamente para ' . $cita->cliente->name . '.');
     }
 
     public function updateEstado(Request $request, Cita $cita)
@@ -89,22 +40,7 @@ class CitaAdminController extends Controller
             'estado' => 'required|in:pendiente,confirmada,cancelada,completada',
         ]);
 
-        $estadoAnterior = $cita->estado;
-        $cita->update(['estado' => $request->estado]);
-
-        if (in_array($request->estado, ['confirmada', 'cancelada']) && $estadoAnterior !== $request->estado) {
-            $cita->load(['restaurantero', 'cliente']);
-
-            try {
-                if ($request->estado === 'confirmada') {
-                    Mail::to($cita->cliente->email)->send(new CitaConfirmada($cita));
-                } elseif ($request->estado === 'cancelada') {
-                    Mail::to($cita->cliente->email)->send(new CitaCancelada($cita));
-                }
-            } catch (\Exception $e) {
-                // No bloqueamos la operación si el correo falla
-            }
-        }
+        $this->citas->cambiarEstado($cita, $request->estado);
 
         return back()->with('success', 'Estado de la cita actualizado.');
     }
