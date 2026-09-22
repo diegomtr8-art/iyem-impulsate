@@ -145,6 +145,13 @@ class Restaurantero extends Model
     {
         $evento = Evento::activo();
 
+        // Se llama desde el evento 'saved', que Laravel dispara ANTES de
+        // sincronizar los originales. Sin esto, si el guardado venia de
+        // aprobado=true -> false, forceFill(aprobado=true) coincide con el
+        // original, no hay "dirty" y el UPDATE nunca se ejecuta: el perfil
+        // quedaba desaprobado e inactivo mientras la web decia "aprobado".
+        $this->syncOriginal();
+
         $this->forceFill([
             'aprobado'       => true,
             'rechazado'      => false,

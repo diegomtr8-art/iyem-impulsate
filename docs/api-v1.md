@@ -3860,10 +3860,9 @@ Límite `api-proveedor-perfil`. Body JSON con campos de la sección (ver tabla).
 (o `"…automáticamente."` si no hay evento activo) cuando el perfil queda completo, o `"Progreso guardado. Completa
 todos los campos requeridos para que tu perfil se apruebe automáticamente."`.
 
-> **Aviso de estado (bug de la web, ver reporte):** si el negocio **ya estaba aprobado**, al guardar queda
-> `estado = pendiente` / `activo = false` en la base aunque el `message` diga "Fuiste aprobado automáticamente"; el
-> siguiente guardado lo vuelve a aprobar. La API se comporta exactamente igual que la web (mismo servicio). Mostrar
-> siempre `data.negocio.estado`.
+> **Estado tras guardar:** si el perfil sigue completo, el negocio queda aprobado y activo (antes de la corrección en
+> `Restaurantero::autoAprobar` quedaba desaprobado en la base pese al mensaje). Si el guardado deja el perfil
+> incompleto, pierde la aprobación, igual que en la web. Mostrar siempre `data.negocio.estado`.
 
 Wizard del proveedor nuevo — sección `negocio`:
 

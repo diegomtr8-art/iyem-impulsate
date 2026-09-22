@@ -386,15 +386,21 @@ class WebProveedorRegresionTest extends TestCase
         Storage::disk('public')->assertMissing($logoViejo);
         $this->assertSame($fotoProducto, $r->productos_top[0]['foto_path']);
         $this->assertSame('Salsa roja', $r->productos_top[0]['nombre']);
-        // BUG preexistente (se documenta, no se arregla aqui): al editar un perfil
-        // YA aprobado, store() pone aprobado=false y el hook saved() llama a
-        // autoAprobar(), cuyo saveQuietly() anidado no ve cambios (el original
-        // del modelo aun dice aprobado=true) y no escribe nada. En BD el
-        // proveedor queda aprobado=false/activo=false aunque el perfil siga
-        // completo y el mensaje diga "Fuiste aprobado automaticamente".
+        // Editar un perfil ya aprobado y que sigue completo lo deja aprobado y
+        // visible. Antes quedaba aprobado=false/activo=false en BD (autoAprobar
+        // corria en 'saved' sin syncOriginal y su UPDATE no se ejecutaba).
         $this->assertTrue($r->perfil_completo);
-        $this->assertFalse($r->aprobado);
-        $this->assertFalse($r->activo);
+        $this->assertTrue($r->aprobado);
+        $this->assertTrue($r->activo);
+
+        // Y un tercer guardado no lo alterna de vuelta.
+        $this->actingAs($this->proveedor)->from('/user/profile')
+            ->post('/proveedor/completar-perfil', $this->perfilCompleto([
+                'productos' => [['nombre' => 'Salsa roja']],
+            ]))->assertSessionHasNoErrors();
+        $r->refresh();
+        $this->assertTrue($r->aprobado);
+        $this->assertTrue($r->activo);
     }
 
     public function test_editar_perfil_aprobado_incompleto_pierde_la_aprobacion(): void
