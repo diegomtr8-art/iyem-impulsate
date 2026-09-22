@@ -3,22 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\ReglaDeNegocioException;
-use App\Mail\CitaAceptada;
-use App\Mail\CitaRechazada;
-use App\Mail\CitaReagendada;
 use App\Models\Cita;
-use App\Models\Notificacion;
 use App\Services\AgendaCitaService;
-use Carbon\Carbon;
+use App\Services\GestionCitasProveedorService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class RestauranteroCitasController extends Controller
 {
-    public function __construct(private AgendaCitaService $agenda) {}
+    public function __construct(
+        private AgendaCitaService $agenda,
+        private GestionCitasProveedorService $gestion,
+    ) {}
 
     public function index(Request $request)
     {
@@ -29,55 +25,27 @@ class RestauranteroCitasController extends Controller
 
         $tab = $request->get('tab', 'pendientes');
 
-        $base = Cita::where('restaurantero_id', $restaurantero->id)
+        $citas = $this->gestion->citasDePestana($restaurantero, $tab)
             ->with(['cliente', 'servicio'])
-            ->orderByDesc('inicio');
-
-        $estados = match($tab) {
-            'pendientes'  => ['pendiente'],
-            'confirmadas' => ['confirmada', 'pendiente_reconfirmacion', 'reagendada'],
-            'rechazadas'  => ['rechazada', 'cancelada'],
-            default       => ['pendiente', 'confirmada', 'cancelada', 'completada', 'rechazada', 'reagendada', 'pendiente_reconfirmacion'],
-        };
-
-        $citas = $base->whereIn('estado', $estados)->paginate(20)->withQueryString();
-
-        $counts = [
-            'pendientes'  => Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'pendiente')->count(),
-            'confirmadas' => Cita::where('restaurantero_id', $restaurantero->id)->whereIn('estado', ['confirmada', 'pendiente_reconfirmacion', 'reagendada'])->count(),
-            'rechazadas'  => Cita::where('restaurantero_id', $restaurantero->id)->whereIn('estado', ['rechazada', 'cancelada'])->count(),
-        ];
+            ->paginate(20)
+            ->withQueryString();
 
         return Inertia::render('Restaurantero/Citas', [
             'citas'         => $citas,
             'tab'           => $tab,
-            'counts'        => $counts,
+            'counts'        => $this->gestion->contadores($restaurantero),
             'restaurantero' => $restaurantero,
         ]);
     }
+
+    // Aceptar, rechazar y reagendar (correos + notificaciones) viven en
+    // GestionCitasProveedorService, que tambien usa la API v1 (/api/v1/proveedor/citas).
 
     public function aceptar(Request $request, Cita $cita)
     {
         $this->autorizarRestaurantero($request, $cita);
 
-        $cita->update(['estado' => 'confirmada']);
-
-        $cita->load(['cliente', 'restaurantero']);
-
-        try {
-            Mail::to($cita->cliente->email)->send(new CitaAceptada($cita));
-        } catch (\Throwable $e) {
-            Log::warning('Error enviando correo de cita aceptada al comprador: ' . $e->getMessage());
-        }
-
-        $fechaFmt = $cita->inicio->format('d/m/Y H:i');
-        Notificacion::crear(
-            $cita->cliente_id,
-            'cita_aceptada',
-            'Cita confirmada',
-            "Tu cita con {$cita->restaurantero->nombre_restaurante} el {$fechaFmt} fue confirmada.",
-            $cita->id
-        );
+        $this->gestion->aceptar($cita);
 
         return back()->with('success', 'Cita aceptada. El comprador fue notificado.');
     }
@@ -86,24 +54,7 @@ class RestauranteroCitasController extends Controller
     {
         $this->autorizarRestaurantero($request, $cita);
 
-        $cita->update(['estado' => 'rechazada']);
-
-        $cita->load(['cliente', 'restaurantero']);
-
-        try {
-            Mail::to($cita->cliente->email)->send(new CitaRechazada($cita, 'cliente'));
-        } catch (\Throwable $e) {
-            Log::warning('Error enviando correo de cita rechazada al comprador: ' . $e->getMessage());
-        }
-
-        $fechaFmt = $cita->inicio->format('d/m/Y H:i');
-        Notificacion::crear(
-            $cita->cliente_id,
-            'cita_rechazada',
-            'Cita rechazada',
-            "Tu cita con {$cita->restaurantero->nombre_restaurante} el {$fechaFmt} fue rechazada.",
-            $cita->id
-        );
+        $this->gestion->rechazar($cita);
 
         return back()->with('success', 'Cita rechazada. El comprador fue notificado.');
     }
@@ -112,40 +63,10 @@ class RestauranteroCitasController extends Controller
     {
         $this->autorizarRestaurantero($request, $cita);
 
-        $request->validate([
-            'propuesta_fecha' => ['required', 'date', 'after_or_equal:today'],
-            'propuesta_hora'  => ['required', 'date_format:H:i'],
-        ]);
+        $request->validate(GestionCitasProveedorService::REGLAS_REAGENDAR);
 
-        // Misma regla de duracion que el alta, y el hueco propuesto debe estar
-        // libre para ambas partes (si no, ReglaDeNegocioException -> withErrors).
-        $propuestaInicio = Carbon::parse($request->propuesta_fecha . ' ' . $request->propuesta_hora);
-        $propuestaFin    = $this->agenda->proponerReagenda($cita, $propuestaInicio);
-        $token           = Str::random(64);
-
-        $cita->update([
-            'estado'             => 'pendiente_reconfirmacion',
-            'propuesta_inicio'   => $propuestaInicio,
-            'propuesta_fin'      => $propuestaFin,
-            'token_confirmacion' => $token,
-        ]);
-
-        $cita->load(['cliente', 'restaurantero', 'servicio']);
-
-        try {
-            Mail::to($cita->cliente->email)->send(new CitaReagendada($cita, 'cliente'));
-        } catch (\Throwable $e) {
-            Log::warning('Error enviando correo de propuesta de reagenda al comprador: ' . $e->getMessage());
-        }
-
-        $fechaNueva = $propuestaInicio->format('d/m/Y H:i');
-        Notificacion::crear(
-            $cita->cliente_id,
-            'cita_reagendada',
-            'Propuesta de cambio de horario',
-            "{$cita->restaurantero->nombre_restaurante} propone mover tu cita al {$fechaNueva}. Revisa tu correo para confirmar.",
-            $cita->id
-        );
+        // Hueco ocupado -> ReglaDeNegocioException -> withErrors (bootstrap/app.php).
+        $this->gestion->proponerReagenda($cita, $request->propuesta_fecha, $request->propuesta_hora);
 
         return back()->with('success', 'Propuesta de reagendamiento enviada al comprador.');
     }

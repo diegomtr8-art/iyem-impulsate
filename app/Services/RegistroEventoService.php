@@ -43,7 +43,7 @@ class RegistroEventoService
      * El tipo de registro que le corresponde al usuario en este evento, segun
      * el tipo de evento y su rol activo. Null si ninguno aplica (p. ej. admin).
      */
-    public function tipoParaUsuario(User $user, Evento $evento): ?string
+    public function tipoParaUsuario(User $user, Evento $evento, ?string $vista = null): ?string
     {
         if ($user->hasRole('admin') || $user->hasRole('super-admin')) {
             return null;
@@ -56,11 +56,37 @@ class RegistroEventoService
         $esComprador = $user->hasRole('cliente');
         $esProveedor = $user->hasRole('restaurantero');
 
+        // Las pantallas de proveedor de la API (/api/v1/proveedor/*) piden la
+        // vista 'proveedor' explicitamente: con los dos roles no dependen de active_role.
+        if ($vista === 'proveedor' && $esProveedor) {
+            return 'proveedor';
+        }
+
         if ($esComprador && $esProveedor) {
             return $user->active_role === 'proveedor' ? 'proveedor' : 'comprador';
         }
 
         return $esProveedor ? 'proveedor' : ($esComprador ? 'comprador' : null);
+    }
+
+    /**
+     * Eventos que el usuario puede ver en la app: los activos y aquellos en los
+     * que tiene algun registro (misma regla que EventoPolicy::view). El admin, todos.
+     */
+    public function eventosVisibles(User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        $esAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+
+        return Evento::query()
+            ->when(!$esAdmin, fn ($q) => $q->where(fn ($q) => $q
+                ->where('activa', true)
+                ->orWhereExists(fn ($sub) => $sub->from('evento_usuario')
+                    ->whereColumn('evento_usuario.evento_id', 'eventos.id')
+                    ->where('evento_usuario.user_id', $user->id))))
+            ->orderByDesc('activa')
+            ->orderByDesc('destacado')
+            ->orderByDesc('fecha_hora_inicio')
+            ->orderByDesc('id');
     }
 
     /**

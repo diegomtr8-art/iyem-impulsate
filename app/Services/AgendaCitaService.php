@@ -456,6 +456,7 @@ class AgendaCitaService
         bool $ventanaCerrada,
         ?Carbon $desde,
         ?Carbon $hasta,
+        ?int $excluirCitaId = null,
     ): array {
         if (!$evento->fecha_hora_inicio) {
             return [];
@@ -483,8 +484,10 @@ class AgendaCitaService
         // Todas las citas que pueden chocar con algun horario del rango, en dos consultas.
         $rangoInicio = $primerDia->copy()->addMinutes($minInicio);
         $rangoFin    = $ultimoDia->copy()->addMinutes($minFin + $duracion);
-        $delProveedor = $this->citasQueChocan('proveedor', $restaurantero->id, $rangoInicio, $rangoFin)->get(['id', 'inicio', 'fin']);
-        $delComprador = $this->citasQueChocan('comprador', $comprador->id, $rangoInicio, $rangoFin)->get(['id', 'inicio', 'fin']);
+        $delProveedor = $this->citasQueChocan('proveedor', $restaurantero->id, $rangoInicio, $rangoFin)
+            ->when($excluirCitaId, fn ($q) => $q->whereKeyNot($excluirCitaId))->get(['id', 'inicio', 'fin']);
+        $delComprador = $this->citasQueChocan('comprador', $comprador->id, $rangoInicio, $rangoFin)
+            ->when($excluirCitaId, fn ($q) => $q->whereKeyNot($excluirCitaId))->get(['id', 'inicio', 'fin']);
 
         $ahora = now();
         $dias = [];
@@ -517,6 +520,59 @@ class AgendaCitaService
         }
 
         return $dias;
+    }
+
+    /** Estados de la casilla en disponibilidadReagenda() (vista del proveedor). */
+    public const SLOT_OCUPADO_COMPRADOR = 'ocupado_comprador';
+    public const SLOT_PASADO = 'pasado';
+
+    /**
+     * Horarios que el PROVEEDOR puede proponer al reagendar $cita: la misma
+     * rejilla del evento que ve el comprador, con las MISMAS reglas de choque
+     * que proponerReagenda() (la cita no choca consigo misma; el comprador
+     * lleva colchon, el proveedor no). No aplica la ventana de agendado del
+     * comprador porque la reagenda tampoco la exige; solo marca lo que ya paso.
+     *
+     *  - pasado: ya empezo.
+     *  - ocupado_proveedor: choca con otra cita activa del proveedor.
+     *  - ocupado_comprador: choca con otra cita activa del comprador (+/- colchon).
+     *  - libre.
+     */
+    public function disponibilidadReagenda(Cita $cita, ?Carbon $desde = null, ?Carbon $hasta = null): array
+    {
+        $cita->loadMissing(['evento', 'servicio', 'cliente', 'restaurantero']);
+
+        $evento   = $cita->evento ?? Evento::activo();
+        // Misma duracion que proponerReagenda().
+        $duracion = $this->duracion($cita->evento, $cita->servicio);
+        $paso     = max(5, (int) round(($evento?->tiempo_entre_citas_minutos ?? self::DURACION_POR_DEFECTO) / 5) * 5);
+
+        $dias = ($evento && $cita->cliente && $cita->restaurantero)
+            ? $this->diasConHorarios($evento, $cita->cliente, $cita->restaurantero, $duracion, $paso, false, $desde, $hasta, $cita->id)
+            : [];
+
+        $estados = [
+            self::SLOT_FUERA_DE_VENTANA    => self::SLOT_PASADO,
+            self::SLOT_BLOQUEADO_COMPRADOR => self::SLOT_OCUPADO_COMPRADOR,
+        ];
+
+        return [
+            'evento'                => $evento ? ['id' => $evento->id, 'nombre' => $evento->nombre] : null,
+            'duracion_cita_minutos' => $duracion,
+            'intervalo_minutos'     => $paso,
+            'colchon_comprador_minutos' => self::COLCHON_COMPRADOR_MINUTOS,
+            'horario_actual'        => ['inicio' => $cita->inicio?->toIso8601String(), 'fin' => $cita->fin?->toIso8601String()],
+            'dias'                  => array_map(fn (array $dia) => [
+                'fecha'    => $dia['fecha'],
+                'horarios' => array_map(fn (array $h) => [
+                    'hora'              => $h['hora'],
+                    'inicio'            => $h['inicio'],
+                    'fin'               => $h['fin'],
+                    'estado'            => $estados[$h['estado']] ?? $h['estado'],
+                    'es_horario_actual' => $cita->inicio && $h['inicio'] === $cita->inicio->toIso8601String(),
+                ], $dia['horarios']),
+            ], $dias),
+        ];
     }
 
     /** CitaPublicaController::destroy: el comprador cancela su cita. */

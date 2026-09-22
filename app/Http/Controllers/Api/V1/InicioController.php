@@ -6,6 +6,7 @@ use App\Http\Controllers\CompletarPerfilController;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\CitaResumenResource;
 use App\Http\Resources\EventoResource;
+use App\Http\Resources\PerfilProveedorResource;
 use App\Http\Resources\PublicidadResource;
 use App\Http\Resources\UserResource;
 use App\Models\AgendaPropuesta;
@@ -15,6 +16,8 @@ use App\Models\Evento;
 use App\Models\Publicidad;
 use App\Models\Restaurantero;
 use App\Services\DocumentosUsuarioService;
+use App\Services\GestionCitasProveedorService;
+use App\Services\PerfilProveedorService;
 use App\Services\NotificacionService;
 use App\Services\OnboardingService;
 use App\Services\PerfilCompradorService;
@@ -73,8 +76,29 @@ class InicioController extends Controller
                         ->where(fn ($q) => $q->where('es_prueba', false)->orWhereNull('es_prueba'))
                         ->count(),
                 ],
+                // Fase 3: pendientes del lado proveedor (null si la cuenta no es proveedor).
+                // No depende de active_role: una cuenta con los dos roles lo recibe siempre.
+                'proveedor'               => $user->hasRole('restaurantero') ? $this->pendientesProveedor($restaurantero) : null,
             ],
         ]);
+    }
+
+    private function pendientesProveedor(?Restaurantero $restaurantero): array
+    {
+        $perfil    = app(PerfilProveedorService::class);
+        $faltantes = $perfil->faltantes($restaurantero);
+
+        return [
+            'negocio'                       => PerfilProveedorResource::negocio($restaurantero, $perfil),
+            'perfil_completo'               => (bool) $restaurantero?->perfil_completo,
+            'secciones_faltantes'           => collect($faltantes)->pluck('seccion')->unique()->values()->all(),
+            'citas_por_responder'           => $restaurantero
+                ? Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'pendiente')->count() : 0,
+            'reagendas_esperando_comprador' => $restaurantero
+                ? Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'pendiente_reconfirmacion')->count() : 0,
+            'citas_hoy'                     => $restaurantero
+                ? app(GestionCitasProveedorService::class)->kpis($restaurantero)['citas_hoy'] : 0,
+        ];
     }
 
     /** Listas de los formularios de la web (mismos valores que validan los controladores). */

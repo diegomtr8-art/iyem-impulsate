@@ -1,7 +1,7 @@
 # API v1 — Impúlsate (app móvil)
 
 Contrato de la API que consume la app Expo. **Todos los ejemplos de respuesta son reales**: se copiaron de llamadas
-hechas el 2026-09-22 contra la BD local (`php artisan impulsate:demo-movil`). Donde un ejemplo se recortó
+hechas el 2026-09-22 contra la BD local (`php artisan impulsate:demo-movil`); las de la sección 12 contra Apache (`http://192.168.10.6/citas/public`). Donde un ejemplo se recortó
 (listas largas), se indica debajo del bloque.
 
 ## Generalidades
@@ -50,8 +50,8 @@ imponen los middlewares de la web). La app debe llevar al usuario a la pantalla 
 
 - `completar_perfil` para un **comprador** (o cuenta con los dos roles) se resuelve con `POST /perfil/completar`.
 - Para un **proveedor puro** (`es_proveedor: true`, `es_comprador: false`) depende del perfil de NEGOCIO
-  (`perfil_proveedor_completo`), que se edita en la Fase 3; mientras tanto la app puede abrir la web
-  (`/proveedor/completar-perfil`).
+  (`perfil_proveedor_completo`), que se completa con el wizard de la sección 12 (`GET /proveedor/perfil` →
+  `PUT /proveedor/perfil/{seccion}`, `POST /proveedor/logo`, `POST /proveedor/productos`).
 
 ### Límites de peticiones
 
@@ -67,6 +67,8 @@ imponen los middlewares de la web). La app debe llevar al usuario a la pantalla 
 | `api-agendar` | `POST /citas` | 10/min por usuario |
 | `api-respuestas` | `POST /citas/{id}/reagenda/*`, `POST /agendas/{id}/aceptar\|rechazar` | 10/min por usuario |
 | `api-encuestas` | `POST /encuestas/{id}/respuestas` | 20/min por usuario |
+| `api-proveedor-perfil` | `PUT /proveedor/perfil*`, `POST /proveedor/logo`, altas/ediciones/bajas de `/proveedor/productos` | 20/min por usuario |
+| `api-proveedor-citas` | `POST /proveedor/citas/{id}/aceptar\|rechazar\|reagendar` | 30/min por usuario |
 
 ### Objeto `user` (UserResource)
 
@@ -1180,6 +1182,8 @@ Resumen para la pantalla de Inicio.
   `reagendas_por_confirmar` (citas en `pendiente_reconfirmacion`, ver `GET /citas?estado=pendiente_reconfirmacion`),
   `agendas_por_responder` (`GET /agendas`) y `encuestas_por_responder` (`GET /encuestas/pendientes`). Los demás campos
   no cambiaron.
+- `proveedor` (Fase 3): pendientes del lado proveedor (`null` si la cuenta no es proveedor). Ver
+  [Cambios en GET /inicio](#cambios-en-get-inicio) en la sección 12.
 
   Ejemplo real con los datos de prueba (resto de `data` igual que abajo):
   `HTTP 200`
@@ -1525,6 +1529,10 @@ _Recortado: `municipios` trae 106 municipios ordenados alfabéticamente; se mues
 Eventos activos y aquellos en los que el usuario tiene registro, paginados de 20 en 20. Cada evento trae la decisión
 ya tomada por el servidor: `tipo_registro` (`comprador | proveedor | expositor | null`), `puede_registrarse`,
 `motivo_bloqueo` y `accion`, además de `mi_registro` por tipo y `fases`.
+
+Fase 3: con `?vista=proveedor` (también en `GET /eventos/{id}`) una cuenta con los dos roles ve `tipo_registro`,
+`accion` y `motivo_bloqueo` como proveedor aunque esté en modo comprador; `mi_registro.expositor` trae además
+`seleccionado` (bool). Ver [Registro del proveedor a eventos](#registro-del-proveedor-a-eventos).
 
 200:
 `HTTP 200`
@@ -3114,17 +3122,1758 @@ no se guardan.
 
 ---
 
-## 12. Datos de prueba locales
+## 12. Proveedor (Fase 3)
+
+Todo lo del PROVEEDOR vive bajo `/api/v1/proveedor/*`. Las respuestas de esta sección se capturaron el 2026-09-22
+contra Apache (`http://192.168.10.6/citas/public/api/v1`) con `proveedor@prueba.impulsate.mx` y
+`proveedor.nuevo@prueba.impulsate.mx` tras `php artisan impulsate:demo-movil`.
+
+**Acceso.** Solo cuentas con el rol `restaurantero` (= proveedor), igual que el `role:restaurantero` de la web. No
+depende de `rol_activo`: una cuenta con los dos roles usa estas rutas sin cambiar de rol. No se exige el perfil de
+negocio completo (la web tampoco lo exige en `/proveedor/*`): un proveedor con perfil incompleto puede ver su panel,
+completar el perfil y responder citas.
+
+- Sin token → **401** `{"message": "Unauthenticated."}`.
+- Cuenta sin rol de proveedor (p. ej. un comprador) → **403**:
+
+`HTTP 403`
+```json
+{
+  "message": "Esta sección es solo para proveedores."
+}
+```
+
+- Cita de otro proveedor → **403** `{"message": "This action is unauthorized."}`; cita inexistente → **404**.
+- Los productos no llevan id de negocio en la ruta: siempre se opera sobre el negocio del usuario autenticado, así que
+  no hay forma de tocar los de otro proveedor.
+
+**Límites** (nuevos, se suman a los de Generalidades):
+
+| Limitador | Rutas | Límite |
+|---|---|---|
+| `api-proveedor-perfil` | `PUT /proveedor/perfil`, `PUT /proveedor/perfil/{seccion}`, `POST /proveedor/logo`, altas/ediciones/bajas de `/proveedor/productos` | 20/min por usuario |
+| `api-proveedor-citas` | `POST /proveedor/citas/{id}/aceptar\|rechazar\|reagendar` | 30/min por usuario |
+
+> **Importante — cada guardado del perfil re-dispara la aprobación**, igual que en la web: al guardar (cualquier
+> sección, logo o producto) el negocio pasa a "solicitud de aprobación" y, si el perfil está completo, se
+> auto-aprueba y se manda el correo "Proveedor aprobado" + avisos a los admins. Ver el aviso de estado en
+> [PUT /proveedor/perfil/{seccion}](#put-proveedorperfilseccion): la app debe mostrar `data.negocio.estado`, no
+> deducirlo del `message`.
+
+### Objeto `negocio`
+
+Aparece en panel, perfil, productos e inicio.
+
+| Campo | Tipo | Nota |
+|---|---|---|
+| `id` | int\|null | null si aún no existe el negocio |
+| `nombre_negocio` | string\|null | |
+| `estado` | string | `aprobado`, `pendiente`, `rechazado` o `sin_perfil` |
+| `motivo_rechazo` | string\|null | solo con `estado = rechazado` |
+| `activo` | bool | |
+| `visible_en_directorio` | bool | `activo && aprobado` (lo que usa el directorio público) |
+| `perfil_completo` | bool | mismo criterio que la web (`Restaurantero::calcularPerfilCompleto`) |
+| `porcentaje` | int 0–100 | la barra del panel web |
+| `logo_url` | string\|null | URL absoluta |
+| `solicitado_aprobacion_at` | ISO 8601\|null | último guardado del perfil |
+
+### Objeto `cita` del proveedor (CitaProveedorResource)
+
+| Campo | Tipo | Nota |
+|---|---|---|
+| `id`, `inicio`, `fin`, `estado`, `estado_texto`, `notas`, `productos_interes`, `mesa`, `evento`, `creada_at` | | igual que en la cita del comprador |
+| `comprador` | `{id, nombre, email, telefono, nombre_empresa, necesidades}` | lo que la web le muestra al proveedor (nombre, correo, teléfono, necesidades) + empresa. **Nunca** CURP, RFC, documentos ni rutas |
+| `propuesta_reagenda` | `{inicio, fin}`\|null | la propuesta que TÚ enviaste y el comprador aún no responde (`estado = pendiente_reconfirmacion`) |
+| `puede_aceptar`, `puede_rechazar` | bool | `estado = pendiente` (los botones de la web) |
+| `puede_reagendar` | bool | `estado` ∈ `pendiente`, `confirmada`, `reagendada` |
+
+---
+
+### GET /proveedor/panel
+
+Resumen del panel web (`/proveedor/panel`). Igual que la web, **la primera visita crea el negocio vacío** (no aprobado,
+con su servicio y horarios por defecto) si la cuenta aún no tiene uno.
+
+| Campo | Contenido |
+|---|---|
+| `negocio` | objeto `negocio` |
+| `perfil` | `{completo, porcentaje, faltantes[], secciones_faltantes[]}` — `faltantes` como en `GET /proveedor/perfil` |
+| `kpis` | `citas_hoy`, `citas_semana` (de hoy al domingo), `citas_pendientes`, `total_en_evento` (todas menos canceladas/rechazadas), `tasa_aceptacion` (% confirmadas sobre confirmadas+rechazadas, `null` sin datos) |
+| `contadores` | `{pendientes, confirmadas, rechazadas}` — los mismos de las pestañas de `/proveedor/citas` |
+| `cita_proxima_2h` | cita pendiente/confirmada que empieza en las próximas 2 h, o `null` (aviso del panel web) |
+| `proximas_citas` | hasta 5 citas futuras vigentes (`pendiente`, `confirmada`, `reagendada`, `pendiente_reconfirmacion`) |
+| `eventos` | `EventoResource[]` (activos + en los que tiene registro), **calculados como proveedor** aunque la cuenta tenga los dos roles y esté en modo comprador: `tipo_registro = proveedor` en encuentros y `expositor` en bazares |
+| `requisitos_bazar` | `{tiene_ine, tiene_csf, csf_fecha, csf_vigente, csf_vigencia_meses}` — lo que exige el registro al bazar (INE + CSF de máx. 3 meses). Los documentos se suben con `POST /perfil/documentos` |
+| `notificaciones_sin_leer` | int |
+
+La web **no** muestra al proveedor las visitas a su ficha (solo el admin en Métricas), así que no se exponen.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "estado": "aprobado",
+      "motivo_rechazo": null,
+      "activo": true,
+      "visible_en_directorio": true,
+      "perfil_completo": true,
+      "porcentaje": 100,
+      "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "solicitado_aprobacion_at": "2026-09-22T14:43:52-06:00"
+    },
+    "perfil": {
+      "completo": true,
+      "porcentaje": 100,
+      "faltantes": [],
+      "secciones_faltantes": []
+    },
+    "kpis": {
+      "citas_hoy": 0,
+      "citas_semana": 0,
+      "citas_pendientes": 2,
+      "total_en_evento": 5,
+      "tasa_aceptacion": 67
+    },
+    "contadores": {
+      "pendientes": 2,
+      "confirmadas": 3,
+      "rechazadas": 1
+    },
+    "cita_proxima_2h": null,
+    "proximas_citas": [
+      {
+        "id": 27,
+        "inicio": "2026-10-06T10:00:00-06:00",
+        "fin": "2026-10-06T10:30:00-06:00",
+        "estado": "confirmada",
+        "estado_texto": "Confirmada",
+        "notas": "Cita de demostración para la app.",
+        "productos_interes": [],
+        "mesa": "Mesa 3",
+        "evento": {
+          "id": 5,
+          "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+        },
+        "comprador": {
+          "id": 14,
+          "nombre": "Comprador de Prueba",
+          "email": "comprador@prueba.impulsate.mx",
+          "telefono": null,
+          "nombre_empresa": "Empresa de Prueba",
+          "necesidades": null
+        },
+        "propuesta_reagenda": null,
+        "puede_aceptar": false,
+        "puede_rechazar": false,
+        "puede_reagendar": true,
+        "creada_at": "2026-09-22T13:35:33-06:00"
+      },
+      {
+        "id": 31,
+        "inicio": "2026-10-06T11:00:00-06:00",
+        "fin": "2026-10-06T11:30:00-06:00",
+        "estado": "pendiente",
+        "estado_texto": "Pendiente",
+        "notas": "Cita de demostración para la app.",
+        "productos_interes": [],
+        "mesa": null,
+        "evento": {
+          "id": 5,
+          "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+        },
+        "comprador": {
+          "id": 24,
+          "nombre": "Restaurante La Tradición",
+          "email": "demo.comprador1@prueba.impulsate.mx",
+          "telefono": "9992223344",
+          "nombre_empresa": "Restaurante La Tradición",
+          "necesidades": "Salsas, recados y miel para el menú de temporada."
+        },
+        "propuesta_reagenda": null,
+        "puede_aceptar": true,
+        "puede_rechazar": true,
+        "puede_reagendar": true,
+        "creada_at": "2026-09-22T13:35:33-06:00"
+      }
+    ],
+    "eventos": [
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "descripcion": "Encuentro de negocios entre compradores del sector restaurantero y proveedores locales de Yucatán.",
+        "sector_economico": "Alimentos y Bebidas",
+        "tipo_evento": "encuentro_negocios",
+        "imagen_url": null,
+        "convocatoria_url": null,
+        "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+        "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+        "estado": "activo",
+        "destacado": true,
+        "fases": [
+          {
+            "clave": "registro_proveedores",
+            "titulo": "Registro de proveedores",
+            "inicio": "2026-09-17T14:45:27-06:00",
+            "fin": "2026-10-04T09:00:00-06:00",
+            "estado": "en_curso"
+          },
+          {
+            "clave": "registro_compradores",
+            "titulo": "Registro de compradores",
+            "inicio": "2026-09-17T14:45:27-06:00",
+            "fin": "2026-10-05T09:00:00-06:00",
+            "estado": "en_curso"
+          },
+          {
+            "clave": "evento",
+            "titulo": "Evento",
+            "inicio": "2026-10-06T09:00:00-06:00",
+            "fin": "2026-10-06T18:00:00-06:00",
+            "estado": "pendiente"
+          }
+        ],
+        "mi_registro": {
+          "comprador": null,
+          "proveedor": {
+            "estado": "aprobado",
+            "motivo_rechazo": null,
+            "registrado_at": "2026-09-22T14:45:27-06:00"
+          },
+          "expositor": null
+        },
+        "tipo_registro": "proveedor",
+        "puede_registrarse": false,
+        "motivo_bloqueo": null,
+        "accion": "ver_proveedores"
+      }
+    ],
+    "requisitos_bazar": {
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null,
+      "csf_vigente": false,
+      "csf_vigencia_meses": 3
+    },
+    "notificaciones_sin_leer": 5
+  }
+}
+```
+_Recortado: `proximas_citas` traía 5; se muestran 2; `eventos` traía 3 (`EventoResource`, ver sección 7); se muestra el encuentro._
+
+### GET /proveedor/calendario
+
+Las citas del calendario del panel (el feed de FullCalendar de la web: **todas menos las canceladas**, incluidas las
+rechazadas en gris). No hay bloqueos de agenda en la web: solo citas.
+
+Query opcional: `desde`, `hasta` (`YYYY-MM-DD`, ambos inclusive; `hasta ≥ desde`). Sin rango devuelve todas.
+Colores (los de la web): pendiente `#f59e0b`, confirmada `#10b981`, completada `#3b82f6`, cualquier otro `#6b7280`.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 27,
+      "titulo": "Comprador de Prueba",
+      "inicio": "2026-10-06T10:00:00-06:00",
+      "fin": "2026-10-06T10:30:00-06:00",
+      "estado": "confirmada",
+      "estado_texto": "Confirmada",
+      "color": "#10b981",
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "comprador": {
+        "id": 14,
+        "nombre": "Comprador de Prueba",
+        "nombre_empresa": "Empresa de Prueba"
+      }
+    },
+    {
+      "id": 31,
+      "titulo": "Restaurante La Tradición",
+      "inicio": "2026-10-06T11:00:00-06:00",
+      "fin": "2026-10-06T11:30:00-06:00",
+      "estado": "pendiente",
+      "estado_texto": "Pendiente",
+      "color": "#f59e0b",
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "comprador": {
+        "id": 24,
+        "nombre": "Restaurante La Tradición",
+        "nombre_empresa": "Restaurante La Tradición"
+      }
+    }
+  ],
+  "meta": {
+    "desde": "2026-10-06",
+    "hasta": "2026-10-06",
+    "total": 6
+  }
+}
+```
+_Recortado: `data` traía 6 elementos; se muestran 2._
+
+`HTTP 422`
+```json
+{
+  "message": "El campo hasta debe ser una fecha posterior o igual a desde.",
+  "errors": {
+    "hasta": [
+      "El campo hasta debe ser una fecha posterior o igual a desde."
+    ]
+  }
+}
+```
+
+> **Feed web en producción (09-09):** la ruta `GET /proveedor/panel/eventos` existe y responde bien; el 404 venía de
+> `Restaurantero/Panel.vue`, que pedía la URL fija `/restaurantero/panel/eventos` (el prefijo real es `/proveedor`).
+> El arreglo (`route('restaurantero.panel.eventos')`) está en la copia de trabajo de `Panel.vue`, sin commitear ni
+> desplegar.
+
+---
+
+### Perfil de negocio: cómo guarda la web y cómo guarda la API
+
+La web (`/user/profile`, vista Proveedor) tiene 4 secciones de datos (+ Documentos, que ya existe en `/perfil/documentos`)
+y **cada sección envía el formulario completo** a `POST /proveedor/completar-perfil`. Solo `nombre_restaurante` es
+obligatorio para guardar; el resto se puede guardar incompleto ("Progreso guardado…"). No hay guardado por pasos.
+
+La API reproduce eso sin relajar reglas: toma lo que la web precargaría en el formulario, le aplica los campos que envía
+la app y lo guarda con **el mismo servicio y las mismas reglas** que la web. Por eso un guardado parcial (una sección)
+es válido, y valida también los campos ya guardados de las demás secciones.
+
+- `PUT /proveedor/perfil/{seccion}` con `seccion` ∈ `negocio`, `oferta`, `entrega`, `contacto`: solo se aplican los
+  campos de esa sección (los demás del body se ignoran). Pensado para el wizard.
+- `PUT /proveedor/perfil`: cualquier campo de cualquier sección.
+- Logo: `POST /proveedor/logo`. Productos: `/proveedor/productos` (en la web van dentro de la sección "Productos y
+  servicios"; aquí tienen endpoints propios para no mandar el listado completo con fotos).
+
+Limpiezas automáticas (las de la web):
+
+- `tipo_oferta = servicio` → se vacían los campos de producto (`tiempo_vida_anaquel`, certificaciones de producto,
+  `apoyo_iyem*`, refrigeración/congelación = `false`). `tipo_oferta = producto` → se vacían los de servicio.
+- `acepta_credito = false` → `credito_monto_maximo`, `credito_tiempo_*` = `null` y `credito_a_negociar = false`.
+- `factura = false` → `regimen_fiscal = null`.
+- `entrega_domicilio = false` → `cobertura_entrega` y `forma_entrega` = `null`.
+- `sitio_web` sin esquema → se antepone `https://`.
+- Un booleano ausente o `null` se guarda como `false` en `entrega_domicilio`, `acepta_credito`, `credito_a_negociar`,
+  `pago_contraentrega` y `factura`.
+
+#### Tabla de campos
+
+"Perfil completo" = lo que exige `calcularPerfilCompleto()` para auto-aprobar; el servidor lo informa en `faltantes`.
+
+| Campo | Sección | Tipo | Requerido para guardar | Validación exacta (web) | Perfil completo / notas |
+|---|---|---|---|---|---|
+| `nombre_restaurante` | negocio | string | **sí** | `required, string, max:200` | sí |
+| `razon_social` | negocio | string | no | `nullable, string, max:200` | |
+| `nombre_representante` | negocio | string | no | `nullable, string, max:200` | |
+| `curp_representante` | negocio | string | no | `nullable, string, max:18` | la web no tiene input (reenvía lo guardado) |
+| `rfc` | negocio | string | no | `nullable, string, max:13` | obligatorio si `factura = true`. Precarga: el del negocio o el del usuario |
+| `num_empleados` | negocio | int | no | `nullable, integer, min:0` | |
+| `fecha_inicio_operaciones` | negocio | `YYYY-MM-DD` | no | `nullable, date` | |
+| `municipio` | negocio | string (catálogo `municipios`) | no | `nullable, string, max:100` | sí |
+| `categorias_json` | negocio | string[] (catálogo `categorias`) | no | `nullable, array` | la web lo marca con * pero no lo exige |
+| `descripcion` | negocio | string | no | `nullable, string, max:2000` | sí |
+| `mercado_meta` | negocio | string | no | `nullable, string, max:1000` | |
+| `domicilio_en_yucatan` | negocio | bool | no | `nullable, boolean` | |
+| `tipo_oferta` | oferta | `producto`\|`servicio`\|`ambos` | no (default `producto`) | `nullable, in:producto,servicio,ambos` | |
+| `tiempo_vida_anaquel` | oferta | string | no | `nullable, string, max:500` | solo producto/ambos |
+| `tiene_certificaciones_producto` | oferta | bool\|null | no | `nullable, boolean` | solo producto/ambos |
+| `certificaciones_cumple` | oferta | string[] (catálogo `certificaciones`) | no | `nullable, array`; cada uno `string, max:100` | solo producto/ambos |
+| `certificaciones_cumple_otros` | oferta | string | no | `nullable, string, max:1000` | solo producto/ambos |
+| `apoyo_iyem` | oferta | string[] (catálogo `certificaciones`) | no | `nullable, array`; cada uno `string, max:100` | "¿En qué temas requiere apoyo del IYEM?" |
+| `apoyo_iyem_otros` | oferta | string | no | `nullable, string, max:1000` | |
+| `requiere_refrigeracion` | oferta | bool | no | `nullable, boolean` | solo producto/ambos |
+| `requiere_congelacion` | oferta | bool | no | `nullable, boolean` | solo producto/ambos |
+| `tiene_certificaciones_servicio` | oferta | bool\|null | no | `nullable, boolean` | solo servicio/ambos |
+| `certificaciones_servicio_detalle` | oferta | string | no | `nullable, string, max:2000` | solo servicio/ambos |
+| `entrega_domicilio` | entrega | bool | no | `nullable, boolean` | sí (siempre queda `true`/`false` al guardar) |
+| `cobertura_entrega` | entrega | `local`\|`regional`\|`nacional` | **si `entrega_domicilio = true`** | `nullable, string, in:…, required_if entrega_domicilio` | sí, si entrega a domicilio |
+| `forma_entrega` | entrega | `programada`\|`flexible` | **si `entrega_domicilio = true`** | `nullable, string, in:…, required_if entrega_domicilio` | sí, si entrega a domicilio |
+| `pago_contraentrega` | entrega | bool | no | `nullable, boolean` | |
+| `factura` | entrega | bool | no | `nullable, boolean` | |
+| `regimen_fiscal` | entrega | string (sugeridos en `regimenes_fiscales`) | no | `nullable, string, max:100` (acepta cualquier texto) | obligatorio si `factura = true` |
+| `acepta_credito` | entrega | bool | no | `nullable, boolean` | |
+| `credito_monto_maximo` | entrega | number | no | `nullable, numeric, min:0` | obligatorio si `acepta_credito` y no `credito_a_negociar`. `0` se guarda como `null` |
+| `credito_tiempo_cantidad` | entrega | int | no | `nullable, integer, min:1` | ídem |
+| `credito_tiempo_unidad` | entrega | `dias`\|`semanas`\|`meses` | no (precarga `dias`) | `nullable, string, in:dias,semanas,meses` | ídem |
+| `credito_a_negociar` | entrega | bool | no | `nullable, boolean` | si `true`, no se exigen monto ni plazo |
+| `telefono` | contacto | string | no | `nullable, string, max:20` | sí. La web limita el input a 10 dígitos; el servidor no. Precarga: el del negocio o el del usuario |
+| `sitio_web` | contacto | string | no | `nullable, string, max:200` | se antepone `https://` |
+| `direccion` | contacto | string | no | `nullable, string, max:300` | no sale en la ficha pública |
+| `foto` (logo) | contacto → `POST /proveedor/logo` | archivo | — | `image, mimes:jpg,jpeg,png,webp, max:8192` (KB) | sí |
+| productos | oferta → `/proveedor/productos` | ver abajo | — | `productos: array, max:5` | al menos 1 con nombre |
+
+No editables desde la web ni desde la API: `redes_sociales` (la web lo manda pero el servidor lo ignora),
+`requisitos_alimentos` y `apoyo_requisitos` (no están en el formulario: **cada guardado los deja en `[]`**, igual
+que en la web).
+
+### GET /proveedor/perfil
+
+`valores` trae lo que la web precarga en el formulario, agrupado por sección (vacíos como `null`). `faltantes` es la
+lista de lo que impide el perfil completo con la sección donde se captura; `secciones[].completa` sirve para el
+check del wizard.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "estado": "aprobado",
+      "motivo_rechazo": null,
+      "activo": true,
+      "visible_en_directorio": true,
+      "perfil_completo": true,
+      "porcentaje": 100,
+      "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "solicitado_aprobacion_at": "2026-09-22T14:43:52-06:00"
+    },
+    "faltantes": [],
+    "secciones": [
+      {
+        "clave": "negocio",
+        "etiqueta": "Mi negocio",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "oferta",
+        "etiqueta": "Productos y servicios",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "entrega",
+        "etiqueta": "Entrega y pago",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "contacto",
+        "etiqueta": "Contacto y redes",
+        "completa": true,
+        "faltantes": []
+      }
+    ],
+    "valores": {
+      "negocio": {
+        "nombre_restaurante": "Salsas Doña Chela",
+        "razon_social": "Salsas Doña Chela SA de CV",
+        "nombre_representante": "Graciela Pech",
+        "curp_representante": null,
+        "rfc": "SDC200101AB1",
+        "num_empleados": null,
+        "fecha_inicio_operaciones": null,
+        "municipio": "Mérida",
+        "categorias_json": [],
+        "descripcion": "Salsas y recados artesanales yucatecos para restaurantes.",
+        "mercado_meta": "Restaurantes y hoteles de la península.",
+        "domicilio_en_yucatan": false
+      },
+      "oferta": {
+        "tipo_oferta": "producto",
+        "tiempo_vida_anaquel": null,
+        "tiene_certificaciones_producto": false,
+        "certificaciones_cumple": [],
+        "certificaciones_cumple_otros": null,
+        "apoyo_iyem": [],
+        "apoyo_iyem_otros": null,
+        "requiere_refrigeracion": false,
+        "requiere_congelacion": false,
+        "tiene_certificaciones_servicio": null,
+        "certificaciones_servicio_detalle": null
+      },
+      "entrega": {
+        "entrega_domicilio": true,
+        "cobertura_entrega": "regional",
+        "forma_entrega": "programada",
+        "pago_contraentrega": true,
+        "factura": true,
+        "regimen_fiscal": "601 - General de Ley Personas Morales",
+        "acepta_credito": true,
+        "credito_monto_maximo": null,
+        "credito_tiempo_cantidad": null,
+        "credito_tiempo_unidad": "dias",
+        "credito_a_negociar": true
+      },
+      "contacto": {
+        "telefono": "9991112233",
+        "sitio_web": "https://salsasdonachela.mx",
+        "direccion": "Calle 60 x 55, Centro, Mérida"
+      }
+    },
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+    "productos": [
+      {
+        "indice": 0,
+        "nombre": "Recado rojo 1 kg",
+        "descripcion": "Achiote artesanal",
+        "foto_url": null,
+        "capacidad_cantidad": 500,
+        "capacidad_unidad": "kilogramos"
+      },
+      {
+        "indice": 1,
+        "nombre": "Salsa de habanero 250 ml",
+        "descripcion": "Picor alto",
+        "foto_url": null,
+        "capacidad_cantidad": 2000,
+        "capacidad_unidad": "piezas"
+      }
+    ]
+  }
+}
+```
+
+Proveedor nuevo (perfil incompleto):
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 18,
+      "nombre_negocio": "Tortillería La Nueva (demo app)",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "activo": false,
+      "visible_en_directorio": false,
+      "perfil_completo": false,
+      "porcentaje": 42,
+      "logo_url": null,
+      "solicitado_aprobacion_at": "2026-09-22T14:44:03-06:00"
+    },
+    "faltantes": [
+      {
+        "campo": "descripcion",
+        "etiqueta": "Descripción",
+        "seccion": "negocio"
+      },
+      {
+        "campo": "telefono",
+        "etiqueta": "Teléfono",
+        "seccion": "contacto"
+      },
+      {
+        "campo": "logo",
+        "etiqueta": "Logo",
+        "seccion": "contacto"
+      },
+      {
+        "campo": "productos",
+        "etiqueta": "Al menos 1 producto",
+        "seccion": "oferta"
+      },
+      {
+        "campo": "entrega_domicilio",
+        "etiqueta": "Logística (¿entrega a domicilio?)",
+        "seccion": "entrega"
+      }
+    ],
+    "secciones": [
+      {
+        "clave": "negocio",
+        "etiqueta": "Mi negocio",
+        "completa": false,
+        "faltantes": [
+          "descripcion"
+        ]
+      },
+      {
+        "clave": "oferta",
+        "etiqueta": "Productos y servicios",
+        "completa": false,
+        "faltantes": [
+          "productos"
+        ]
+      },
+      {
+        "clave": "entrega",
+        "etiqueta": "Entrega y pago",
+        "completa": false,
+        "faltantes": [
+          "entrega_domicilio"
+        ]
+      },
+      {
+        "clave": "contacto",
+        "etiqueta": "Contacto y redes",
+        "completa": false,
+        "faltantes": [
+          "telefono",
+          "logo"
+        ]
+      }
+    ],
+    "valores": "…",
+    "logo_url": null,
+    "productos": []
+  }
+}
+```
+_Recortado: se omite `valores`._
+
+### GET /proveedor/perfil/catalogos
+
+Todas las opciones del formulario (los mismos valores que valida el servidor), las secciones con sus campos y los
+límites de fotos y productos.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "municipios": [
+      "Abalá",
+      "Acanceh",
+      "Akil",
+      "…"
+    ],
+    "categorias": [
+      "Alimentos y Bebidas",
+      "Tecnología",
+      "Salud y Bienestar",
+      "…"
+    ],
+    "tipos_oferta": [
+      {
+        "valor": "producto",
+        "etiqueta": "Productos"
+      },
+      {
+        "valor": "servicio",
+        "etiqueta": "Servicios"
+      },
+      {
+        "valor": "ambos",
+        "etiqueta": "Ambos"
+      }
+    ],
+    "certificaciones": [
+      "Tabla Nutrimental",
+      "Etiquetado de acuerdo a la NOM",
+      "Código de barras",
+      "Registro de marca",
+      "Certificados de calidad/inocuidad"
+    ],
+    "coberturas_entrega": [
+      {
+        "valor": "local",
+        "etiqueta": "Local (Mérida)"
+      },
+      {
+        "valor": "regional",
+        "etiqueta": "Estatal (Yucatán)"
+      },
+      {
+        "valor": "nacional",
+        "etiqueta": "Nacional"
+      }
+    ],
+    "formas_entrega": [
+      {
+        "valor": "programada",
+        "etiqueta": "Programada"
+      },
+      {
+        "valor": "flexible",
+        "etiqueta": "Flexible"
+      }
+    ],
+    "regimenes_fiscales": [
+      "Persona Física",
+      "Persona Moral",
+      "RESICO"
+    ],
+    "credito_unidades": [
+      {
+        "valor": "dias",
+        "etiqueta": "días"
+      },
+      {
+        "valor": "semanas",
+        "etiqueta": "semanas"
+      },
+      {
+        "valor": "meses",
+        "etiqueta": "meses"
+      }
+    ],
+    "capacidad_unidades": [
+      "piezas",
+      "cajas",
+      "litros",
+      "kilogramos"
+    ],
+    "secciones": [
+      {
+        "clave": "negocio",
+        "etiqueta": "Mi negocio",
+        "campos": [
+          "nombre_restaurante",
+          "razon_social",
+          "nombre_representante",
+          "curp_representante",
+          "rfc",
+          "num_empleados",
+          "fecha_inicio_operaciones",
+          "municipio",
+          "categorias_json",
+          "descripcion",
+          "mercado_meta",
+          "domicilio_en_yucatan"
+        ]
+      },
+      "… (oferta, entrega, contacto)"
+    ],
+    "limites": {
+      "max_productos": 5,
+      "foto_max_kb": 8192,
+      "foto_formatos": [
+        "jpg",
+        "jpeg",
+        "png",
+        "webp"
+      ]
+    }
+  }
+}
+```
+_Recortado: `municipios` trae 106 y `categorias` 22; `secciones` trae las 4 con sus campos (ver tabla)._
+
+### PUT /proveedor/perfil/{seccion}
+
+Límite `api-proveedor-perfil`. Body JSON con campos de la sección (ver tabla). Responde el perfil completo (como
+`GET /proveedor/perfil`) + `message` (el mismo texto de la web).
+
+`message`: `"¡Perfil completo! Fuiste aprobado automáticamente y ya apareces en el directorio del evento activo."`
+(o `"…automáticamente."` si no hay evento activo) cuando el perfil queda completo, o `"Progreso guardado. Completa
+todos los campos requeridos para que tu perfil se apruebe automáticamente."`.
+
+> **Aviso de estado (bug de la web, ver reporte):** si el negocio **ya estaba aprobado**, al guardar queda
+> `estado = pendiente` / `activo = false` en la base aunque el `message` diga "Fuiste aprobado automáticamente"; el
+> siguiente guardado lo vuelve a aprobar. La API se comporta exactamente igual que la web (mismo servicio). Mostrar
+> siempre `data.negocio.estado`.
+
+Wizard del proveedor nuevo — sección `negocio`:
+
+Body: `{"descripcion": "Tortillas de maíz nixtamalizado y totopos.", "categorias_json": ["Alimentos y Bebidas"], "num_empleados": 6}`
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 18,
+      "nombre_negocio": "Tortillería La Nueva (demo app)",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "activo": false,
+      "visible_en_directorio": false,
+      "perfil_completo": false,
+      "porcentaje": 70,
+      "logo_url": null,
+      "solicitado_aprobacion_at": "2026-09-22T14:45:47-06:00"
+    },
+    "faltantes": [
+      {
+        "campo": "logo",
+        "etiqueta": "Logo",
+        "seccion": "contacto"
+      },
+      {
+        "campo": "productos",
+        "etiqueta": "Al menos 1 producto",
+        "seccion": "oferta"
+      }
+    ],
+    "secciones": [
+      {
+        "clave": "negocio",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "oferta",
+        "completa": false,
+        "faltantes": [
+          "productos"
+        ]
+      },
+      {
+        "clave": "entrega",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "contacto",
+        "completa": false,
+        "faltantes": [
+          "logo"
+        ]
+      }
+    ],
+    "valores": {
+      "…": "…"
+    }
+  },
+  "message": "Progreso guardado. Completa todos los campos requeridos para que tu perfil se apruebe automáticamente."
+}
+```
+_Recortado: el resto de `data` es igual que en `GET /proveedor/perfil`._
+
+Sección `entrega`: body `{"entrega_domicilio": true, "cobertura_entrega": "local", "forma_entrega": "programada", "pago_contraentrega": true}`
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 18,
+      "nombre_negocio": "Tortillería La Nueva (demo app)",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "activo": false,
+      "visible_en_directorio": false,
+      "perfil_completo": false,
+      "porcentaje": 70,
+      "logo_url": null,
+      "solicitado_aprobacion_at": "2026-09-22T14:45:48-06:00"
+    },
+    "faltantes": [
+      {
+        "campo": "logo",
+        "etiqueta": "Logo",
+        "seccion": "contacto"
+      },
+      {
+        "campo": "productos",
+        "etiqueta": "Al menos 1 producto",
+        "seccion": "oferta"
+      }
+    ],
+    "secciones": [
+      {
+        "clave": "negocio",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "oferta",
+        "completa": false,
+        "faltantes": [
+          "productos"
+        ]
+      },
+      {
+        "clave": "entrega",
+        "completa": true,
+        "faltantes": []
+      },
+      {
+        "clave": "contacto",
+        "completa": false,
+        "faltantes": [
+          "logo"
+        ]
+      }
+    ],
+    "valores": {
+      "…": "…"
+    }
+  },
+  "message": "Progreso guardado. Completa todos los campos requeridos para que tu perfil se apruebe automáticamente."
+}
+```
+_Recortado: el resto de `data` es igual que en `GET /proveedor/perfil`._
+
+Proveedor aprobado que edita `contacto` (body `{"telefono": "9991112233", "sitio_web": "salsasdonachela.mx", "direccion": "Calle 60 x 55, Centro, Mérida"}`):
+nótese `negocio.estado = pendiente` con el mensaje de aprobado (aviso de arriba) y `sitio_web` con `https://`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "activo": false,
+      "visible_en_directorio": false,
+      "perfil_completo": true,
+      "porcentaje": 100,
+      "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "solicitado_aprobacion_at": "2026-09-22T14:45:35-06:00"
+    },
+    "faltantes": [],
+    "secciones": "…",
+    "valores": {
+      "contacto": {
+        "telefono": "9991112233",
+        "sitio_web": "https://salsasdonachela.mx",
+        "direccion": "Calle 60 x 55, Centro, Mérida"
+      },
+      "…": "…"
+    }
+  },
+  "message": "¡Perfil completo! Fuiste aprobado automáticamente y ya apareces en el directorio del evento activo."
+}
+```
+_Recortado: el resto de `data` es igual que en `GET /proveedor/perfil`._
+
+422 — `entrega_domicilio = true` sin cobertura ni forma:
+
+`HTTP 422`
+```json
+{
+  "message": "El campo cobertura entrega es obligatorio.",
+  "errors": {
+    "cobertura_entrega": [
+      "El campo cobertura entrega es obligatorio."
+    ]
+  }
+}
+```
+
+### PUT /proveedor/perfil
+
+Igual que por sección, pero acepta campos de todas. Body de ejemplo con errores:
+`{"nombre_restaurante": "", "num_empleados": -3, "sitio_web": "xxx…(201 caracteres)"}`
+
+`HTTP 422`
+```json
+{
+  "message": "El campo nombre restaurante es obligatorio. (and 2 more errors)",
+  "errors": {
+    "nombre_restaurante": [
+      "El campo nombre restaurante es obligatorio."
+    ],
+    "num_empleados": [
+      "El campo num empleados debe ser al menos 0."
+    ],
+    "sitio_web": [
+      "El campo sitio web no debe ser mayor que 200 caracteres."
+    ]
+  }
+}
+```
+
+### POST /proveedor/logo
+
+`multipart/form-data` con el campo `foto` (obligatorio en la API). Mismas reglas que la web: `image`,
+`jpg/jpeg/png/webp`, máx. **8 MB** (8192 KB). Reemplaza y borra el logo anterior. Responde el perfil + `message`.
+Con el logo, el proveedor nuevo del wizard completa el perfil y se auto-aprueba (correo + registro PENDIENTE al
+encuentro activo, que decide el admin):
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "negocio": {
+      "id": 18,
+      "nombre_negocio": "Tortillería La Nueva (demo app)",
+      "estado": "aprobado",
+      "motivo_rechazo": null,
+      "activo": true,
+      "visible_en_directorio": true,
+      "perfil_completo": true,
+      "porcentaje": 100,
+      "logo_url": "http://192.168.10.6/citas/public/storage/proveedores/fotos/SaHlmzalYOB5YRznZxgzNukEr7misq66c75lzB7V.png",
+      "solicitado_aprobacion_at": "2026-09-22T14:45:50-06:00"
+    },
+    "faltantes": [],
+    "secciones": "…",
+    "valores": {
+      "…": "…"
+    },
+    "logo_url": "http://192.168.10.6/citas/public/storage/proveedores/fotos/SaHlmzalYOB5YRznZxgzNukEr7misq66c75lzB7V.png",
+    "productos": [
+      {
+        "indice": 0,
+        "nombre": "Tortilla de maíz 1 kg",
+        "descripcion": null,
+        "foto_url": "http://192.168.10.6/citas/public/storage/proveedores/productos/vBjO9jYNiwckrccIwYvyxH3AcUmcDF5ZxBlT6tn7.png",
+        "capacidad_cantidad": 800,
+        "capacidad_unidad": "kilogramos"
+      }
+    ]
+  },
+  "message": "¡Perfil completo! Fuiste aprobado automáticamente y ya apareces en el directorio del evento activo."
+}
+```
+_Recortado: el resto de `data` es igual que en `GET /proveedor/perfil`._
+
+`HTTP 422`
+```json
+{
+  "message": "El campo foto debe ser una imagen. (and 1 more error)",
+  "errors": {
+    "foto": [
+      "El campo foto debe ser una imagen.",
+      "El campo foto debe ser un archivo con extensión: jpg, jpeg, png, webp."
+    ]
+  }
+}
+```
+
+---
+
+### Productos
+
+Hasta **5** productos (`productos_top`). Se identifican por su posición `indice` (0–4), igual que en la web. Cada alta,
+edición o baja guarda el perfil completo con las reglas de la web (así que también re-dispara la aprobación, ver aviso).
+
+| Campo | Tipo | Reglas |
+|---|---|---|
+| `nombre` | string | **obligatorio en la API** (la web descarta en silencio una fila sin nombre), `max:200` |
+| `descripcion` | string\|null | `max:500` |
+| `capacidad_cantidad` | number\|null | capacidad de producción mensual, `numeric, min:0` |
+| `capacidad_unidad` | string\|null | `piezas`, `cajas`, `litros`, `kilogramos` |
+| `foto` | archivo | `image, mimes:jpg,jpeg,png,webp, max:8192` (KB). Solo con `multipart/form-data` |
+
+Los errores usan los nombres de arriba (`nombre`, `capacidad_unidad`, `foto`); el tope de 5 responde en `productos`.
+
+#### GET /proveedor/productos
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "indice": 0,
+      "nombre": "Recado rojo 1 kg",
+      "descripcion": "Achiote artesanal",
+      "foto_url": null,
+      "capacidad_cantidad": 500,
+      "capacidad_unidad": "kilogramos"
+    },
+    {
+      "indice": 1,
+      "nombre": "Salsa de habanero 250 ml",
+      "descripcion": "Picor alto",
+      "foto_url": null,
+      "capacidad_cantidad": 2000,
+      "capacidad_unidad": "piezas"
+    }
+  ],
+  "meta": {
+    "max_productos": 5,
+    "restantes": 3,
+    "foto_max_kb": 8192,
+    "foto_formatos": [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp"
+    ],
+    "capacidad_unidades": [
+      "piezas",
+      "cajas",
+      "litros",
+      "kilogramos"
+    ]
+  }
+}
+```
+
+#### POST /proveedor/productos
+
+JSON o `multipart/form-data` (si lleva `foto`). **201** con el producto creado, el `negocio` y el `message` del guardado.
+
+Body (multipart): `nombre=Recado negro 500 g`, `descripcion=Para relleno negro`, `capacidad_cantidad=300`,
+`capacidad_unidad=piezas`, `foto=@recado.png`
+
+`HTTP 201`
+```json
+{
+  "data": {
+    "indice": 2,
+    "nombre": "Recado negro 500 g",
+    "descripcion": "Para relleno negro",
+    "foto_url": "http://192.168.10.6/citas/public/storage/proveedores/productos/urY8jd4M5km8AH10RZ1qz6NfaYO6buUoiLST8Spu.png",
+    "capacidad_cantidad": 300,
+    "capacidad_unidad": "piezas"
+  },
+  "negocio": {
+    "id": 13,
+    "nombre_negocio": "Salsas Doña Chela",
+    "estado": "aprobado",
+    "motivo_rechazo": null,
+    "activo": true,
+    "visible_en_directorio": true,
+    "perfil_completo": true,
+    "porcentaje": 100,
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+    "solicitado_aprobacion_at": "2026-09-22T14:45:36-06:00"
+  },
+  "message": "¡Perfil completo! Fuiste aprobado automáticamente y ya apareces en el directorio del evento activo."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El nombre del producto es obligatorio.",
+  "errors": {
+    "nombre": [
+      "El nombre del producto es obligatorio."
+    ]
+  }
+}
+```
+
+Con 5 productos: `422 {"errors": {"productos": ["El campo productos no debe tener más de 5 elementos."]}}`.
+
+#### PUT /proveedor/productos/{indice} (o POST para multipart)
+
+Edición parcial: solo cambian los campos enviados (el resto y la foto se conservan). Para cambiar la foto usa **POST**
+con `multipart/form-data` (PHP no lee archivos en un PUT). `PATCH` también se acepta.
+
+Body `{"capacidad_cantidad": 450}`:
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "indice": 2,
+    "nombre": "Recado negro 500 g",
+    "descripcion": "Para relleno negro",
+    "foto_url": "http://192.168.10.6/citas/public/storage/proveedores/productos/urY8jd4M5km8AH10RZ1qz6NfaYO6buUoiLST8Spu.png",
+    "capacidad_cantidad": 450,
+    "capacidad_unidad": "piezas"
+  },
+  "negocio": {
+    "id": 13,
+    "nombre_negocio": "Salsas Doña Chela",
+    "estado": "pendiente",
+    "motivo_rechazo": null,
+    "activo": false,
+    "visible_en_directorio": false,
+    "perfil_completo": true,
+    "porcentaje": 100,
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+    "solicitado_aprobacion_at": "2026-09-22T14:45:37-06:00"
+  },
+  "message": "¡Perfil completo! Fuiste aprobado automáticamente y ya apareces en el directorio del evento activo."
+}
+```
+
+Foto con formato no permitido:
+
+`HTTP 422`
+```json
+{
+  "message": "El campo foto debe ser una imagen. (and 1 more error)",
+  "errors": {
+    "foto": [
+      "El campo foto debe ser una imagen.",
+      "El campo foto debe ser un archivo con extensión: jpg, jpeg, png, webp."
+    ]
+  }
+}
+```
+
+`HTTP 404`
+```json
+{
+  "message": "Producto no encontrado."
+}
+```
+
+#### DELETE /proveedor/productos/{indice}
+
+Quita el producto; los que siguen suben una posición **conservando cada uno su foto** (la foto del borrado se elimina
+del disco). Responde la lista como `GET /proveedor/productos` + `message`.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "indice": 0,
+      "nombre": "Recado rojo 1 kg",
+      "descripcion": "Achiote artesanal",
+      "foto_url": null,
+      "capacidad_cantidad": 500,
+      "capacidad_unidad": "kilogramos"
+    },
+    {
+      "indice": 1,
+      "nombre": "Salsa de habanero 250 ml",
+      "descripcion": "Picor alto",
+      "foto_url": null,
+      "capacidad_cantidad": 2000,
+      "capacidad_unidad": "piezas"
+    }
+  ],
+  "meta": {
+    "max_productos": 5,
+    "restantes": 3,
+    "foto_max_kb": 8192,
+    "foto_formatos": [
+      "jpg",
+      "jpeg",
+      "png",
+      "webp"
+    ],
+    "capacidad_unidades": [
+      "piezas",
+      "cajas",
+      "litros",
+      "kilogramos"
+    ]
+  },
+  "message": "¡Perfil completo! Fuiste aprobado automáticamente y ya apareces en el directorio del evento activo."
+}
+```
+
+---
+
+### GET /proveedor/citas
+
+Citas recibidas por pestaña, como `/proveedor/citas` de la web. Query: `tab` ∈ `pendientes` (default), `confirmadas`
+(`confirmada`, `pendiente_reconfirmacion`, `reagendada`), `rechazadas` (`rechazada`, `cancelada`), `todas`;
+`per_page` 1–50 (default 20). Orden: `inicio` descendente. `meta.contadores` = los números de las pestañas.
+Si la cuenta aún no tiene negocio responde `data: []` con `meta.motivo` (la web da 403).
+
+`?tab=confirmadas` (la primera es una cita con propuesta de reagenda esperando al comprador):
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 50,
+      "inicio": "2026-10-06T13:30:00-06:00",
+      "fin": "2026-10-06T14:00:00-06:00",
+      "estado": "pendiente_reconfirmacion",
+      "estado_texto": "Nuevo horario por confirmar",
+      "notas": "Cita de demostración para la app.",
+      "productos_interes": [],
+      "mesa": null,
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "comprador": {
+        "id": 43,
+        "nombre": "Compras Restaurante Chaya Maya",
+        "email": "demo.comprador5@prueba.impulsate.mx",
+        "telefono": "9992220005",
+        "nombre_empresa": "Restaurante Chaya Maya",
+        "necesidades": "Recado rojo y negro para cochinita y relleno negro."
+      },
+      "propuesta_reagenda": {
+        "inicio": "2026-10-06T15:30:00-06:00",
+        "fin": "2026-10-06T16:00:00-06:00"
+      },
+      "puede_aceptar": false,
+      "puede_rechazar": false,
+      "puede_reagendar": false,
+      "creada_at": "2026-09-22T14:42:51-06:00"
+    },
+    {
+      "id": 48,
+      "inicio": "2026-10-06T12:00:00-06:00",
+      "fin": "2026-10-06T12:30:00-06:00",
+      "estado": "confirmada",
+      "estado_texto": "Confirmada",
+      "notas": "Cita de demostración para la app.",
+      "productos_interes": [],
+      "mesa": "Mesa 5",
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "comprador": {
+        "id": 41,
+        "nombre": "Compras Cocina Económica Doña Mary",
+        "email": "demo.comprador3@prueba.impulsate.mx",
+        "telefono": "9992220003",
+        "nombre_empresa": "Cocina Económica Doña Mary",
+        "necesidades": "Salsas picantes por mayoreo."
+      },
+      "propuesta_reagenda": null,
+      "puede_aceptar": false,
+      "puede_rechazar": false,
+      "puede_reagendar": true,
+      "creada_at": "2026-09-22T14:42:51-06:00"
+    }
+  ],
+  "links": {
+    "first": "http://192.168.10.6/citas/public/api/v1/proveedor/citas?tab=confirmadas&page=1",
+    "last": "http://192.168.10.6/citas/public/api/v1/proveedor/citas?tab=confirmadas&page=1",
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "links": "…",
+    "path": "http://192.168.10.6/citas/public/api/v1/proveedor/citas",
+    "per_page": 20,
+    "to": 3,
+    "total": 3,
+    "tab": "confirmadas",
+    "contadores": {
+      "pendientes": 2,
+      "confirmadas": 3,
+      "rechazadas": 1
+    }
+  }
+}
+```
+_Recortado: `data` traía 3 elementos; se muestran 2; se omite `meta.links`._
+
+`HTTP 422`
+```json
+{
+  "message": "El campo tab seleccionado no es válido.",
+  "errors": {
+    "tab": [
+      "El campo tab seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### GET /proveedor/citas/{id}
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 47,
+    "inicio": "2026-10-06T11:30:00-06:00",
+    "fin": "2026-10-06T12:00:00-06:00",
+    "estado": "pendiente",
+    "estado_texto": "Pendiente",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx",
+      "telefono": "9992220002",
+      "nombre_empresa": "Hotel Hacienda Xcanatún",
+      "necesidades": "Recados y salsas para el restaurante del hotel."
+    },
+    "propuesta_reagenda": null,
+    "puede_aceptar": true,
+    "puede_rechazar": true,
+    "puede_reagendar": true,
+    "creada_at": "2026-09-22T14:42:51-06:00"
+  }
+}
+```
+
+### GET /proveedor/citas/{id}/disponibilidad
+
+Horarios que el proveedor puede proponer al reagendar esta cita, con **las mismas reglas que
+`POST …/reagendar`**: la rejilla del evento (paso = `tiempo_entre_citas_minutos`), la cita no choca consigo misma, el
+proveedor no lleva colchón y el comprador sí (10 min). Query: `fecha` o `desde`/`hasta` (`YYYY-MM-DD`).
+
+`horarios[].estado`: `libre`, `ocupado_proveedor` (otra cita tuya), `ocupado_comprador` (otra cita del comprador,
+con su colchón) o `pasado`. `es_horario_actual` marca el horario que la cita tiene hoy.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "cita_id": 47,
+    "puede_reagendar": true,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "duracion_cita_minutos": 30,
+    "intervalo_minutos": 30,
+    "colchon_comprador_minutos": 10,
+    "horario_actual": {
+      "inicio": "2026-10-06T11:30:00-06:00",
+      "fin": "2026-10-06T12:00:00-06:00"
+    },
+    "dias": [
+      {
+        "fecha": "2026-10-06",
+        "horarios": [
+          {
+            "hora": "09:00",
+            "inicio": "2026-10-06T09:00:00-06:00",
+            "fin": "2026-10-06T09:30:00-06:00",
+            "estado": "libre",
+            "es_horario_actual": false
+          },
+          {
+            "hora": "09:30",
+            "inicio": "2026-10-06T09:30:00-06:00",
+            "fin": "2026-10-06T10:00:00-06:00",
+            "estado": "libre",
+            "es_horario_actual": false
+          },
+          {
+            "hora": "10:00",
+            "inicio": "2026-10-06T10:00:00-06:00",
+            "fin": "2026-10-06T10:30:00-06:00",
+            "estado": "ocupado_proveedor",
+            "es_horario_actual": false
+          },
+          {
+            "hora": "10:30",
+            "inicio": "2026-10-06T10:30:00-06:00",
+            "fin": "2026-10-06T11:00:00-06:00",
+            "estado": "libre",
+            "es_horario_actual": false
+          },
+          {
+            "hora": "11:00",
+            "inicio": "2026-10-06T11:00:00-06:00",
+            "fin": "2026-10-06T11:30:00-06:00",
+            "estado": "ocupado_proveedor",
+            "es_horario_actual": false
+          },
+          {
+            "hora": "11:30",
+            "inicio": "2026-10-06T11:30:00-06:00",
+            "fin": "2026-10-06T12:00:00-06:00",
+            "estado": "libre",
+            "es_horario_actual": true
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+_Recortado: el día trae 18 horarios (09:00 a 17:30); se muestran los primeros 6._
+
+### POST /proveedor/citas/{id}/aceptar
+
+Sin body. Límite `api-proveedor-citas`. Igual que la web: la cita pasa a `confirmada`, el comprador recibe el correo
+`CitaAceptada` y la notificación "Cita confirmada". Solo citas `pendiente` (si no, 422 — la web no lo comprueba).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 47,
+    "inicio": "2026-10-06T11:30:00-06:00",
+    "fin": "2026-10-06T12:00:00-06:00",
+    "estado": "confirmada",
+    "estado_texto": "Confirmada",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx",
+      "telefono": "9992220002",
+      "nombre_empresa": "Hotel Hacienda Xcanatún",
+      "necesidades": "Recados y salsas para el restaurante del hotel."
+    },
+    "propuesta_reagenda": null,
+    "puede_aceptar": false,
+    "puede_rechazar": false,
+    "puede_reagendar": true,
+    "creada_at": "2026-09-22T14:42:51-06:00"
+  },
+  "message": "Cita aceptada. El comprador fue notificado."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "Solo puedes aceptar citas pendientes.",
+  "errors": {
+    "estado": [
+      "Solo puedes aceptar citas pendientes."
+    ]
+  }
+}
+```
+
+### POST /proveedor/citas/{id}/rechazar
+
+Sin body. Pasa a `rechazada`, correo `CitaRechazada` y notificación "Cita rechazada" al comprador. Solo `pendiente`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 47,
+    "inicio": "2026-10-06T11:30:00-06:00",
+    "fin": "2026-10-06T12:00:00-06:00",
+    "estado": "rechazada",
+    "estado_texto": "Rechazada",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx",
+      "telefono": "9992220002",
+      "nombre_empresa": "Hotel Hacienda Xcanatún",
+      "necesidades": "Recados y salsas para el restaurante del hotel."
+    },
+    "propuesta_reagenda": null,
+    "puede_aceptar": false,
+    "puede_rechazar": false,
+    "puede_reagendar": false,
+    "creada_at": "2026-09-22T14:42:51-06:00"
+  },
+  "message": "Cita rechazada. El comprador fue notificado."
+}
+```
+
+### POST /proveedor/citas/{id}/reagendar
+
+Propone otro horario. Body JSON (mismas reglas que la web):
+
+| Campo | Reglas |
+|---|---|
+| `propuesta_fecha` | requerido, fecha, hoy o después |
+| `propuesta_hora` | requerido, `HH:MM` |
+
+La cita queda en `pendiente_reconfirmacion` con `propuesta_reagenda`; conserva su horario hasta que el comprador
+acepte (`POST /citas/{id}/reagenda/aceptar` o el enlace del correo). El comprador recibe el correo `CitaReagendada` y
+la notificación "Propuesta de cambio de horario". Solo para `pendiente`, `confirmada` o `reagendada` (422 si no).
+
+Body `{"propuesta_fecha": "2026-10-06", "propuesta_hora": "14:30"}`:
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 31,
+    "inicio": "2026-10-06T11:00:00-06:00",
+    "fin": "2026-10-06T11:30:00-06:00",
+    "estado": "pendiente_reconfirmacion",
+    "estado_texto": "Nuevo horario por confirmar",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 24,
+      "nombre": "Restaurante La Tradición",
+      "email": "demo.comprador1@prueba.impulsate.mx",
+      "telefono": "9992223344",
+      "nombre_empresa": "Restaurante La Tradición",
+      "necesidades": "Salsas, recados y miel para el menú de temporada."
+    },
+    "propuesta_reagenda": {
+      "inicio": "2026-10-06T14:30:00-06:00",
+      "fin": "2026-10-06T15:00:00-06:00"
+    },
+    "puede_aceptar": false,
+    "puede_rechazar": false,
+    "puede_reagendar": false,
+    "creada_at": "2026-09-22T13:35:33-06:00"
+  },
+  "message": "Propuesta de reagendamiento enviada al comprador."
+}
+```
+
+Hueco ocupado (el proveedor ya tiene cita a esa hora; si la tiene el comprador el mensaje es "Ya tienes una cita
+agendada a las HH:MM (se requieren 10 minutos de separación entre citas)."):
+
+`HTTP 422`
+```json
+{
+  "message": "Este horario ya no está disponible con el proveedor. Por favor elige otro.",
+  "errors": {
+    "fecha": [
+      "Este horario ya no está disponible con el proveedor. Por favor elige otro."
+    ]
+  }
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo propuesta fecha debe ser una fecha posterior o igual a today. (and 1 more error)",
+  "errors": {
+    "propuesta_fecha": [
+      "El campo propuesta fecha debe ser una fecha posterior o igual a today."
+    ],
+    "propuesta_hora": [
+      "El campo propuesta hora no corresponde con el formato H:i."
+    ]
+  }
+}
+```
+
+`HTTP 403`
+```json
+{
+  "message": "This action is unauthorized."
+}
+```
+
+---
+
+### Registro del proveedor a eventos
+
+Se usa el endpoint existente `POST /eventos/{id}/registro` con `{"tipo": "proveedor"}` (encuentro) o
+`{"tipo": "expositor"}` (bazar). Cambios de la Fase 3:
+
+- Una cuenta con los dos roles puede registrarse como proveedor sin cambiar `rol_activo`, y la respuesta ya viene
+  calculada como proveedor (`tipo_registro = proveedor`).
+- `GET /eventos` y `GET /eventos/{id}` aceptan `?vista=proveedor` para ver `mi_registro`/`accion` como proveedor.
+- `mi_registro.expositor` trae además `seleccionado` (bool): en el bazar la web distingue "aprobado y con lugar" de
+  "aprobado sin lugar".
+- Los requisitos del bazar (INE + CSF vigente) llegan en `motivo_bloqueo` del evento y en `requisitos_bazar` del panel.
+
+Proveedor recién completado (el perfil completo ya lo inscribió PENDIENTE al encuentro activo, por eso `ya_pendiente`):
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 5,
+    "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+    "descripcion": "Encuentro de negocios entre compradores del sector restaurantero y proveedores locales de Yucatán.",
+    "sector_economico": "Alimentos y Bebidas",
+    "tipo_evento": "encuentro_negocios",
+    "imagen_url": null,
+    "convocatoria_url": null,
+    "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+    "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+    "estado": "activo",
+    "destacado": true,
+    "fases": "…",
+    "mi_registro": {
+      "comprador": null,
+      "proveedor": {
+        "estado": "pendiente",
+        "motivo_rechazo": null,
+        "registrado_at": "2026-09-22T14:45:50-06:00"
+      },
+      "expositor": null
+    },
+    "tipo_registro": "proveedor",
+    "puede_registrarse": false,
+    "motivo_bloqueo": null,
+    "accion": "en_revision"
+  },
+  "message": "Tu solicitud ya está en revisión. Te avisaremos cuando sea aprobada.",
+  "resultado": "ya_pendiente"
+}
+```
+_Recortado: `fases` como en `GET /eventos/{id}`._
+
+Bazar sin INE:
+
+`HTTP 422`
+```json
+{
+  "message": "Debes subir tu INE antes de registrarte al bazar.",
+  "errors": {
+    "error": [
+      "Debes subir tu INE antes de registrarte al bazar."
+    ]
+  }
+}
+```
+
+### Cambios en GET /inicio
+
+Se agrega `data.proveedor` (sin tocar los campos existentes): `null` si la cuenta no tiene rol de proveedor; si lo
+tiene (aunque esté en modo comprador):
+
+| Campo | Contenido |
+|---|---|
+| `negocio` | objeto `negocio` |
+| `perfil_completo` | bool |
+| `secciones_faltantes` | string[] — secciones del wizard con algo pendiente |
+| `citas_por_responder` | citas `pendiente` |
+| `reagendas_esperando_comprador` | citas en `pendiente_reconfirmacion` |
+| `citas_hoy` | int |
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "usuario": "…",
+    "onboarding": "…",
+    "vista": "…",
+    "proxima_cita": "…",
+    "citas_proximas_count": "…",
+    "evento_destacado": "…",
+    "notificaciones_sin_leer": "…",
+    "publicidad": "…",
+    "pendientes": "…",
+    "proveedor": {
+      "negocio": {
+        "id": 13,
+        "nombre_negocio": "Salsas Doña Chela",
+        "estado": "aprobado",
+        "motivo_rechazo": null,
+        "activo": true,
+        "visible_en_directorio": true,
+        "perfil_completo": true,
+        "porcentaje": 100,
+        "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+        "solicitado_aprobacion_at": "2026-09-22T14:43:52-06:00"
+      },
+      "perfil_completo": true,
+      "secciones_faltantes": [],
+      "citas_por_responder": 2,
+      "reagendas_esperando_comprador": 1,
+      "citas_hoy": 0
+    }
+  }
+}
+```
+_Recortado: los demás campos no cambian (ver `GET /inicio`)._
+
+---
+
+## 13. Datos de prueba locales
 
 `php artisan impulsate:demo-movil` (solo `APP_ENV=local`, idempotente) deja:
 
 | Cuenta | Contraseña | Qué tiene |
 |---|---|---|
 | `comprador@prueba.impulsate.mx` | `Prueba2026!` | comprador aprobado en el encuentro; 5 citas (confirmada, pendiente, cancelada, una en `pendiente_reconfirmacion` con propuesta 13:00 → 14:00 y una completada en el evento finalizado); 1 agenda propuesta pendiente con 3 citas (15:00, 15:30 y 16:00); 1 encuesta de satisfacción por responder (evento finalizado, plantilla activa); 5 notificaciones (3 sin leer) |
-| `proveedor@prueba.impulsate.mx` | `Proveedor2026!` | proveedor "Salsas Doña Chela" con perfil de negocio completo, aprobado en el encuentro, 2 citas recibidas |
+| `proveedor@prueba.impulsate.mx` | `Proveedor2026!` | proveedor "Salsas Doña Chela" con perfil de negocio completo, aprobado en el encuentro, 2 productos con capacidad mensual; 6 citas recibidas: 2 pendientes por aceptar (11:00 y 11:30), 2 confirmadas (10:00 Mesa 3 y 12:00 Mesa 5), 1 rechazada (12:30) y 1 con propuesta de reagenda esperando al comprador (13:30 → 15:30) |
+| `proveedor.nuevo@prueba.impulsate.mx` | `Proveedor2026!` | proveedor "Tortillería La Nueva (demo app)" con perfil de negocio INCOMPLETO (faltan descripción, teléfono, logo, productos y logística), sin registro a eventos: sirve para el wizard |
 | `admin@prueba.impulsate.mx` | (la existente) | rol admin |
 | `demo.proveedor1..8@prueba.impulsate.mx` | `Proveedor2026!` | 8 proveedores aprobados en el encuentro (sin logo) |
 | `demo.comprador1@prueba.impulsate.mx` | `Prueba2026!` | comprador con una cita pendiente con el proveedor de prueba y `necesidades` capturadas (sirve para `GET /proveedores?orden=coincidencia`) |
+| `demo.comprador2..5@prueba.impulsate.mx` | `Prueba2026!` | compradores aprobados en el encuentro con una cita cada uno con el proveedor de prueba (pendiente, confirmada, rechazada y la de la reagenda) |
 
 Eventos: "Encuentro de Negocios Impúlsate (demo app)" (activo, destacado, en 2 semanas, ventanas abiertas),
 "Bazar Hecho en Yucatán (demo app)" (activo) y "Encuentro de Negocios Julio (demo app)" (finalizado).
@@ -3132,3 +4881,7 @@ Eventos: "Encuentro de Negocios Impúlsate (demo app)" (activo, destacado, en 2 
 Correr el comando otra vez **reinicia** la reagenda, la agenda propuesta (borra las citas que haya creado una
 aceptación anterior) y la encuesta (borra sus respuestas), así que las pantallas de Fase 2 se pueden probar las veces
 que se quiera. Las citas nuevas que se agenden desde la app no se borran.
+
+También **reinicia** las 6 citas del proveedor de prueba (estado y horario), lo vuelve a dejar aprobado con su perfil
+completo, y deja otra vez INCOMPLETO y sin registros a eventos a `proveedor.nuevo@…`, así que el wizard y las
+respuestas a citas (Fase 3) se pueden repetir.

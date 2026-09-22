@@ -2,8 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\User;
+use Illuminate\Auth\Access\Response;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -63,6 +66,22 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api-archivos', fn (Request $request) =>
             Limit::perMinute(60)->by('arch:' . $request->ip())
         );
+
+        // Fase 3 (proveedor): responder citas y guardar el perfil de negocio.
+        // Guardar el perfil re-dispara la auto-aprobacion (correo + avisos a
+        // admins) igual que en la web, por eso un cupo propio.
+        RateLimiter::for('api-proveedor-citas', fn (Request $request) =>
+            Limit::perMinute(30)->by('provcitas:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-proveedor-perfil', fn (Request $request) =>
+            Limit::perMinute(20)->by('provperfil:' . ($request->user()?->id ?? $request->ip()))
+        );
+
+        // Las rutas /api/v1/proveedor/* son solo para cuentas con rol de
+        // proveedor (en la web: middleware role:restaurantero).
+        Gate::define('proveedor', fn (User $user) => $user->hasRole('restaurantero')
+            ? Response::allow()
+            : Response::deny('Esta sección es solo para proveedores.'));
 
         // API autenticada: por token/usuario, no por IP (varios telefonos
         // del evento comparten la misma red Wi-Fi).

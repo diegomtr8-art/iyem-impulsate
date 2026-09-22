@@ -123,5 +123,38 @@ Route::prefix('v1')->group(function () {
         Route::get('/encuestas/{encuesta}',             [\App\Http\Controllers\Api\V1\EncuestaController::class, 'show'])->whereNumber('encuesta');
         Route::post('/encuestas/{encuesta}/respuestas', [\App\Http\Controllers\Api\V1\EncuestaController::class, 'responder'])
             ->whereNumber('encuesta')->middleware('throttle:api-encuestas');
+
+        // Fase 3 — proveedor: panel, perfil de negocio, productos, citas recibidas y calendario.
+        // Solo cuentas con rol de proveedor (web: role:restaurantero), sin importar active_role.
+        Route::prefix('proveedor')->middleware('can:proveedor')->group(function () {
+            Route::get('/panel',      [\App\Http\Controllers\Api\V1\Proveedor\PanelController::class, 'panel']);
+            Route::get('/calendario', [\App\Http\Controllers\Api\V1\Proveedor\PanelController::class, 'calendario']);
+
+            Route::get('/perfil',            [\App\Http\Controllers\Api\V1\Proveedor\PerfilController::class, 'show']);
+            Route::get('/perfil/catalogos',  [\App\Http\Controllers\Api\V1\Proveedor\PerfilController::class, 'catalogos']);
+            Route::middleware('throttle:api-proveedor-perfil')->group(function () {
+                Route::put('/perfil',            [\App\Http\Controllers\Api\V1\Proveedor\PerfilController::class, 'update']);
+                Route::put('/perfil/{seccion}',  [\App\Http\Controllers\Api\V1\Proveedor\PerfilController::class, 'actualizarSeccion'])
+                    ->whereIn('seccion', array_keys(\App\Services\PerfilProveedorService::SECCIONES));
+                Route::post('/logo',             [\App\Http\Controllers\Api\V1\Proveedor\PerfilController::class, 'logo']);
+
+                Route::post('/productos',            [\App\Http\Controllers\Api\V1\Proveedor\ProductoController::class, 'store']);
+                // POST ademas de PUT/PATCH: PHP no lee multipart (la foto) en un PUT.
+                Route::match(['put', 'patch', 'post'], '/productos/{indice}', [\App\Http\Controllers\Api\V1\Proveedor\ProductoController::class, 'update'])
+                    ->whereNumber('indice');
+                Route::delete('/productos/{indice}', [\App\Http\Controllers\Api\V1\Proveedor\ProductoController::class, 'destroy'])
+                    ->whereNumber('indice');
+            });
+            Route::get('/productos', [\App\Http\Controllers\Api\V1\Proveedor\ProductoController::class, 'index']);
+
+            Route::get('/citas',                       [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'index']);
+            Route::get('/citas/{cita}',                [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'show'])->whereNumber('cita');
+            Route::get('/citas/{cita}/disponibilidad', [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'disponibilidad'])->whereNumber('cita');
+            Route::middleware('throttle:api-proveedor-citas')->group(function () {
+                Route::post('/citas/{cita}/aceptar',   [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'aceptar'])->whereNumber('cita');
+                Route::post('/citas/{cita}/rechazar',  [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'rechazar'])->whereNumber('cita');
+                Route::post('/citas/{cita}/reagendar', [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'reagendar'])->whereNumber('cita');
+            });
+        });
     });
 });

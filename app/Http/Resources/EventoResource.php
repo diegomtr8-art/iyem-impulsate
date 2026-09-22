@@ -18,6 +18,9 @@ use Illuminate\Support\Facades\DB;
  */
 class EventoResource extends JsonResource
 {
+    /** Atributo de la peticion con la vista forzada ('proveedor') que usan las rutas de proveedor. */
+    public const ATRIBUTO_VISTA = 'api_vista';
+
     public function toArray(Request $request): array
     {
         $user      = $request->user();
@@ -27,14 +30,20 @@ class EventoResource extends JsonResource
         $miRegistro = [];
         foreach (RegistroEventoService::TIPOS as $tipo) {
             $fila = $registros->firstWhere('tipo', $tipo);
-            $miRegistro[$tipo] = $fila ? [
+            $miRegistro[$tipo] = $fila ? array_merge([
                 'estado'         => $fila->estado,
                 'motivo_rechazo' => $fila->motivo_rechazo ?? null,
                 'registrado_at'  => $fila->created_at ? \Carbon\Carbon::parse($fila->created_at)->toIso8601String() : null,
-            ] : null;
+            ], $tipo === 'expositor' ? [
+                // Bazar: la web (TabEventos.vue) distingue aprobado+seleccionado de aprobado sin lugar.
+                'seleccionado'   => (bool) ($fila->seleccionado ?? false),
+            ] : []) : null;
         }
 
-        $tipo    = $user ? $servicio->tipoParaUsuario($user, $this->resource) : null;
+        // Las rutas /api/v1/proveedor/* marcan la vista para que una cuenta con
+        // los dos roles vea su registro de PROVEEDOR sin depender de active_role.
+        $vista   = $request->attributes->get(self::ATRIBUTO_VISTA);
+        $tipo    = $user ? $servicio->tipoParaUsuario($user, $this->resource, $vista) : null;
         $estado  = $tipo ? ($miRegistro[$tipo]['estado'] ?? null) : null;
         $motivo  = $tipo ? $servicio->motivoBloqueo($user, $this->resource, $tipo) : 'Tu cuenta no puede registrarse a eventos.';
         $puede   = $tipo && !$motivo && !in_array($estado, ['pendiente', 'aprobado']);

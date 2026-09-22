@@ -2,57 +2,31 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Cita;
 use App\Models\Evento;
-use App\Models\Horario;
-use App\Models\Servicio;
+use App\Services\GestionCitasProveedorService;
+use App\Services\PerfilProveedorService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Carbon\Carbon;
 
+/**
+ * Panel web del proveedor. El alta del negocio vacio, los KPIs, la lista de
+ * citas y el feed del calendario salen de PerfilProveedorService y
+ * GestionCitasProveedorService, que tambien usa la API v1 (/api/v1/proveedor/panel
+ * y /api/v1/proveedor/calendario).
+ */
 class RestauranteroPanelController extends Controller
 {
+    public function __construct(
+        private PerfilProveedorService $perfil,
+        private GestionCitasProveedorService $gestion,
+    ) {}
+
     public function index(Request $request)
     {
-        $restaurantero = $request->user()->restaurantero;
+        $restaurantero = $this->perfil->asegurarNegocio($request->user());
 
-        if (!$restaurantero) {
-            $restaurantero = $request->user()->restaurantero()->create([
-                'edicion_id'               => Evento::activo()?->id,
-                'nombre_restaurante'       => $request->user()->name . ' — Negocio',
-                'activo'                   => false,
-                'aprobado'                 => false,
-                'solicitado_aprobacion_at' => now(),
-            ]);
-            if (!$restaurantero->servicios()->exists()) {
-                Servicio::create([
-                    'restaurantero_id' => $restaurantero->id,
-                    'nombre'           => 'Mesa de Networking',
-                    'duracion_minutos' => 30,
-                    'precio'           => 0,
-                    'activo'           => true,
-                ]);
-            }
-            if (!$restaurantero->horarios()->exists()) {
-                for ($dia = 1; $dia <= 5; $dia++) {
-                    Horario::create([
-                        'restaurantero_id' => $restaurantero->id,
-                        'dia_semana'       => $dia,
-                        'hora_inicio'      => '09:00:00',
-                        'hora_fin'         => '16:00:00',
-                        'activo'           => true,
-                    ]);
-                }
-            }
-        }
-
-        $hoy       = Carbon::today();
-        $finSemana = Carbon::today()->endOfWeek();
-
-        $citasHoy        = Cita::where('restaurantero_id', $restaurantero->id)->whereDate('inicio', $hoy)->count();
-        $citasSemana     = Cita::where('restaurantero_id', $restaurantero->id)->whereBetween('inicio', [$hoy, $finSemana])->count();
-        $citasPendientes = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'pendiente')->count();
+        $kpis = $this->gestion->kpis($restaurantero);
 
         $mapCita = fn($cita) => [
             'id'               => $cita->id,
@@ -70,28 +44,9 @@ class RestauranteroPanelController extends Controller
         ];
 
         // Todas las citas (ordenadas: pendientes primero, luego por fecha)
-        $todasLasCitas = Cita::where('restaurantero_id', $restaurantero->id)
-            ->with('cliente')
-            ->orderByRaw("FIELD(estado, 'pendiente', 'confirmada', 'reagendada', 'pendiente_reconfirmacion', 'completada', 'cancelada', 'rechazada')")
-            ->orderBy('inicio', 'desc')
-            ->take(50)
-            ->get()
-            ->map($mapCita)
-            ->values();
+        $todasLasCitas = $this->gestion->citasDelPanel($restaurantero)->map($mapCita)->values();
 
-        $totalConfirmadas = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'confirmada')->count();
-        $totalRechazadas  = Cita::where('restaurantero_id', $restaurantero->id)->where('estado', 'rechazada')->count();
-        $totalEnEvento    = Cita::where('restaurantero_id', $restaurantero->id)->whereNotIn('estado', ['cancelada', 'rechazada'])->count();
-        $tasaAceptacion   = ($totalConfirmadas + $totalRechazadas) > 0
-            ? round(($totalConfirmadas / ($totalConfirmadas + $totalRechazadas)) * 100)
-            : null;
-
-        $citaProxima2h = Cita::where('restaurantero_id', $restaurantero->id)
-            ->whereIn('estado', ['confirmada', 'pendiente'])
-            ->whereBetween('inicio', [Carbon::now(), Carbon::now()->addHours(2)])
-            ->with('cliente')
-            ->orderBy('inicio')
-            ->first();
+        $citaProxima2h = $this->gestion->citaProxima2h($restaurantero);
 
         $notificaciones = \App\Models\Notificacion::where('user_id', $request->user()->id)
             ->where('leida', false)
@@ -134,13 +89,13 @@ class RestauranteroPanelController extends Controller
 
         return Inertia::render('Restaurantero/Panel', [
             'restaurantero'   => $restaurantero,
-            'citasHoy'        => $citasHoy,
-            'citasSemana'     => $citasSemana,
-            'citasPendientes' => $citasPendientes,
+            'citasHoy'        => $kpis['citas_hoy'],
+            'citasSemana'     => $kpis['citas_semana'],
+            'citasPendientes' => $kpis['citas_pendientes'],
             'todasLasCitas'   => $todasLasCitas,
             'categorias'      => \App\Models\Restaurantero::categoriasActivas(),
-            'tasaAceptacion'  => $tasaAceptacion,
-            'totalEnEvento'   => $totalEnEvento,
+            'tasaAceptacion'  => $kpis['tasa_aceptacion'],
+            'totalEnEvento'   => $kpis['total_en_evento'],
             'citaProxima2h'   => $citaProxima2h ? [
                 'id'           => $citaProxima2h->id,
                 'inicio'       => $citaProxima2h->inicio->toISOString(),
@@ -151,6 +106,7 @@ class RestauranteroPanelController extends Controller
         ]);
     }
 
+    /** Feed de FullCalendar (GET /proveedor/panel/eventos). */
     public function eventos(Request $request)
     {
         $restaurantero = $request->user()->restaurantero;
@@ -158,24 +114,14 @@ class RestauranteroPanelController extends Controller
             return response()->json([]);
         }
 
-        $colores = [
-            'pendiente'  => '#f59e0b',
-            'confirmada' => '#10b981',
-            'cancelada'  => '#6b7280',
-            'completada' => '#3b82f6',
-        ];
-
-        $eventos = Cita::where('restaurantero_id', $restaurantero->id)
-            ->with('cliente')
-            ->whereNotIn('estado', ['cancelada'])
-            ->get()
+        $eventos = $this->gestion->citasCalendario($restaurantero)
             ->map(fn($cita) => [
                 'id'              => $cita->id,
                 'title'           => $cita->cliente->name ?? 'Cliente',
                 'start'           => $cita->inicio,
                 'end'             => $cita->fin,
-                'backgroundColor' => $colores[$cita->estado] ?? '#6b7280',
-                'borderColor'     => $colores[$cita->estado] ?? '#6b7280',
+                'backgroundColor' => $this->gestion->colorCalendario($cita->estado),
+                'borderColor'     => $this->gestion->colorCalendario($cita->estado),
                 'textColor'       => '#111827',
             ]);
 

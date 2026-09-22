@@ -19,19 +19,9 @@ class EventoController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $esAdmin = $user->hasRole('admin') || $user->hasRole('super-admin');
+        $this->vista($request);
 
-        $eventos = Evento::query()
-            ->when(!$esAdmin, fn ($q) => $q->where(fn ($q) => $q
-                ->where('activa', true)
-                ->orWhereExists(fn ($sub) => $sub->from('evento_usuario')
-                    ->whereColumn('evento_usuario.evento_id', 'eventos.id')
-                    ->where('evento_usuario.user_id', $user->id))))
-            ->orderByDesc('activa')
-            ->orderByDesc('destacado')
-            ->orderByDesc('fecha_hora_inicio')
-            ->orderByDesc('id')
-            ->paginate(20);
+        $eventos = $this->registro->eventosVisibles($user)->paginate(20);
 
         $registros = DB::table('evento_usuario')
             ->where('user_id', $user->id)
@@ -44,9 +34,10 @@ class EventoController extends Controller
         return EventoResource::collection($eventos);
     }
 
-    public function show(Evento $evento)
+    public function show(Request $request, Evento $evento)
     {
         Gate::authorize('view', $evento);
+        $this->vista($request);
 
         return new EventoResource($evento);
     }
@@ -61,9 +52,25 @@ class EventoController extends Controller
 
         $resultado = $this->registro->registrar($request->user(), $evento, $datos['tipo']);
 
+        // Una cuenta con los dos roles que se registra como proveedor ve la respuesta como proveedor.
+        if ($datos['tipo'] === 'proveedor') {
+            $request->attributes->set(EventoResource::ATRIBUTO_VISTA, 'proveedor');
+        }
+
         return (new EventoResource($evento->fresh()))
             ->additional(['message' => $resultado['mensaje'], 'resultado' => $resultado['estado']])
             ->response()
             ->setStatusCode(in_array($resultado['estado'], ['creado', 'repostulado']) ? 201 : 200);
+    }
+
+    /**
+     * ?vista=proveedor: mi_registro/tipo_registro/accion calculados como
+     * proveedor aunque active_role sea comprador (cuentas con los dos roles).
+     */
+    private function vista(Request $request): void
+    {
+        if ($request->query('vista') === 'proveedor') {
+            $request->attributes->set(EventoResource::ATRIBUTO_VISTA, 'proveedor');
+        }
     }
 }

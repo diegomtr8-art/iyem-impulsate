@@ -36,6 +36,7 @@ class DemoMovilCommand extends Command
     private const CORREO_COMPRADOR = 'comprador@prueba.impulsate.mx';
     private const CORREO_PROVEEDOR = 'proveedor@prueba.impulsate.mx';
     private const CORREO_ADMIN     = 'admin@prueba.impulsate.mx';
+    private const CORREO_PROVEEDOR_NUEVO = 'proveedor.nuevo@prueba.impulsate.mx';
     private const PASS_PROVEEDOR   = 'Proveedor2026!';
     private const PASS_COMPRADOR   = 'Prueba2026!';
 
@@ -93,8 +94,17 @@ class DemoMovilCommand extends Command
             $this->cita($encuentro, $proveedores[1],  $comprador,     $dia->copy()->setTime(11, 20), 'cancelada');
             $this->cita($finalizado, $proveedores[2], $comprador,     $finalizado->fecha_hora_inicio->copy()->setTime(12, 0), 'completada');
 
-            // Citas recibidas por el proveedor de prueba.
+            // Citas recibidas por el proveedor de prueba (Fase 3): 2 pendientes,
+            // 2 confirmadas (la de arriba y una mas), 1 rechazada y 1 con
+            // propuesta de reagenda del proveedor esperando al comprador.
             $this->cita($encuentro, $principal,       $otroComprador, $dia->copy()->setTime(11, 0),  'pendiente');
+            $recibidas = $this->compradoresParaProveedor($encuentro);
+            $this->cita($encuentro, $principal, $recibidas[0], $dia->copy()->setTime(11, 30), 'pendiente');
+            $this->cita($encuentro, $principal, $recibidas[1], $dia->copy()->setTime(12, 0),  'confirmada', 'Mesa 5');
+            $this->cita($encuentro, $principal, $recibidas[2], $dia->copy()->setTime(12, 30), 'rechazada');
+            $this->citaConPropuestaDeReagenda($encuentro, $principal, $recibidas[3], $dia, [13, 30], [15, 30]);
+
+            $this->proveedorNuevo();
 
             // Fase 2: una reagenda por confirmar, una agenda propuesta por el
             // admin y una encuesta de satisfaccion por responder.
@@ -320,6 +330,109 @@ class DemoMovilCommand extends Command
         return $user;
     }
 
+    /**
+     * Compradores demo 2..5, aprobados en el encuentro, que le mandan citas al
+     * proveedor de prueba (una cita por comprador/proveedor/evento).
+     *
+     * @return list<User>
+     */
+    private function compradoresParaProveedor(Evento $encuentro): array
+    {
+        $datos = [
+            [2, 'Hotel Hacienda Xcanatún',    'Mérida',  'Recados y salsas para el restaurante del hotel.'],
+            [3, 'Cocina Económica Doña Mary', 'Umán',    'Salsas picantes por mayoreo.'],
+            [4, 'Taquería El Trompo',         'Kanasín', 'Salsa de habanero en galón.'],
+            [5, 'Restaurante Chaya Maya',     'Mérida',  'Recado rojo y negro para cochinita y relleno negro.'],
+        ];
+
+        return array_map(function ($d) use ($encuentro) {
+            [$n, $empresa, $municipio, $necesidades] = $d;
+            $user = $this->usuario("demo.comprador{$n}@prueba.impulsate.mx", "Compras {$empresa}", self::PASS_COMPRADOR, [
+                'active_role'       => 'comprador',
+                'telefono'          => '99922200' . str_pad((string) $n, 2, '0', STR_PAD_LEFT),
+                'municipio'         => $municipio,
+                'nombre_empresa'    => $empresa,
+                'camara_asociacion' => 'Ninguna',
+                'necesidades'       => $necesidades,
+                'perfil_completo'   => true,
+            ]);
+            if (!$user->hasRole('cliente')) {
+                $user->assignRole('cliente');
+            }
+            $this->inscribir($encuentro, $user, 'comprador');
+
+            return $user;
+        }, $datos);
+    }
+
+    /**
+     * Proveedor recien registrado con el perfil de negocio INCOMPLETO (para el
+     * wizard de la app). Cada corrida lo deja otra vez incompleto y sin registro
+     * a eventos.
+     */
+    private function proveedorNuevo(): Restaurantero
+    {
+        $user = $this->usuario(self::CORREO_PROVEEDOR_NUEVO, 'Proveedor Nuevo de Prueba', self::PASS_PROVEEDOR, [
+            'active_role'     => 'proveedor',
+            'telefono'        => '9993334455',
+            'municipio'       => 'Progreso',
+            'perfil_completo' => false,
+        ]);
+        if (!$user->hasRole('restaurantero')) {
+            $user->assignRole('restaurantero');
+        }
+
+        $r = Restaurantero::firstOrNew(['user_id' => $user->id]);
+        // Sin logo, descripcion ni productos: calcularPerfilCompleto() da false,
+        // el hook saved() no lo auto-aprueba (no manda correo) y queda 'pendiente'.
+        $r->forceFill([
+            'edicion_id'               => null,
+            'nombre_restaurante'       => 'Tortillería La Nueva (demo app)',
+            'razon_social'             => null,
+            'descripcion'              => null,
+            'telefono'                 => null,
+            'municipio'                => 'Progreso',
+            'direccion'                => null,
+            'categoria'                => null,
+            'categorias_json'          => [],
+            'logo_path'                => null,
+            'productos_top'            => [],
+            'tipo_oferta'              => 'producto',
+            'entrega_domicilio'        => null,
+            'cobertura_entrega'        => null,
+            'forma_entrega'            => null,
+            'factura'                  => false,
+            'rfc'                      => null,
+            'regimen_fiscal'           => null,
+            'acepta_credito'           => false,
+            'credito_a_negociar'       => false,
+            'credito_monto_maximo'     => null,
+            'credito_tiempo_cantidad'  => null,
+            'credito_tiempo_unidad'    => null,
+            'pago_contraentrega'       => false,
+            'activo'                   => false,
+            'aprobado'                 => false,
+            'rechazado'                => false,
+            'motivo_rechazo'           => null,
+            'solicitado_aprobacion_at' => $r->solicitado_aprobacion_at ?? now(),
+        ])->save();
+
+        Servicio::firstOrCreate(
+            ['restaurantero_id' => $r->id, 'nombre' => 'Mesa de Networking'],
+            ['duracion_minutos' => 30, 'precio' => 0, 'activo' => true]
+        );
+        for ($dia = 1; $dia <= 5; $dia++) {
+            Horario::firstOrCreate(
+                ['restaurantero_id' => $r->id, 'dia_semana' => $dia],
+                ['hora_inicio' => '09:00:00', 'hora_fin' => '16:00:00', 'activo' => true]
+            );
+        }
+
+        DB::table('evento_usuario')->where('user_id', $user->id)->delete();
+
+        return $r;
+    }
+
     private function inscribir(Evento $evento, User $user, string $tipo): void
     {
         DB::table('evento_usuario')->updateOrInsert(
@@ -343,11 +456,11 @@ class DemoMovilCommand extends Command
         );
     }
 
-    /** Cita a las 13:00 que el proveedor propone mover a las 14:00 (estado pendiente_reconfirmacion). */
-    private function citaConPropuestaDeReagenda(Evento $encuentro, Restaurantero $r, User $comprador, Carbon $dia): Cita
+    /** Cita (por defecto a las 13:00) que el proveedor propone mover (por defecto a las 14:00): estado pendiente_reconfirmacion. */
+    private function citaConPropuestaDeReagenda(Evento $encuentro, Restaurantero $r, User $comprador, Carbon $dia, array $hora = [13, 0], array $nuevaHora = [14, 0]): Cita
     {
-        $cita = $this->cita($encuentro, $r, $comprador, $dia->copy()->setTime(13, 0), 'pendiente_reconfirmacion');
-        $propuesta = $dia->copy()->setTime(14, 0);
+        $cita = $this->cita($encuentro, $r, $comprador, $dia->copy()->setTime(...$hora), 'pendiente_reconfirmacion');
+        $propuesta = $dia->copy()->setTime(...$nuevaHora);
 
         $cita->update([
             'propuesta_inicio'   => $propuesta,
@@ -449,7 +562,14 @@ class DemoMovilCommand extends Command
                 ->where('tipo', 'proveedor')->where('estado', 'aprobado')->count()],
             ['Citas de ' . self::CORREO_COMPRADOR, Cita::where('cliente_id', $comprador->id)
                 ->selectRaw('estado, count(*) n')->groupBy('estado')->pluck('n', 'estado')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
-            ['Citas recibidas por ' . self::CORREO_PROVEEDOR, Cita::where('restaurantero_id', $proveedor->restaurantero->id)->count()],
+            ['Citas recibidas por ' . self::CORREO_PROVEEDOR, Cita::where('restaurantero_id', $proveedor->restaurantero->id)
+                ->selectRaw('estado, count(*) n')->groupBy('estado')->pluck('n', 'estado')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
+            ['Productos del proveedor (con capacidad)', count($proveedor->restaurantero->productos_top ?? []) . ' ('
+                . collect($proveedor->restaurantero->productos_top ?? [])->whereNotNull('capacidad_cantidad')->count() . ')'],
+            ['Negocio de ' . self::CORREO_PROVEEDOR_NUEVO, ($nuevo = User::where('email', self::CORREO_PROVEEDOR_NUEVO)->first()?->restaurantero)
+                ? ($nuevo->perfil_completo ? 'completo' : 'INCOMPLETO') . ' (faltan: '
+                    . collect(app(\App\Services\PerfilProveedorService::class)->faltantes($nuevo))->pluck('campo')->implode(', ') . ')'
+                : '—'],
             ['Perfil de negocio del proveedor completo', $proveedor->restaurantero->perfil_completo ? 'sí' : 'no'],
             ['Reagendas por confirmar del comprador', Cita::where('cliente_id', $comprador->id)->where('estado', 'pendiente_reconfirmacion')->count()],
             ['Agendas propuestas pendientes (citas propuestas)', AgendaPropuesta::where('user_id', $comprador->id)->where('estado', 'pendiente')->whereNotNull('enviada_at')->count()

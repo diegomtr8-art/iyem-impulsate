@@ -36,6 +36,16 @@ class CitaPolicy
         return $this->esProveedor($user, $cita);
     }
 
+    /**
+     * Ver la cita en las pantallas de PROVEEDOR (/api/v1/proveedor/citas/{id}),
+     * con los datos de contacto del comprador: solo el proveedor de la cita
+     * (ni el comprador ni el admin por esta ruta).
+     */
+    public function verComoProveedor(User $user, Cita $cita): bool
+    {
+        return $this->esProveedor($user, $cita);
+    }
+
     public function cambiarEstado(User $user, Cita $cita): bool
     {
         return $this->esAdmin($user);
