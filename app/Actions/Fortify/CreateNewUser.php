@@ -3,7 +3,6 @@
 namespace App\Actions\Fortify;
 
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Laravel\Fortify\Contracts\CreatesNewUsers;
@@ -15,18 +14,10 @@ class CreateNewUser implements CreatesNewUsers
 
     public function create(array $input): User
     {
-        // Si el email ya existe: asignar rol comprador al usuario existente
-        $existing = User::where('email', $input['email'])->first();
-        if ($existing) {
-            if (!$existing->hasRole('cliente')) {
-                $existing->assignRole('cliente');
-                // Si el usuario solo tenía restaurantero, ahora tiene ambos — no cambiamos active_role
-            }
-            // Logueamos al usuario y lo mandamos al dashboard
-            Auth::login($existing);
-            return $existing;
-        }
-
+        // Antes, un correo ya registrado iniciaba sesion como esa cuenta SIN
+        // pedir contrasena (cualquiera podia entrar como admin conociendo su
+        // correo). Ahora falla la validacion 'unique'; quien ya tiene cuenta
+        // inicia sesion y suma el rol desde perfil.agregar-rol.
         Validator::make($input, [
             'name'         => ['required', 'string', 'max:255'],
             'email'        => ['required', 'string', 'email', 'max:255', 'unique:users'],
@@ -36,6 +27,7 @@ class CreateNewUser implements CreatesNewUsers
             'terms'        => Jetstream::hasTermsAndPrivacyPolicyFeature() ? ['accepted', 'required'] : '',
             'acepta_aviso' => ['required', 'accepted'],
         ], [
+            'email.unique'          => 'Ya existe una cuenta con este correo. Inicia sesión; si quieres sumar el rol de comprador, hazlo desde tu perfil.',
             'acepta_aviso.required' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
             'acepta_aviso.accepted' => 'Debes aceptar el Aviso de Privacidad para registrarte.',
         ])->validate();
