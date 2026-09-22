@@ -27,6 +27,13 @@ class UserResource extends JsonResource
             'rol_activo'      => $onboarding['rol_activo'],
             'roles'           => $this->getRoleNames()->values(),
             'perfil_completo' => $onboarding['perfil_completo'],
+            'es_comprador'    => $this->hasRole('cliente'),
+            'es_proveedor'    => $this->hasRole('restaurantero'),
+            'tiene_dual_rol'  => $this->tieneDualRol(),
+            // Perfil de NEGOCIO (Restaurantero): null si no es proveedor.
+            'perfil_proveedor_completo' => $this->hasRole('restaurantero')
+                ? (bool) $this->restaurantero?->perfil_completo
+                : null,
             'tiene_ine'       => !empty($this->ine_path),
             'tiene_csf'       => !empty($this->csf_path),
             'csf_fecha'       => $this->csf_fecha,

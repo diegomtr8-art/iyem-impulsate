@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\OnboardingService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class AvisoAceptacionController extends Controller
 {
+    public function __construct(private OnboardingService $onboarding) {}
+
     public function show()
     {
         if (auth()->user()->acepta_aviso_at) {
@@ -18,14 +21,9 @@ class AvisoAceptacionController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'acepta' => ['required', 'accepted'],
-        ], [
-            'acepta.required' => 'Debes aceptar el Aviso de Privacidad para continuar.',
-            'acepta.accepted' => 'Debes aceptar el Aviso de Privacidad para continuar.',
-        ]);
+        $request->validate(OnboardingService::reglasAviso(), OnboardingService::mensajesAviso());
 
-        $request->user()->update(['acepta_aviso_at' => now()]);
+        $this->onboarding->aceptarAviso($request->user());
 
         if (!$request->user()->rol_seleccionado && !$request->user()->isAdmin()) {
             return redirect()->route('rol.seleccionar');

@@ -2,19 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Evento;
-use App\Models\Horario;
-use App\Models\Notificacion;
 use App\Models\Restaurantero;
-use App\Models\Servicio;
-use App\Models\User;
+use App\Services\DocumentosUsuarioService;
+use App\Services\OnboardingService;
+use App\Services\PerfilCompradorService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class CompletarPerfilController extends Controller
 {
+    public function __construct(
+        private PerfilCompradorService $perfil,
+        private OnboardingService $onboarding,
+        private DocumentosUsuarioService $documentos,
+    ) {}
+
     public const MUNICIPIOS = [
         'Abalá','Acanceh','Akil','Baca','Bokobá','Buctzotz','Calkiní',
         'Calotmul','Cansahcab','Cantamayec','Celestún','Cenotillo','Conkal',
@@ -55,86 +57,15 @@ class CompletarPerfilController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'telefono'              => ['required', 'string', 'max:20'],
-            'curp'                  => ['nullable', 'string', 'max:18'],
-            'rfc'                   => ['nullable', 'string', 'max:13'],
-            'municipio'             => ['required', 'string', 'max:100'],
-            'nombre_empresa'        => ['required', 'string', 'max:200'],
-            'camara_asociacion'     => ['required', 'string', 'in:CANIRAC,Ninguna'],
-            'nombre_establecimiento'=> [
-                'nullable', 'string', 'max:255',
-                Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),
-            ],
-            'necesidades'           => ['required', 'string', 'max:2000'],
-            'es_restaurantero'      => ['boolean'],
+        $request->validate(PerfilCompradorService::reglasCompletar($request->camara_asociacion));
+
+        $this->perfil->completar($request->user(), [
+            ...$request->only([
+                'telefono', 'curp', 'rfc', 'municipio', 'nombre_empresa',
+                'camara_asociacion', 'nombre_establecimiento', 'necesidades',
+            ]),
+            'es_restaurantero' => $request->boolean('es_restaurantero'),
         ]);
-
-        $user = $request->user();
-
-        $user->update([
-            'telefono'               => $request->telefono,
-            'curp'                   => $request->curp ? strtoupper($request->curp) : null,
-            'rfc'                    => $request->rfc ? strtoupper($request->rfc) : null,
-            'municipio'              => $request->municipio,
-            'nombre_empresa'         => $request->nombre_empresa,
-            'perfil_completo'        => true,
-            'camara_asociacion'      => $request->camara_asociacion,
-            'nombre_establecimiento' => $request->camara_asociacion === 'CANIRAC'
-                                        ? $request->nombre_establecimiento
-                                        : null,
-            'necesidades'            => $request->necesidades,
-            'es_restaurantero'       => $request->boolean('es_restaurantero'),
-        ]);
-
-        // Auto-registro al encuentro de negocios activo si es restaurantero.
-        // IMPORTANTE: queda en 'pendiente'. La aprobación la decide el admin
-        // desde /admin/eventos/{evento}/solicitudes.
-        if ($request->boolean('es_restaurantero')) {
-            $evento = Evento::activo();
-
-            // Solo encuentro de negocios. Si el evento activo más próximo es un
-            // bazar, no se inscribe aquí (el bazar tiene su propio flujo).
-            if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
-                $registro = DB::table('evento_usuario')
-                    ->where('evento_id', $evento->id)
-                    ->where('user_id', $user->id)
-                    ->where('tipo', 'comprador')
-                    ->first();
-
-                if (!$registro) {
-                    DB::table('evento_usuario')->insert([
-                        'evento_id'     => $evento->id,
-                        'user_id'       => $user->id,
-                        'tipo'          => 'comprador',
-                        'estado'        => 'pendiente',
-                        'respondido_at' => null,
-                        'created_at'    => now(),
-                        'updated_at'    => now(),
-                    ]);
-
-                    Notificacion::crear(
-                        $user->id,
-                        'solicitud_registro',
-                        'Tu solicitud está en revisión',
-                        'Registramos tu solicitud para el evento "' . $evento->nombre . '". El equipo la revisará y te avisaremos por correo cuando sea aprobada.'
-                    );
-
-                    // Avisar a TODOS los administradores
-                    foreach (User::role('admin')->get() as $admin) {
-                        Notificacion::crear(
-                            $admin->id,
-                            'solicitud_registro',
-                            'Nueva solicitud de comprador',
-                            $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
-                        );
-                    }
-                }
-                // Si ya existía un registro (pendiente, aprobado o rechazado)
-                // NO se toca: el estado lo gobierna el admin o el propio flujo
-                // de re-postulación de EventoRegistroController.
-            }
-        }
 
         return redirect()->route('dashboard')
             ->with('success', '¡Perfil completado! Ya puedes acceder a todas las funciones.');
@@ -142,85 +73,15 @@ class CompletarPerfilController extends Controller
 
     public function actualizarComprador(Request $request)
     {
-        $request->validate([
-            'name'                  => ['required', 'string', 'max:255'],
-            'telefono'              => ['nullable', 'string', 'max:20'],
-            'curp'                  => ['nullable', 'string', 'max:18'],
-            'rfc'                   => ['nullable', 'string', 'max:13'],
-            'municipio'             => ['nullable', 'string', 'max:100'],
-            'genero'                => ['nullable', 'in:hombre,mujer'],
-            'nombre_empresa'        => ['required', 'string', 'max:200'],
-            'sitio_web'             => ['nullable', 'url', 'max:200'],
-            'necesidades'           => ['nullable', 'string', 'max:2000'],
-            'camara_asociacion'     => ['required', 'string', 'in:CANIRAC,Ninguna'],
-            'nombre_establecimiento'=> [
-                'nullable', 'string', 'max:255',
-                Rule::requiredIf($request->camara_asociacion === 'CANIRAC'),
-            ],
-            'es_restaurantero'      => ['boolean'],
+        $request->validate(PerfilCompradorService::reglasActualizar($request->camara_asociacion));
+
+        $this->perfil->actualizar($request->user(), [
+            ...$request->only([
+                'name', 'telefono', 'curp', 'rfc', 'municipio', 'genero', 'nombre_empresa',
+                'sitio_web', 'necesidades', 'camara_asociacion', 'nombre_establecimiento',
+            ]),
+            'es_restaurantero' => $request->boolean('es_restaurantero'),
         ]);
-
-        $user = $request->user();
-        $seAcabaDeVolverRestaurantero = $request->boolean('es_restaurantero') && !$user->es_restaurantero;
-
-        $user->update([
-            'name'                   => $request->name,
-            'telefono'               => $request->telefono,
-            'curp'                   => $request->curp ? strtoupper($request->curp) : null,
-            'rfc'                    => $request->rfc ? strtoupper($request->rfc) : null,
-            'municipio'              => $request->municipio,
-            'genero'                 => $request->genero ?: null,
-            'nombre_empresa'         => $request->nombre_empresa,
-            'sitio_web'              => $request->sitio_web,
-            'necesidades'            => $request->necesidades,
-            'camara_asociacion'      => $request->camara_asociacion,
-            'nombre_establecimiento' => $request->camara_asociacion === 'CANIRAC'
-                                        ? $request->nombre_establecimiento
-                                        : null,
-            'es_restaurantero'       => $request->boolean('es_restaurantero'),
-        ]);
-
-        // Si acaba de marcar "¿Eres restaurantero?", registrarlo al encuentro
-        // activo como PENDIENTE. La aprobación la decide el admin.
-        if ($seAcabaDeVolverRestaurantero) {
-            $evento = Evento::activo();
-
-            if ($evento && $evento->tipo_evento === 'encuentro_negocios') {
-                $registro = DB::table('evento_usuario')
-                    ->where('evento_id', $evento->id)
-                    ->where('user_id', $user->id)
-                    ->where('tipo', 'comprador')
-                    ->first();
-
-                if (!$registro) {
-                    DB::table('evento_usuario')->insert([
-                        'evento_id'     => $evento->id,
-                        'user_id'       => $user->id,
-                        'tipo'          => 'comprador',
-                        'estado'        => 'pendiente',
-                        'respondido_at' => null,
-                        'created_at'    => now(),
-                        'updated_at'    => now(),
-                    ]);
-
-                    Notificacion::crear(
-                        $user->id,
-                        'solicitud_registro',
-                        'Tu solicitud está en revisión',
-                        'Registramos tu solicitud para el evento "' . $evento->nombre . '". Te avisaremos por correo cuando sea aprobada.'
-                    );
-
-                    foreach (User::role('admin')->get() as $admin) {
-                        Notificacion::crear(
-                            $admin->id,
-                            'solicitud_registro',
-                            'Nueva solicitud de comprador',
-                            $user->name . ' solicita unirse al evento "' . $evento->nombre . '" como comprador.'
-                        );
-                    }
-                }
-            }
-        }
 
         return back()->with('success', 'Perfil actualizado correctamente.');
     }
@@ -256,97 +117,25 @@ class CompletarPerfilController extends Controller
 
     public function agregarRol(Request $request)
     {
-        $request->validate(['rol' => 'required|in:comprador,proveedor']);
+        $request->validate(['rol' => 'required|in:' . implode(',', OnboardingService::ROLES_AGREGABLES)]);
 
-        $user = $request->user();
-
-        if ($request->rol === 'proveedor') {
-            if (!$user->hasRole('restaurantero')) {
-                $user->assignRole('restaurantero');
-            }
-            if (!$user->restaurantero) {
-                $restaurantero = Restaurantero::create([
-                    'user_id'                  => $user->id,
-                    'edicion_id'               => Evento::activo()?->id,
-                    'nombre_restaurante'       => $user->name . ' — Negocio',
-                    'activo'                   => false,
-                    'aprobado'                 => false,
-                    'solicitado_aprobacion_at' => now(),
-                ]);
-                // NO auto-registrar: el proveedor elige el evento desde su dashboard.
-                if (!$restaurantero->servicios()->exists()) {
-                    Servicio::create([
-                        'restaurantero_id' => $restaurantero->id,
-                        'nombre'           => 'Mesa de Networking',
-                        'duracion_minutos' => 30,
-                        'precio'           => 0,
-                        'activo'           => true,
-                    ]);
-                }
-                for ($dia = 1; $dia <= 5; $dia++) {
-                    Horario::create([
-                        'restaurantero_id' => $restaurantero->id,
-                        'dia_semana'       => $dia,
-                        'hora_inicio'      => '09:00:00',
-                        'hora_fin'         => '16:00:00',
-                        'activo'           => true,
-                    ]);
-                }
-            }
-        } else {
-            if (!$user->hasRole('cliente')) {
-                $user->assignRole('cliente');
-            }
-        }
+        $this->onboarding->agregarRol($request->user(), $request->rol);
 
         return back()->with('success', 'Rol agregado correctamente. ¡Bienvenido!');
     }
 
     public function subirDocumentos(Request $request)
     {
-        $request->validate([
-            'ine'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'csf'      => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
-            'csf_fecha'=> 'nullable|date|before_or_equal:today',
-        ], [
-            'ine.max'       => 'El INE no debe pesar más de 5 MB.',
-            'csf.max'       => 'La CSF no debe pesar más de 5 MB.',
-            'csf_fecha.before_or_equal' => 'La fecha de la CSF no puede ser futura.',
-        ]);
+        $request->validate(DocumentosUsuarioService::reglas(), DocumentosUsuarioService::mensajes());
 
-        $user = $request->user();
-        $datos = [];
-
-        // Disco 'local' = storage/app/private (NO servido por el servidor web).
-        // Nombre aleatorio para que la ruta no sea adivinable ni enumerable.
-        foreach (['ine', 'csf'] as $campo) {
-            if (!$request->hasFile($campo)) continue;
-
-            $columna = $campo . '_path';
-
-            // Borrar el anterior, este donde este (publico viejo o privado nuevo)
-            if ($user->$columna) {
-                foreach (['local', 'public'] as $disco) {
-                    if (\Storage::disk($disco)->exists($user->$columna)) {
-                        \Storage::disk($disco)->delete($user->$columna);
-                    }
-                }
-            }
-
-            $archivo   = $request->file($campo);
-            $extension = strtolower($archivo->extension());
-            $nombre    = $campo . '_' . \Illuminate\Support\Str::random(40) . '.' . $extension;
-
-            $datos[$columna] = $archivo->storeAs("documentos/{$user->id}", $nombre, 'local');
-        }
-
-        if ($request->filled('csf_fecha')) {
-            $datos['csf_fecha'] = $request->csf_fecha;
-        }
-
-        if (!empty($datos)) {
-            $user->update($datos);
-        }
+        $this->documentos->subir(
+            $request->user(),
+            [
+                'ine' => $request->hasFile('ine') ? $request->file('ine') : null,
+                'csf' => $request->hasFile('csf') ? $request->file('csf') : null,
+            ],
+            $request->input('csf_fecha')
+        );
 
         return back()->with('documentos_success', 'Documentos actualizados correctamente.');
     }

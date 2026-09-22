@@ -8,7 +8,6 @@ use App\Models\Evento;
 use App\Models\Notificacion;
 use App\Models\PlantillaCorreo;
 use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -218,7 +217,7 @@ class RegistroEventoService
             return 'Debes subir tu Constancia de Situación Fiscal (CSF) con su fecha de emisión.';
         }
 
-        if (Carbon::parse($user->csf_fecha)->lt(Carbon::now()->subMonths(3))) {
+        if (!DocumentosUsuarioService::csfVigente($user)) {
             return 'Tu Constancia de Situación Fiscal (CSF) tiene más de 3 meses de antigüedad. Sube una versión reciente.';
         }
 

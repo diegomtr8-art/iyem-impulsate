@@ -29,6 +29,30 @@ class AppServiceProvider extends ServiceProvider
             Limit::perMinute(20)->by($request->ip()),
         ]);
 
+        // Registro, reenvio de verificacion y "olvide mi contrasena": envian
+        // correo, asi que se limitan por correo+IP y por IP.
+        RateLimiter::for('api-cuenta', fn (Request $request) => [
+            Limit::perMinute(3)->by('c:' . mb_strtolower((string) $request->input('email')) . '|' . $request->ip()),
+            Limit::perMinute(10)->by('c:' . $request->ip()),
+        ]);
+
+        // Limitadores con NOMBRE (clave propia) para las acciones sensibles.
+        // Un 'throttle:6,1' numerico usa como clave solo el id del usuario, asi
+        // que TODAS las rutas con throttle numerico (web y API) comparten el
+        // mismo contador: subir documentos consumia el cupo de borrar la cuenta.
+        RateLimiter::for('api-credenciales', fn (Request $request) =>
+            Limit::perMinute(6)->by('cred:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-documentos', fn (Request $request) =>
+            Limit::perMinute(10)->by('docs:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-registro-evento', fn (Request $request) =>
+            Limit::perMinute(10)->by('reg:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-archivos', fn (Request $request) =>
+            Limit::perMinute(60)->by('arch:' . $request->ip())
+        );
+
         // API autenticada: por token/usuario, no por IP (varios telefonos
         // del evento comparten la misma red Wi-Fi).
         RateLimiter::for('api-v1', fn (Request $request) =>
