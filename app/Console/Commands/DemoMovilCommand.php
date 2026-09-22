@@ -113,6 +113,14 @@ class DemoMovilCommand extends Command
             $this->encuestaPendiente($finalizado, $comprador);
 
             $this->notificaciones($comprador, $encuentro, $principal);
+
+            // Fase 4A (admin): solicitudes por decidir en el encuentro,
+            // proveedores esperando aprobacion, expositores del bazar y un
+            // evento HOY con citas en distintos estados para la torre.
+            $this->solicitudesPendientes($encuentro);
+            $this->proveedoresPorAprobar();
+            $this->expositoresBazar($bazar);
+            $this->torreDeHoy($proveedores, array_merge($recibidas, [$otroComprador]));
         });
 
         $this->resumen();
@@ -577,6 +585,235 @@ class DemoMovilCommand extends Command
             ['Encuestas por responder del comprador', EncuestaSatisfaccion::where('user_id', $comprador->id)->whereNull('completada_at')->count()],
             ['Notificaciones del comprador (no leídas)', Notificacion::where('user_id', $comprador->id)->count()
                 . ' (' . Notificacion::where('user_id', $comprador->id)->where('leida', false)->count() . ')'],
+            ['Solicitudes PENDIENTES en el encuentro (por tipo)', DB::table('evento_usuario')->where('evento_id', $encuentro->id)
+                ->where('estado', 'pendiente')->selectRaw('tipo, count(*) n')->groupBy('tipo')->pluck('n', 'tipo')->map(fn ($n, $t) => "$t:$n")->implode(', ')],
+            ['Proveedores por aprobar (demo / total)', Restaurantero::whereHas('user', fn ($q) => $q->where('email', 'like', 'demo.por-aprobar%'))
+                ->where('aprobado', false)->where('rechazado', false)->count()
+                . ' / ' . Restaurantero::where('aprobado', false)->where('rechazado', false)->count()],
+            ['Expositores del bazar demo (por estado)', DB::table('evento_usuario')->where('evento_id', Evento::where('nombre', 'Bazar Hecho en Yucatán (demo app)')->value('id'))
+                ->where('tipo', 'expositor')->selectRaw('estado, count(*) n')->groupBy('estado')->pluck('n', 'estado')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
+            ['Citas de HOY en la torre (por estado_tv)', Cita::whereDate('inicio', today())->whereNotIn('estado', ['cancelada', 'rechazada'])
+                ->selectRaw("COALESCE(estado_tv, 'pendiente') e, count(*) n")->groupBy('e')->pluck('n', 'e')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
         ]);
+    }
+
+    /* ───────────── Fase 4A: material para el panel admin ───────────── */
+
+    /**
+     * 2 compradores y 2 proveedores con su solicitud PENDIENTE en el encuentro.
+     * Cada corrida la regresa a pendiente (sirve despues de aprobar/rechazar).
+     */
+    private function solicitudesPendientes(Evento $encuentro): void
+    {
+        $compradores = [
+            [1, 'Cafetería Los Almendros', 'Mérida',   'CANIRAC', 'Café de especialidad y miel local.'],
+            [2, 'Hotel Casa Lecanda',      'Mérida',   'Ninguna', 'Amenidades artesanales y textiles.'],
+        ];
+        foreach ($compradores as [$n, $empresa, $municipio, $camara, $necesidades]) {
+            $u = $this->usuario("demo.solicitud.comprador{$n}@prueba.impulsate.mx", "Compras {$empresa}", self::PASS_COMPRADOR, [
+                'active_role'       => 'comprador',
+                'telefono'          => '99933300' . str_pad((string) $n, 2, '0', STR_PAD_LEFT),
+                'municipio'         => $municipio,
+                'nombre_empresa'    => $empresa,
+                'camara_asociacion' => $camara,
+                'nombre_establecimiento' => $camara === 'CANIRAC' ? $empresa : null,
+                'necesidades'       => $necesidades,
+                'perfil_completo'   => true,
+            ]);
+            if (!$u->hasRole('cliente')) {
+                $u->assignRole('cliente');
+            }
+            $this->inscribirPendiente($encuentro, $u, 'comprador');
+        }
+
+        $proveedores = [
+            [1, 'Chocolates Ek Balam',   'Alimentos y Bebidas', 'Valladolid', ['Chocolate de mesa', 'Cacao en polvo']],
+            [2, 'Hamacas Tixkokob Real', 'Artesanías',          'Tixkokob',   ['Hamaca matrimonial', 'Silla hamaca']],
+        ];
+        foreach ($proveedores as [$n, $nombre, $categoria, $municipio, $productos]) {
+            $u = $this->usuario("demo.solicitud.proveedor{$n}@prueba.impulsate.mx", "Contacto {$nombre}", self::PASS_PROVEEDOR, [
+                'active_role' => 'proveedor',
+                'telefono'    => '99944400' . str_pad((string) $n, 2, '0', STR_PAD_LEFT),
+                'municipio'   => $municipio,
+            ]);
+            if (!$u->hasRole('restaurantero')) {
+                $u->assignRole('restaurantero');
+            }
+            $this->negocio($u, [
+                'nombre_restaurante' => $nombre,
+                'descripcion'        => "{$nombre}: {$categoria} de {$municipio}.",
+                'telefono'           => $u->telefono,
+                'municipio'          => $municipio,
+                'categoria'          => $categoria,
+                'logo_path'          => null,
+                'productos_top'      => collect($productos)->map(fn ($p) => [
+                    'nombre' => $p, 'descripcion' => '', 'foto_path' => null,
+                    'capacidad_cantidad' => 50, 'capacidad_unidad' => 'piezas',
+                ])->all(),
+                'entrega_domicilio'  => false,
+                'factura'            => false,
+                'acepta_credito'     => false,
+            ]);
+            $this->inscribirPendiente($encuentro, $u, 'proveedor');
+        }
+    }
+
+    private function inscribirPendiente(Evento $evento, User $user, string $tipo, array $extra = []): void
+    {
+        DB::table('evento_usuario')->updateOrInsert(
+            ['evento_id' => $evento->id, 'user_id' => $user->id, 'tipo' => $tipo],
+            array_merge([
+                'estado' => 'pendiente', 'motivo_rechazo' => null, 'respondido_at' => null,
+                'updated_at' => now(), 'created_at' => now(),
+            ], $extra)
+        );
+    }
+
+    /**
+     * 2 proveedores recien registrados esperando la aprobacion del admin
+     * (perfil incompleto: sin logo, para que el hook no los auto-apruebe).
+     * Cada corrida los regresa a "pendiente de aprobacion".
+     */
+    private function proveedoresPorAprobar(): void
+    {
+        $datos = [
+            [1, 'Panadería San Cristóbal (demo app)', 'Alimentos y Bebidas', 'Motul',   'Pan dulce y de sal para cafeterías.'],
+            [2, 'Uniformes Península (demo app)',     'Textiles',            'Mérida',  'Uniformes para cocina y meseros.'],
+        ];
+
+        foreach ($datos as [$n, $nombre, $categoria, $municipio, $descripcion]) {
+            $u = $this->usuario("demo.por-aprobar{$n}@prueba.impulsate.mx", "Contacto {$nombre}", self::PASS_PROVEEDOR, [
+                'active_role' => 'proveedor',
+                'telefono'    => '99955500' . str_pad((string) $n, 2, '0', STR_PAD_LEFT),
+                'municipio'   => $municipio,
+            ]);
+            if (!$u->hasRole('restaurantero')) {
+                $u->assignRole('restaurantero');
+            }
+
+            $r = Restaurantero::firstOrNew(['user_id' => $u->id]);
+            $r->forceFill([
+                'edicion_id'               => null,
+                'nombre_restaurante'       => $nombre,
+                'descripcion'              => $descripcion,
+                'telefono'                 => $u->telefono,
+                'municipio'                => $municipio,
+                'categoria'                => $categoria,
+                'logo_path'                => null,
+                'productos_top'            => [['nombre' => 'Producto de muestra', 'descripcion' => '', 'foto_path' => null, 'capacidad_cantidad' => 10, 'capacidad_unidad' => 'piezas']],
+                'entrega_domicilio'        => false,
+                'activo'                   => false,
+                'aprobado'                 => false,
+                'rechazado'                => false,
+                'motivo_rechazo'           => null,
+                'solicitado_aprobacion_at' => now()->subHours($n),
+            ])->save();
+
+            Servicio::firstOrCreate(
+                ['restaurantero_id' => $r->id, 'nombre' => 'Mesa de Networking'],
+                ['duracion_minutos' => 30, 'precio' => 0, 'activo' => true]
+            );
+        }
+    }
+
+    /** 3 expositores en el bazar demo (pendiente, en evaluacion, seleccionado) y 2 criterios. */
+    private function expositoresBazar(Evento $bazar): void
+    {
+        $bazar->forceFill(['con_criterios_evaluacion' => true])->save();
+        $calidad = \App\Models\EventoCriterio::firstOrCreate(['evento_id' => $bazar->id, 'nombre' => 'Calidad del producto'], ['porcentaje' => 60, 'orden' => 0]);
+        $precio  = \App\Models\EventoCriterio::firstOrCreate(['evento_id' => $bazar->id, 'nombre' => 'Presentación y precio'], ['porcentaje' => 40, 'orden' => 1]);
+
+        $datos = [
+            [1, 'Bordados Xmatkuil',  'pendiente', false, null],
+            [2, 'Jabones Sac-Nité',   'aprobado',  false, [80, 70]],
+            [3, 'Cerámica Ticul Sur', 'aprobado',  true,  [95, 90]],
+        ];
+
+        foreach ($datos as [$n, $empresa, $estado, $seleccionado, $puntajes]) {
+            $u = $this->usuario("demo.expositor{$n}@prueba.impulsate.mx", "Expositor {$empresa}", self::PASS_COMPRADOR, [
+                'active_role'    => 'comprador',
+                'nombre_empresa' => $empresa,
+                'municipio'      => 'Mérida',
+                'telefono'       => '99966600' . str_pad((string) $n, 2, '0', STR_PAD_LEFT),
+                'csf_fecha'      => now()->subMonth()->toDateString(),
+                'perfil_completo' => true,
+            ]);
+            if (!$u->hasRole('cliente')) {
+                $u->assignRole('cliente');
+            }
+
+            \App\Models\EventoEvaluacion::where('evento_id', $bazar->id)->where('user_id', $u->id)->delete();
+            $total = null;
+            if ($puntajes) {
+                \App\Models\EventoEvaluacion::create(['evento_id' => $bazar->id, 'user_id' => $u->id, 'criterio_id' => $calidad->id, 'puntaje' => $puntajes[0]]);
+                \App\Models\EventoEvaluacion::create(['evento_id' => $bazar->id, 'user_id' => $u->id, 'criterio_id' => $precio->id, 'puntaje' => $puntajes[1]]);
+                $total = round($puntajes[0] * 0.6 + $puntajes[1] * 0.4, 2);
+            }
+
+            $this->inscribirPendiente($bazar, $u, 'expositor', [
+                'estado'                    => $estado,
+                'respondido_at'             => $estado === 'pendiente' ? null : now(),
+                'seleccionado'              => $seleccionado,
+                'puntaje_total'             => $total,
+                'notas_rechazo'             => null,
+                'correo_aprobacion_enviado' => false,
+                'correo_rechazo_enviado'    => false,
+            ]);
+        }
+    }
+
+    /**
+     * Evento "de hoy" para la torre de control con 6 citas en todos los
+     * estados de sala. Cada corrida lo mueve a HOY y reinicia las citas.
+     *
+     * @param Collection<int, Restaurantero>|array $proveedores
+     * @param list<User> $compradores
+     */
+    private function torreDeHoy($proveedores, array $compradores): void
+    {
+        $hoy = now()->startOfDay();
+
+        $torre = Evento::updateOrCreate(['nombre' => 'Encuentro Torre de Control (demo app)'], [
+            'sector_economico'           => 'Alimentos y Bebidas',
+            'descripcion'                => 'Evento de HOY para probar la torre de control desde la app.',
+            'tipo_evento'                => 'encuentro_negocios',
+            'activa'                     => true,
+            'destacado'                  => false,
+            'fecha_inicio'               => $hoy->toDateString(),
+            'fecha_hora_inicio'          => $hoy->copy()->setTime(9, 0),
+            'fecha_hora_fin'             => $hoy->copy()->setTime(23, 59),
+            'fecha_hora_inicio_proveedores' => $hoy->copy()->subDays(10),
+            'fecha_hora_fin_proveedores'    => $hoy->copy()->subDays(2),
+            'fecha_hora_inicio_compradores' => $hoy->copy()->subDays(10),
+            'fecha_hora_fin_compradores'    => $hoy->copy()->subDay(),
+            'tiempo_entre_citas_minutos' => 30,
+            'max_citas_por_comprador'    => 5,
+        ]);
+
+        // [hora, minuto, estado, estado_tv, mesa]
+        $plan = [
+            [9, 30,  'completada', 'finalizada', '1'],
+            [10, 0,  'confirmada', 'ausente',    null],
+            [10, 30, 'confirmada', 'en_curso',   '2'],
+            [11, 0,  'confirmada', 'llamando',   '4'],
+            [11, 30, 'confirmada', 'pendiente',  null],
+            [12, 0,  'confirmada', 'pendiente',  null],
+        ];
+
+        foreach ($plan as $i => [$h, $m, $estado, $estadoTv, $mesa]) {
+            $r = $proveedores[$i];
+            $c = $compradores[$i % count($compradores)];
+            $this->inscribir($torre, $r->user, 'proveedor');
+            $this->inscribir($torre, $c, 'comprador');
+
+            $inicio = $hoy->copy()->setTime($h, $m);
+            $cita = $this->cita($torre, $r, $c, $inicio, $estado, $mesa);
+            $cita->forceFill([
+                'estado_tv'        => $estadoTv,
+                'llamada_at'       => in_array($estadoTv, ['llamando', 'en_curso', 'finalizada']) ? $inicio->copy()->subMinutes(2) : null,
+                'hora_real_inicio' => in_array($estadoTv, ['en_curso', 'finalizada']) ? $inicio->copy()->addMinutes(1) : null,
+                'hora_real_fin'    => $estadoTv === 'finalizada' ? $inicio->copy()->addMinutes(24) : null,
+            ])->save();
+        }
     }
 }
