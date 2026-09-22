@@ -90,5 +90,38 @@ Route::prefix('v1')->group(function () {
         Route::get('/eventos/{evento}',           [\App\Http\Controllers\Api\V1\EventoController::class, 'show']);
         Route::post('/eventos/{evento}/registro', [\App\Http\Controllers\Api\V1\EventoController::class, 'registrar'])
             ->middleware('throttle:api-registro-evento');
+
+        // Fase 2 — comprador: directorio, disponibilidad y citas
+        Route::get('/proveedores',                            [\App\Http\Controllers\Api\V1\ProveedorController::class, 'index']);
+        Route::get('/proveedores/categorias',                 [\App\Http\Controllers\Api\V1\ProveedorController::class, 'categorias']);
+        Route::get('/proveedores/{proveedor}',                [\App\Http\Controllers\Api\V1\ProveedorController::class, 'show'])
+            ->whereNumber('proveedor');
+        Route::get('/proveedores/{proveedor}/disponibilidad', [\App\Http\Controllers\Api\V1\ProveedorController::class, 'disponibilidad'])
+            ->whereNumber('proveedor');
+
+        Route::get('/citas',                            [\App\Http\Controllers\Api\V1\CitaController::class, 'index']);
+        Route::post('/citas',                           [\App\Http\Controllers\Api\V1\CitaController::class, 'store'])
+            ->middleware('throttle:api-agendar');
+        Route::get('/citas/{cita}',                     [\App\Http\Controllers\Api\V1\CitaController::class, 'show'])->whereNumber('cita');
+        Route::post('/citas/{cita}/cancelar',           [\App\Http\Controllers\Api\V1\CitaController::class, 'cancelar'])->whereNumber('cita');
+        Route::patch('/citas/{cita}/notas',             [\App\Http\Controllers\Api\V1\CitaController::class, 'notas'])->whereNumber('cita');
+        Route::post('/citas/{cita}/reagenda/aceptar',   [\App\Http\Controllers\Api\V1\CitaController::class, 'aceptarReagenda'])
+            ->whereNumber('cita')->middleware('throttle:api-respuestas');
+        Route::post('/citas/{cita}/reagenda/rechazar',  [\App\Http\Controllers\Api\V1\CitaController::class, 'rechazarReagenda'])
+            ->whereNumber('cita')->middleware('throttle:api-respuestas');
+
+        // Agendas propuestas por el admin
+        Route::get('/agendas',                   [\App\Http\Controllers\Api\V1\AgendaController::class, 'index']);
+        Route::get('/agendas/{agenda}',          [\App\Http\Controllers\Api\V1\AgendaController::class, 'show'])->whereNumber('agenda');
+        Route::post('/agendas/{agenda}/aceptar', [\App\Http\Controllers\Api\V1\AgendaController::class, 'aceptar'])
+            ->whereNumber('agenda')->middleware('throttle:api-respuestas');
+        Route::post('/agendas/{agenda}/rechazar', [\App\Http\Controllers\Api\V1\AgendaController::class, 'rechazar'])
+            ->whereNumber('agenda')->middleware('throttle:api-respuestas');
+
+        // Encuestas de satisfaccion
+        Route::get('/encuestas/pendientes',             [\App\Http\Controllers\Api\V1\EncuestaController::class, 'pendientes']);
+        Route::get('/encuestas/{encuesta}',             [\App\Http\Controllers\Api\V1\EncuestaController::class, 'show'])->whereNumber('encuesta');
+        Route::post('/encuestas/{encuesta}/respuestas', [\App\Http\Controllers\Api\V1\EncuestaController::class, 'responder'])
+            ->whereNumber('encuesta')->middleware('throttle:api-encuestas');
     });
 });

@@ -49,6 +49,17 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api-registro-evento', fn (Request $request) =>
             Limit::perMinute(10)->by('reg:' . ($request->user()?->id ?? $request->ip()))
         );
+        // Fase 2 (comprador): los mismos cupos que las rutas web equivalentes
+        // (POST /citas 10/min, respuestas por token 10/min, encuesta 20/min).
+        RateLimiter::for('api-agendar', fn (Request $request) =>
+            Limit::perMinute(10)->by('agendar:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-respuestas', fn (Request $request) =>
+            Limit::perMinute(10)->by('resp:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-encuestas', fn (Request $request) =>
+            Limit::perMinute(20)->by('enc:' . ($request->user()?->id ?? $request->ip()))
+        );
         RateLimiter::for('api-archivos', fn (Request $request) =>
             Limit::perMinute(60)->by('arch:' . $request->ip())
         );

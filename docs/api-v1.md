@@ -64,6 +64,9 @@ imponen los middlewares de la web). La app debe llevar al usuario a la pantalla 
 | `api-credenciales` | `PUT /perfil/contrasena`, `DELETE /cuenta` | 6/min por usuario |
 | `api-registro-evento` | `POST /eventos/{id}/registro` | 10/min por usuario |
 | `api-archivos` | `GET /documentos/{user}/{tipo}` (URL firmada) | 60/min por IP |
+| `api-agendar` | `POST /citas` | 10/min por usuario |
+| `api-respuestas` | `POST /citas/{id}/reagenda/*`, `POST /agendas/{id}/aceptar\|rechazar` | 10/min por usuario |
+| `api-encuestas` | `POST /encuestas/{id}/respuestas` | 20/min por usuario |
 
 ### Objeto `user` (UserResource)
 
@@ -1173,6 +1176,25 @@ Resumen para la pantalla de Inicio.
   con la misma forma que `GET /eventos/{id}`; `null` si no hay eventos activos.
 - `notificaciones_sin_leer`: entero.
 - `publicidad`: el popup vigente que muestra la web (nunca a admins); `null` si no hay.
+- `pendientes` (Fase 2): lo que el usuario tiene por responder **como comprador**, para badges/avisos:
+  `reagendas_por_confirmar` (citas en `pendiente_reconfirmacion`, ver `GET /citas?estado=pendiente_reconfirmacion`),
+  `agendas_por_responder` (`GET /agendas`) y `encuestas_por_responder` (`GET /encuestas/pendientes`). Los demás campos
+  no cambiaron.
+
+  Ejemplo real con los datos de prueba (resto de `data` igual que abajo):
+  `HTTP 200`
+  ```json
+  {
+    "data": {
+      "…": "…",
+      "pendientes": {
+        "reagendas_por_confirmar": 1,
+        "agendas_por_responder": 1,
+        "encuestas_por_responder": 1
+      }
+    }
+  }
+  ```
 
 200 (comprador, con una publicidad vigente):
 `HTTP 200`
@@ -1738,17 +1760,1375 @@ llegan como 422 con `errors.error`.
 
 ---
 
-## 8. Datos de prueba locales
+## 8. Proveedores (directorio y ficha)
+
+Lo mismo que la web muestra en `/proveedores` y `/proveedores/{id}`. Lo ve cualquier usuario con sesión (la web lo
+muestra incluso sin sesión). **Nunca** viajan la dirección del negocio (la ficha web la oculta), el correo, el
+motivo de rechazo ni campos internos.
+
+### GET /proveedores
+
+Query (todo opcional):
+
+| Parámetro | Valores | Nota |
+|---|---|---|
+| `evento_id` | id de un encuentro de negocios **activo** (ver `meta.eventos`) | Proveedores **aprobados** en ese evento (una sección de `/proveedores` en la web). Sin `evento_id`: directorio de la plataforma (perfil activo, aprobado y completo). |
+| `search` | texto, máx. 100 | Busca en nombre, descripción, municipio y dirección (igual que la web; la dirección no se devuelve). |
+| `categoria` | texto exacto, máx. 100 | Una de `GET /proveedores/categorias`. |
+| `orden` | `recientes` (defecto) \| `coincidencia` | `recientes`: más nuevos primero (la web). `coincidencia`: el orden de "Proveedores recomendados" de `/mi-panel` (cuántas palabras de las `necesidades` del perfil aparecen en nombre, descripción, categoría y productos); cada elemento trae `coincidencias`. |
+| `per_page` | 1–50 (defecto 20) | |
+
+`meta` añade: `evento` (el aplicado o `null`), `eventos` (encuentros activos para pintar pestañas, el destacado
+primero), `orden` y `tiene_necesidades` (si `false`, el orden por coincidencia no cambia nada: invitar a llenar
+"Qué buscas" en el perfil).
+
+`citas_count` es el total histórico de citas del proveedor (el mismo contador que muestran las tarjetas web).
+
+200 (`?evento_id=5&per_page=2`):
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "categoria": "Alimentos y Bebidas",
+      "municipio": "Mérida",
+      "descripcion": "Salsas y recados artesanales yucatecos para restaurantes.",
+      "logo_url": "http://localhost/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "citas_count": 2
+    }
+  ],
+  "links": {
+    "first": "http://127.0.0.1/citas/public/api/v1/proveedores?evento_id=5&per_page=2&page=1",
+    "last": "http://127.0.0.1/citas/public/api/v1/proveedores?evento_id=5&per_page=2&page=5",
+    "prev": null,
+    "next": "http://127.0.0.1/citas/public/api/v1/proveedores?evento_id=5&per_page=2&page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 5,
+    "links": "…",
+    "path": "http://127.0.0.1/citas/public/api/v1/proveedores",
+    "per_page": 2,
+    "to": 2,
+    "total": 9,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "destacado": true,
+      "imagen_url": null
+    },
+    "eventos": [
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "destacado": true,
+        "imagen_url": null
+      },
+      {
+        "id": 1,
+        "nombre": "Edición Inicial",
+        "destacado": false,
+        "imagen_url": null
+      }
+    ],
+    "orden": "recientes",
+    "tiene_necesidades": false
+  }
+}
+```
+_Recortado: `data` traía 2 elementos; se muestra el primero; se omite `meta.links` (arreglo de enlaces de página)._
+
+200 (`?evento_id=5&orden=coincidencia&per_page=3`, comprador con necesidades "Salsas, recados y miel para el menú de temporada."):
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "categoria": "Alimentos y Bebidas",
+      "municipio": "Mérida",
+      "descripcion": "Salsas y recados artesanales yucatecos para restaurantes.",
+      "logo_url": "http://localhost/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "citas_count": 2,
+      "coincidencias": 3
+    }
+  ],
+  "links": {
+    "first": "http://127.0.0.1/citas/public/api/v1/proveedores?evento_id=5&orden=coincidencia&per_page=3&page=1",
+    "last": "http://127.0.0.1/citas/public/api/v1/proveedores?evento_id=5&orden=coincidencia&per_page=3&page=3",
+    "prev": null,
+    "next": "http://127.0.0.1/citas/public/api/v1/proveedores?evento_id=5&orden=coincidencia&per_page=3&page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 3,
+    "links": "…",
+    "path": "http://127.0.0.1/citas/public/api/v1/proveedores",
+    "per_page": 3,
+    "to": 3,
+    "total": 9,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "destacado": true,
+      "imagen_url": null
+    },
+    "eventos": [
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "destacado": true,
+        "imagen_url": null
+      },
+      {
+        "id": 1,
+        "nombre": "Edición Inicial",
+        "destacado": false,
+        "imagen_url": null
+      }
+    ],
+    "orden": "coincidencia",
+    "tiene_necesidades": true
+  }
+}
+```
+_Recortado: `data` traía 3 elementos; se muestra el primero; se omite `meta.links` (arreglo de enlaces de página)._
+
+422 (`evento_id` que no es un encuentro activo):
+`HTTP 422`
+```json
+{
+  "message": "El evento no es un encuentro de negocios activo.",
+  "errors": {
+    "evento_id": [
+      "El evento no es un encuentro de negocios activo."
+    ]
+  }
+}
+```
+
+### GET /proveedores/categorias
+
+Query: `evento_id` (opcional, mismo alcance que el listado). Devuelve las categorías presentes, ordenadas.
+
+200 (`?evento_id=5`):
+`HTTP 200`
+```json
+{
+  "data": [
+    "Alimentos y Bebidas",
+    "Artesanías",
+    "Cristalería, plásticos y utensilios",
+    "Equipos, mantenimiento y reparación",
+    "Limpieza e higiene",
+    "Textiles",
+    "Vinos y licores"
+  ]
+}
+```
+
+### GET /proveedores/{id}
+
+Ficha completa como la ve un comprador en la web, agrupada por las secciones de la pantalla. Registra una visita en
+las métricas del admin (igual que abrir la ficha web). 404 si el proveedor no existe o está inactivo (salvo que
+quien mira sea su dueño o un admin).
+
+- `productos[]`: `nombre`, `descripcion`, `foto_url`, `capacidad_cantidad` + `capacidad_unidad` (capacidad mensual),
+  `precio` (puede ser `null`).
+- `condiciones_comerciales.credito_a_negociar = true` → mostrar "Crédito a negociar" en lugar de monto/plazo.
+- `logistica.entrega_domicilio`: `true`, `false` o `null` (no capturado: no mostrar la sección).
+- `empresa` y `producto_servicio`: la web muestra cada campo solo si tiene valor.
+- `logo_url`, `foto_url`: URL absoluta o `null`. Se arma con `APP_URL` del servidor: en local sale
+  `http://localhost/citas/public/storage/...`, que el teléfono no resuelve; para probar imágenes desde el teléfono,
+  poner en `.env` local `APP_URL=http://192.168.10.6/citas/public` (o reemplazar el host en la app en modo desarrollo).
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 13,
+    "nombre_negocio": "Salsas Doña Chela",
+    "categoria": "Alimentos y Bebidas",
+    "municipio": "Mérida",
+    "descripcion": "Salsas y recados artesanales yucatecos para restaurantes.",
+    "logo_url": "http://localhost/citas/public/storage/logos/demo-proveedor-prueba.png",
+    "contacto": {
+      "telefono": "9991112233",
+      "sitio_web": null,
+      "rfc": "SDC200101AB1"
+    },
+    "productos": [
+      {
+        "nombre": "Recado rojo 1 kg",
+        "descripcion": "Achiote artesanal",
+        "foto_url": null,
+        "capacidad_cantidad": 500,
+        "capacidad_unidad": "kilogramos",
+        "precio": null
+      },
+      {
+        "nombre": "Salsa de habanero 250 ml",
+        "descripcion": "Picor alto",
+        "foto_url": null,
+        "capacidad_cantidad": 2000,
+        "capacidad_unidad": "piezas",
+        "precio": null
+      }
+    ],
+    "condiciones_comerciales": {
+      "acepta_credito": true,
+      "credito_a_negociar": true,
+      "credito_monto_maximo": null,
+      "credito_tiempo_cantidad": null,
+      "credito_tiempo_unidad": null,
+      "pago_contraentrega": true,
+      "factura": true,
+      "regimen_fiscal": "601 - General de Ley Personas Morales"
+    },
+    "logistica": {
+      "entrega_domicilio": true,
+      "cobertura_entrega": "regional",
+      "forma_entrega": "programada"
+    },
+    "empresa": {
+      "razon_social": "Salsas Doña Chela SA de CV",
+      "nombre_representante": "Graciela Pech",
+      "curp_representante": null,
+      "rfc": "SDC200101AB1",
+      "fecha_inicio_operaciones": null,
+      "num_empleados": null,
+      "domicilio_en_yucatan": null,
+      "redes_sociales": []
+    },
+    "producto_servicio": {
+      "mercado_meta": "Restaurantes y hoteles de la península.",
+      "tiempo_vida_anaquel": null,
+      "requisitos_alimentos": [],
+      "apoyo_requisitos": null,
+      "requiere_refrigeracion": null,
+      "requiere_congelacion": null
+    }
+  }
+}
+```
+
+404: `{ "message": "No query results for model [App\\Models\\Restaurantero] 999999" }` (inexistente) o
+`{ "message": "Proveedor no encontrado." }` (inactivo).
+
+### GET /proveedores/{id}/disponibilidad
+
+Los horarios que ofrece la ficha web para agendar, con el estado de cada uno **ya calculado por el servidor** con
+las mismas reglas que aplica `POST /citas`. La app no calcula nada: pinta `horarios` y habilita solo los `libre`
+cuando `puede_agendar` es `true`.
+
+Query (opcional): `fecha=YYYY-MM-DD` **o** `desde=YYYY-MM-DD&hasta=YYYY-MM-DD`. Sin filtros: todos los días del
+evento.
+
+- **Evento**: el encuentro en el que el comprador está aprobado. Si no lo está, el evento principal (como la ficha
+  web), con `puede_agendar: false` y el `motivo`.
+- **Horarios**: cada día del evento, de la hora de inicio a la de fin del evento, cada `intervalo_minutos`
+  (= `tiempo_entre_citas_minutos` redondeado a 5). Cada cita dura `duracion_cita_minutos`.
+- `estado` de cada horario:
+  - `libre`
+  - `ocupado_proveedor`: el proveedor ya tiene una cita activa que se cruza. Los horarios **pegados** a una cita
+    del proveedor quedan libres (el proveedor no tiene colchón).
+  - `bloqueado_por_tus_citas`: se cruza con una cita activa del comprador (con cualquier proveedor) contando
+    `colchon_minutos` (10) antes y después.
+  - `fuera_de_ventana`: ya pasó, o la ventana de agendado del comprador está cerrada (`evento.ventana_agendado`).
+- `mi_cita_id`: id de la cita propia que cae exactamente en ese horario (con este u otro proveedor), o `null`.
+- `puede_agendar` / `motivo`: lo que respondería `POST /citas` aunque el horario esté libre (no aprobado,
+  administrador, ventana cerrada, proveedor sin servicio, cupo lleno). Las citas canceladas y rechazadas no cuentan
+  para `citas_usadas` ni ocupan horario.
+
+200 (sin filtros; comprador de prueba con citas a las 10:00 con este proveedor, 10:40 y 13:00 con otros):
+`HTTP 200`
+```json
+{
+  "data": {
+    "proveedor": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela"
+    },
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+      "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+      "ventana_agendado": {
+        "inicio": "2026-09-17T14:07:54-06:00",
+        "fin": "2026-10-06T18:00:00-06:00",
+        "abierta": true
+      },
+      "tiempo_entre_citas_minutos": 30,
+      "max_citas_por_comprador": 5
+    },
+    "duracion_cita_minutos": 30,
+    "intervalo_minutos": 30,
+    "colchon_minutos": 10,
+    "citas_usadas": 4,
+    "max_citas": 5,
+    "citas_restantes": 1,
+    "puede_agendar": true,
+    "motivo": null,
+    "dias": [
+      {
+        "fecha": "2026-10-06",
+        "horarios": [
+          {
+            "hora": "09:00",
+            "inicio": "2026-10-06T09:00:00-06:00",
+            "fin": "2026-10-06T09:30:00-06:00",
+            "estado": "libre",
+            "mi_cita_id": null
+          },
+          {
+            "hora": "09:30",
+            "inicio": "2026-10-06T09:30:00-06:00",
+            "fin": "2026-10-06T10:00:00-06:00",
+            "estado": "bloqueado_por_tus_citas",
+            "mi_cita_id": null
+          },
+          {
+            "hora": "10:00",
+            "inicio": "2026-10-06T10:00:00-06:00",
+            "fin": "2026-10-06T10:30:00-06:00",
+            "estado": "ocupado_proveedor",
+            "mi_cita_id": 27
+          },
+          {
+            "hora": "10:30",
+            "inicio": "2026-10-06T10:30:00-06:00",
+            "fin": "2026-10-06T11:00:00-06:00",
+            "estado": "bloqueado_por_tus_citas",
+            "mi_cita_id": 28
+          },
+          {
+            "hora": "11:00",
+            "inicio": "2026-10-06T11:00:00-06:00",
+            "fin": "2026-10-06T11:30:00-06:00",
+            "estado": "ocupado_proveedor",
+            "mi_cita_id": 28
+          },
+          {
+            "hora": "11:30",
+            "inicio": "2026-10-06T11:30:00-06:00",
+            "fin": "2026-10-06T12:00:00-06:00",
+            "estado": "libre",
+            "mi_cita_id": null
+          },
+          {
+            "hora": "12:00",
+            "inicio": "2026-10-06T12:00:00-06:00",
+            "fin": "2026-10-06T12:30:00-06:00",
+            "estado": "libre",
+            "mi_cita_id": null
+          },
+          {
+            "hora": "12:30",
+            "inicio": "2026-10-06T12:30:00-06:00",
+            "fin": "2026-10-06T13:00:00-06:00",
+            "estado": "bloqueado_por_tus_citas",
+            "mi_cita_id": null
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+_Recortado: el día trae 18 horarios (09:00 a 17:30); se muestran los primeros 8._
+
+200 con el cupo lleno (`motivo`):
+`HTTP 200`
+```json
+{
+  "data": {
+    "proveedor": {
+      "id": 9,
+      "nombre_negocio": "Limpieza Peninsular"
+    },
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+      "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+      "ventana_agendado": {
+        "inicio": "2026-09-17T14:04:09-06:00",
+        "fin": "2026-10-06T18:00:00-06:00",
+        "abierta": true
+      },
+      "tiempo_entre_citas_minutos": 30,
+      "max_citas_por_comprador": 5
+    },
+    "duracion_cita_minutos": 30,
+    "intervalo_minutos": 30,
+    "colchon_minutos": 10,
+    "citas_usadas": 5,
+    "max_citas": 5,
+    "citas_restantes": 0,
+    "puede_agendar": false,
+    "motivo": "Has alcanzado el límite de 5 citas en este evento.",
+    "dias": [
+      {
+        "fecha": "2026-10-06",
+        "horarios": [
+          {
+            "hora": "09:00",
+            "inicio": "2026-10-06T09:00:00-06:00",
+            "fin": "2026-10-06T09:30:00-06:00",
+            "estado": "libre",
+            "mi_cita_id": null
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+_Recortado: el día trae 18 horarios (09:00 a 17:30); se muestran los primeros 1._
+
+422:
+`HTTP 422`
+```json
+{
+  "message": "El campo fecha no corresponde con el formato Y-m-d.",
+  "errors": {
+    "fecha": [
+      "El campo fecha no corresponde con el formato Y-m-d."
+    ]
+  }
+}
+```
+
+---
+
+## 9. Citas del comprador
+
+### Objeto `cita` (CitaResource)
+
+| Campo | Tipo | Nota |
+|---|---|---|
+| `id` | int | |
+| `inicio`, `fin` | ISO 8601 | |
+| `estado` | string | `pendiente`, `confirmada`, `pendiente_reconfirmacion`, `reagendada`, `rechazada`, `cancelada`, `completada` |
+| `estado_texto` | string | etiqueta para mostrar |
+| `notas`, `productos_interes` | string\|null, string[] | |
+| `mesa` | string\|null | asignada por el admin el día del evento |
+| `evento` | `{id, nombre}` | |
+| `proveedor` | `{id, nombre_negocio, categoria, logo_url, municipio}` | |
+| `comprador` | `{id, nombre, nombre_empresa}` | **solo** si quien mira es el proveedor de la cita o un admin (Fase 3) |
+| `propuesta_reagenda` | `{inicio, fin}`\|null | solo con `estado = pendiente_reconfirmacion` |
+| `puede_cancelar` | bool | dueño y estado distinto de `completada`/`cancelada` (misma regla que la web) |
+| `puede_editar_notas` | bool | dueño |
+| `puede_responder_reagenda` | bool | dueño y hay propuesta pendiente |
+| `creada_at` | ISO 8601 | |
+
+### POST /citas
+
+Límite `api-agendar` (10/min). Body JSON (mismas reglas que el formulario web):
+
+| Campo | Reglas |
+|---|---|
+| `restaurantero_id` | requerido, id de proveedor existente |
+| `fecha` | requerido, fecha `YYYY-MM-DD`, hoy o después |
+| `hora` | requerido, `HH:MM` (uno de los `horarios[].hora` de la disponibilidad) |
+| `notas` | opcional, máx. 1000 |
+| `productos_interes` | opcional, arreglo de textos (máx. 255 c/u); normalmente `productos[].nombre` de la ficha |
+
+La cita nace `pendiente` (el proveedor la acepta o rechaza). Se envían los mismos correos y notificaciones que en
+la web. Dos compradores que piden el mismo hueco a la vez: uno recibe 201 y el otro 422 (probado en paralelo contra
+Apache: `201` + `422 "Este horario ya no está disponible con el proveedor..."`, una sola cita en BD).
+
+201:
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 33,
+    "inicio": "2026-10-06T12:00:00-06:00",
+    "fin": "2026-10-06T12:30:00-06:00",
+    "estado": "pendiente",
+    "estado_texto": "Pendiente",
+    "notas": "Me interesa el recado rojo para 3 sucursales.",
+    "productos_interes": [
+      "Recado rojo 1 kg"
+    ],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "categoria": "Alimentos y Bebidas",
+      "logo_url": "http://localhost/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "municipio": "Mérida"
+    },
+    "propuesta_reagenda": null,
+    "puede_cancelar": true,
+    "puede_editar_notas": true,
+    "puede_responder_reagenda": false,
+    "creada_at": "2026-09-22T14:05:59-06:00"
+  },
+  "message": "Cita solicitada correctamente."
+}
+```
+
+422 validación:
+`HTTP 422`
+```json
+{
+  "message": "El campo restaurantero id es obligatorio. (and 2 more errors)",
+  "errors": {
+    "restaurantero_id": [
+      "El campo restaurantero id es obligatorio."
+    ],
+    "fecha": [
+      "El campo fecha es obligatorio."
+    ],
+    "hora": [
+      "El campo hora es obligatorio."
+    ]
+  }
+}
+```
+
+422 reglas de negocio (el campo indica cuál):
+
+| `errors.*` | Mensaje (ejemplos reales) |
+|---|---|
+| `fecha` | "Ya tienes una cita agendada a las 10:00 (se requieren 10 minutos de separación entre citas)." |
+| `fecha` | "Este horario ya no está disponible con el proveedor. Por favor elige otro." |
+| `fecha` | "El período de agendado aún no ha comenzado. Apertura: dd/mm/aaaa hh:mm." / "El período de agendado ya cerró (fin: ...)." / "Solo puedes agendar citas para el día del evento (...)." |
+| `limit` | "Has alcanzado el límite de 5 citas en este evento." |
+| `servicio` | "Este proveedor no tiene servicios disponibles." |
+| `error` | "Debes estar registrado y aprobado en el evento para agendar citas." / "Tu solicitud de registro al evento está pendiente de aprobación. ..." / "El administrador no puede agendar citas para sí mismo. ..." |
+| `edicion` | "No hay un encuentro de negocios activo. Contacta al administrador." |
+
+`HTTP 422`
+```json
+{
+  "message": "Ya tienes una cita agendada a las 10:00 (se requieren 10 minutos de separación entre citas).",
+  "errors": {
+    "fecha": [
+      "Ya tienes una cita agendada a las 10:00 (se requieren 10 minutos de separación entre citas)."
+    ]
+  }
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "Has alcanzado el límite de 5 citas en este evento.",
+  "errors": {
+    "limit": [
+      "Has alcanzado el límite de 5 citas en este evento."
+    ]
+  }
+}
+```
+
+### GET /citas
+
+Mis citas como comprador, en orden cronológico (`inicio` ascendente), paginadas.
+
+Query (opcional): `estado` (uno o varios separados por coma, p. ej. `pendiente,confirmada`), `evento_id`,
+`desde=YYYY-MM-DD` (citas desde ese día), `per_page` (1–50, defecto 20). Un estado desconocido da 422 en `estado`.
+
+200 (`?per_page=2`):
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 30,
+      "inicio": "2026-08-22T12:00:00-06:00",
+      "fin": "2026-08-22T12:30:00-06:00",
+      "estado": "completada",
+      "estado_texto": "Completada",
+      "notas": "Cita de demostración para la app.",
+      "productos_interes": [],
+      "mesa": null,
+      "evento": {
+        "id": 7,
+        "nombre": "Encuentro de Negocios Julio (demo app)"
+      },
+      "proveedor": {
+        "id": 7,
+        "nombre_negocio": "Textiles Xokbil",
+        "categoria": "Textiles",
+        "logo_url": null,
+        "municipio": "Mérida"
+      },
+      "propuesta_reagenda": null,
+      "puede_cancelar": false,
+      "puede_editar_notas": true,
+      "puede_responder_reagenda": false,
+      "creada_at": "2026-09-22T13:35:33-06:00"
+    }
+  ],
+  "links": {
+    "first": "http://127.0.0.1/citas/public/api/v1/citas?per_page=2&page=1",
+    "last": "http://127.0.0.1/citas/public/api/v1/citas?per_page=2&page=4",
+    "prev": null,
+    "next": "http://127.0.0.1/citas/public/api/v1/citas?per_page=2&page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 4,
+    "links": "…",
+    "path": "http://127.0.0.1/citas/public/api/v1/citas",
+    "per_page": 2,
+    "to": 2,
+    "total": 7
+  }
+}
+```
+_Recortado: `data` traía 2 elementos; se muestra el primero; se omite `meta.links` (arreglo de enlaces de página)._
+
+### GET /citas/{id}
+
+200 para el comprador dueño (también para el proveedor de la cita y admins; ellos reciben además `comprador`).
+403 si la cita es de otro. 404 si no existe.
+
+200 (cita con reagenda por confirmar, `GET /citas?estado=pendiente_reconfirmacion` devuelve la misma):
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 32,
+    "inicio": "2026-10-06T13:00:00-06:00",
+    "fin": "2026-10-06T13:30:00-06:00",
+    "estado": "pendiente_reconfirmacion",
+    "estado_texto": "Nuevo horario por confirmar",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 8,
+      "nombre_negocio": "Artesanías Kanasín",
+      "categoria": "Artesanías",
+      "logo_url": null,
+      "municipio": "Kanasín"
+    },
+    "propuesta_reagenda": {
+      "inicio": "2026-10-06T14:00:00-06:00",
+      "fin": "2026-10-06T14:30:00-06:00"
+    },
+    "puede_cancelar": true,
+    "puede_editar_notas": true,
+    "puede_responder_reagenda": true,
+    "creada_at": "2026-09-22T14:04:08-06:00"
+  }
+}
+```
+
+403:
+`HTTP 403`
+```json
+{
+  "message": "This action is unauthorized."
+}
+```
+
+### POST /citas/{id}/cancelar
+
+Sin body. Misma regla y correo que la web (se avisa por correo al comprador). 403 si no es tu cita.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 33,
+    "inicio": "2026-10-06T12:00:00-06:00",
+    "fin": "2026-10-06T12:30:00-06:00",
+    "estado": "cancelada",
+    "estado_texto": "Cancelada",
+    "notas": "Llevar lista de precios mayoreo.",
+    "productos_interes": [
+      "Recado rojo 1 kg"
+    ],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "categoria": "Alimentos y Bebidas",
+      "logo_url": "http://localhost/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "municipio": "Mérida"
+    },
+    "propuesta_reagenda": null,
+    "puede_cancelar": false,
+    "puede_editar_notas": true,
+    "puede_responder_reagenda": false,
+    "creada_at": "2026-09-22T14:05:59-06:00"
+  },
+  "message": "Cita cancelada correctamente."
+}
+```
+
+422 (cita completada o ya cancelada):
+`HTTP 422`
+```json
+{
+  "message": "No puedes cancelar esta cita.",
+  "errors": {
+    "error": [
+      "No puedes cancelar esta cita."
+    ]
+  }
+}
+```
+
+### PATCH /citas/{id}/notas
+
+Body: `notas` (texto, máx. 1000; `null` o ausente **borra** las notas, igual que la web). 403 si no es tu cita.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 33,
+    "inicio": "2026-10-06T12:00:00-06:00",
+    "fin": "2026-10-06T12:30:00-06:00",
+    "estado": "pendiente",
+    "estado_texto": "Pendiente",
+    "notas": "Llevar lista de precios mayoreo.",
+    "productos_interes": [
+      "Recado rojo 1 kg"
+    ],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "categoria": "Alimentos y Bebidas",
+      "logo_url": "http://localhost/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "municipio": "Mérida"
+    },
+    "propuesta_reagenda": null,
+    "puede_cancelar": true,
+    "puede_editar_notas": true,
+    "puede_responder_reagenda": false,
+    "creada_at": "2026-09-22T14:05:59-06:00"
+  },
+  "message": "Notas actualizadas."
+}
+```
+
+422:
+`{ "message": "El campo notas no debe ser mayor que 1000 caracteres.", "errors": { "notas": ["..."] } }`
+
+### POST /citas/{id}/reagenda/aceptar
+
+Responde a la propuesta de nuevo horario del proveedor (lo mismo que el botón del correo). Límite `api-respuestas`
+(10/min). Sin body. 403 si no es tu cita.
+
+Si el hueco propuesto ya se ocupó mientras la propuesta esperaba, **la cita no cambia** (sigue en
+`pendiente_reconfirmacion` con su horario original), se avisa al proveedor para que proponga otro y responde 422.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 32,
+    "inicio": "2026-10-06T14:00:00-06:00",
+    "fin": "2026-10-06T14:30:00-06:00",
+    "estado": "confirmada",
+    "estado_texto": "Confirmada",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 8,
+      "nombre_negocio": "Artesanías Kanasín",
+      "categoria": "Artesanías",
+      "logo_url": null,
+      "municipio": "Kanasín"
+    },
+    "propuesta_reagenda": null,
+    "puede_cancelar": true,
+    "puede_editar_notas": true,
+    "puede_responder_reagenda": false,
+    "creada_at": "2026-09-22T14:04:08-06:00"
+  },
+  "message": "¡Cita confirmada con la nueva fecha! Nos vemos pronto."
+}
+```
+
+422 horario ya ocupado:
+`HTTP 422`
+```json
+{
+  "message": "El horario propuesto ya no está disponible. Tu cita conserva su horario original; el proveedor te propondrá otro.",
+  "errors": {
+    "error": [
+      "El horario propuesto ya no está disponible. Tu cita conserva su horario original; el proveedor te propondrá otro."
+    ]
+  }
+}
+```
+
+422 sin propuesta pendiente (ya respondida o nunca hubo):
+`HTTP 422`
+```json
+{
+  "message": "Esta cita no tiene una propuesta de cambio de horario pendiente.",
+  "errors": {
+    "error": [
+      "Esta cita no tiene una propuesta de cambio de horario pendiente."
+    ]
+  }
+}
+```
+
+### POST /citas/{id}/reagenda/rechazar
+
+La cita queda **cancelada** y se avisa al proveedor (correo + notificación), igual que el enlace del correo.
+Límite `api-respuestas`. 403 si no es tu cita; 422 sin propuesta pendiente.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 32,
+    "inicio": "2026-10-06T13:00:00-06:00",
+    "fin": "2026-10-06T13:30:00-06:00",
+    "estado": "cancelada",
+    "estado_texto": "Cancelada",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "mesa": null,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 8,
+      "nombre_negocio": "Artesanías Kanasín",
+      "categoria": "Artesanías",
+      "logo_url": null,
+      "municipio": "Kanasín"
+    },
+    "propuesta_reagenda": null,
+    "puede_cancelar": false,
+    "puede_editar_notas": true,
+    "puede_responder_reagenda": false,
+    "creada_at": "2026-09-22T14:04:08-06:00"
+  },
+  "message": "Has rechazado la propuesta. La cita quedó cancelada."
+}
+```
+
+---
+
+## 10. Agendas propuestas por el admin
+
+El admin arma una agenda (varias citas con distintos proveedores) y se la envía al comprador. Solo se listan las
+**enviadas** al comprador autenticado. Aceptar crea las citas **confirmadas** y avisa a cada proveedor; rechazar
+avisa a los administradores. Es la misma lógica que el enlace del correo, que sigue funcionando.
+
+`estado` ∈ `pendiente | aceptada | rechazada`. `citas[].cita_id` es la cita creada al aceptar (`null` antes).
+
+### GET /agendas
+
+Pendientes primero y después las más recientes; paginado (`per_page` 1–50).
+
+200:
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 4,
+      "estado": "pendiente",
+      "estado_texto": "Pendiente de respuesta",
+      "puede_responder": true,
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "fecha_hora_inicio": "2026-10-06T09:00:00-06:00"
+      },
+      "enviada_at": "2026-09-22T14:06:51-06:00",
+      "respondida_at": null,
+      "citas": [
+        {
+          "id": 12,
+          "inicio": "2026-10-06T15:00:00-06:00",
+          "fin": "2026-10-06T15:30:00-06:00",
+          "cita_id": null,
+          "proveedor": {
+            "id": 9,
+            "nombre_negocio": "Limpieza Peninsular",
+            "categoria": "Limpieza e higiene",
+            "descripcion": "Limpieza Peninsular: proveedor local de Limpieza e higiene en Umán.",
+            "logo_url": null,
+            "municipio": "Umán"
+          }
+        },
+        {
+          "id": 13,
+          "inicio": "2026-10-06T15:30:00-06:00",
+          "fin": "2026-10-06T16:00:00-06:00",
+          "cita_id": null,
+          "proveedor": {
+            "id": 10,
+            "nombre_negocio": "Cristalería Progreso",
+            "categoria": "Cristalería, plásticos y utensilios",
+            "descripcion": "Cristalería Progreso: proveedor local de Cristalería, plásticos y utensilios en Progreso.",
+            "logo_url": null,
+            "municipio": "Progreso"
+          }
+        },
+        {
+          "id": 14,
+          "inicio": "2026-10-06T16:00:00-06:00",
+          "fin": "2026-10-06T16:30:00-06:00",
+          "cita_id": null,
+          "proveedor": {
+            "id": 11,
+            "nombre_negocio": "Licores de Xtabentún Izamal",
+            "categoria": "Vinos y licores",
+            "descripcion": "Licores de Xtabentún Izamal: proveedor local de Vinos y licores en Izamal.",
+            "logo_url": null,
+            "municipio": "Izamal"
+          }
+        }
+      ]
+    }
+  ],
+  "links": {
+    "first": "http://127.0.0.1/citas/public/api/v1/agendas?page=1",
+    "last": "http://127.0.0.1/citas/public/api/v1/agendas?page=1",
+    "prev": null,
+    "next": null
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "links": "…",
+    "path": "http://127.0.0.1/citas/public/api/v1/agendas",
+    "per_page": 20,
+    "to": 1,
+    "total": 1
+  }
+}
+```
+_Recortado: se omite `meta.links` (arreglo de enlaces de página)._
+
+### GET /agendas/{id}
+
+403 si no es tuya o si el admin aún no la envía.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 4,
+    "estado": "pendiente",
+    "estado_texto": "Pendiente de respuesta",
+    "puede_responder": true,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "fecha_hora_inicio": "2026-10-06T09:00:00-06:00"
+    },
+    "enviada_at": "2026-09-22T14:06:51-06:00",
+    "respondida_at": null,
+    "citas": [
+      {
+        "id": 12,
+        "inicio": "2026-10-06T15:00:00-06:00",
+        "fin": "2026-10-06T15:30:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 9,
+          "nombre_negocio": "Limpieza Peninsular",
+          "categoria": "Limpieza e higiene",
+          "descripcion": "Limpieza Peninsular: proveedor local de Limpieza e higiene en Umán.",
+          "logo_url": null,
+          "municipio": "Umán"
+        }
+      },
+      {
+        "id": 13,
+        "inicio": "2026-10-06T15:30:00-06:00",
+        "fin": "2026-10-06T16:00:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 10,
+          "nombre_negocio": "Cristalería Progreso",
+          "categoria": "Cristalería, plásticos y utensilios",
+          "descripcion": "Cristalería Progreso: proveedor local de Cristalería, plásticos y utensilios en Progreso.",
+          "logo_url": null,
+          "municipio": "Progreso"
+        }
+      },
+      {
+        "id": 14,
+        "inicio": "2026-10-06T16:00:00-06:00",
+        "fin": "2026-10-06T16:30:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 11,
+          "nombre_negocio": "Licores de Xtabentún Izamal",
+          "categoria": "Vinos y licores",
+          "descripcion": "Licores de Xtabentún Izamal: proveedor local de Vinos y licores en Izamal.",
+          "logo_url": null,
+          "municipio": "Izamal"
+        }
+      }
+    ]
+  }
+}
+```
+
+### POST /agendas/{id}/aceptar
+
+Sin body. Límite `api-respuestas`. 403 ajena.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 4,
+    "estado": "aceptada",
+    "estado_texto": "Aceptada",
+    "puede_responder": false,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "fecha_hora_inicio": "2026-10-06T09:00:00-06:00"
+    },
+    "enviada_at": "2026-09-22T14:06:51-06:00",
+    "respondida_at": "2026-09-22T14:06:54-06:00",
+    "citas": [
+      {
+        "id": 12,
+        "inicio": "2026-10-06T15:00:00-06:00",
+        "fin": "2026-10-06T15:30:00-06:00",
+        "cita_id": 36,
+        "proveedor": {
+          "id": 9,
+          "nombre_negocio": "Limpieza Peninsular",
+          "categoria": "Limpieza e higiene",
+          "descripcion": "Limpieza Peninsular: proveedor local de Limpieza e higiene en Umán.",
+          "logo_url": null,
+          "municipio": "Umán"
+        }
+      },
+      {
+        "id": 13,
+        "inicio": "2026-10-06T15:30:00-06:00",
+        "fin": "2026-10-06T16:00:00-06:00",
+        "cita_id": 37,
+        "proveedor": {
+          "id": 10,
+          "nombre_negocio": "Cristalería Progreso",
+          "categoria": "Cristalería, plásticos y utensilios",
+          "descripcion": "Cristalería Progreso: proveedor local de Cristalería, plásticos y utensilios en Progreso.",
+          "logo_url": null,
+          "municipio": "Progreso"
+        }
+      },
+      {
+        "id": 14,
+        "inicio": "2026-10-06T16:00:00-06:00",
+        "fin": "2026-10-06T16:30:00-06:00",
+        "cita_id": 38,
+        "proveedor": {
+          "id": 11,
+          "nombre_negocio": "Licores de Xtabentún Izamal",
+          "categoria": "Vinos y licores",
+          "descripcion": "Licores de Xtabentún Izamal: proveedor local de Vinos y licores en Izamal.",
+          "logo_url": null,
+          "municipio": "Izamal"
+        }
+      }
+    ]
+  },
+  "message": "¡Agenda aceptada! Tus citas han sido registradas en el sistema."
+}
+```
+
+422 ya respondida:
+`HTTP 422`
+```json
+{
+  "message": "Esta propuesta de agenda ya fue respondida.",
+  "errors": {
+    "error": [
+      "Esta propuesta de agenda ya fue respondida."
+    ]
+  }
+}
+```
+
+422 si algún proveedor ya no tiene servicio activo: "Uno de los proveedores de esta agenda no tiene un servicio
+activo para agendar citas." (`errors.error`); la agenda sigue pendiente.
+
+### POST /agendas/{id}/rechazar
+
+Sin body. Límite `api-respuestas`. 422 si ya estaba respondida.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 4,
+    "estado": "rechazada",
+    "estado_texto": "Rechazada",
+    "puede_responder": false,
+    "respondida_at": "2026-09-22T14:06:56-06:00",
+    "…": "…"
+  },
+  "message": "Has rechazado la propuesta de agenda. El equipo de IMPULSATE te contactará pronto."
+}
+```
+_Recortado: el resto de `data` es igual que en `GET /agendas/{id}`._
+
+---
+
+## 11. Encuestas de satisfacción
+
+Encuestas que el admin envió al usuario al terminar un evento (las de prueba no aparecen). Responder por la app
+equivale a responder desde el enlace del correo.
+
+### GET /encuestas/pendientes
+
+Sin paginar.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 3,
+      "tipo": "comprador",
+      "evento": {
+        "id": 7,
+        "nombre": "Encuentro de Negocios Julio (demo app)",
+        "sector_economico": "Alimentos y Bebidas"
+      },
+      "completada": false,
+      "completada_at": null,
+      "enviada_at": "2026-09-22T14:04:08-06:00"
+    }
+  ]
+}
+```
+
+### GET /encuestas/{id}
+
+403 si no es tuya. Trae `preguntas[]` con la forma que interpreta la web:
+
+| Campo | Nota |
+|---|---|
+| `id` | clave con la que se envía la respuesta |
+| `tipo` | `escala` (entero entre `escala_min` y `escala_max`), `nps` (0–10), `binario` (uno de `valores`: "Sí"/"No"), `opciones` (una de `opciones`), `multiple` (arreglo con elementos de `opciones`), `texto` (máx. 2000) |
+| `requerida` | `true` salvo que la plantilla diga lo contrario |
+| `condicion` | opcional `{pregunta_id, operador, valor}`: la pregunta **solo se muestra** si la respuesta a `pregunta_id` cumple `igual`/`diferente` (texto) o `mayor`/`menor` (número) respecto a `valor`. Sin respuesta en la fuente, la pregunta se oculta. |
+
+200 (plantilla real de 19 preguntas):
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 3,
+    "tipo": "comprador",
+    "evento": {
+      "id": 7,
+      "nombre": "Encuentro de Negocios Julio (demo app)",
+      "sector_economico": "Alimentos y Bebidas"
+    },
+    "completada": false,
+    "completada_at": null,
+    "enviada_at": "2026-09-22T14:04:08-06:00",
+    "preguntas": [
+      {
+        "id": "correo",
+        "tipo": "texto",
+        "texto": "Correo electrónico",
+        "requerida": true
+      },
+      {
+        "id": "perfil",
+        "tipo": "opciones",
+        "texto": "Perfil de participación en este encuentro:",
+        "requerida": true,
+        "opciones": [
+          "Comprador",
+          "Proveedor"
+        ]
+      },
+      {
+        "id": "c_oferta_coincide",
+        "tipo": "opciones",
+        "texto": "¿La oferta de los proveedores asignados coincidió con las necesidades actuales de tu negocio?",
+        "requerida": false,
+        "opciones": [
+          "Sí, totalmente.",
+          "Parcialmente (algunos perfiles no encajaban).",
+          "No, no era lo que buscaba."
+        ],
+        "condicion": {
+          "pregunta_id": "perfil",
+          "operador": "igual",
+          "valor": "Comprador"
+        }
+      },
+      {
+        "id": "p_proyeccion",
+        "tipo": "opciones",
+        "texto": "Proyección económica: ¿A cuánto asciende el monto estimado de ventas que esperas cerrar a mediano plazo derivado de estas citas? (Dato confidencial para estadística interna del IYEM)",
+        "requerida": true,
+        "opciones": [
+          "$0 (No se prevén cierres)",
+          "Menos de $10,000 MXN",
+          "De $10,000 a $50,000 MXN",
+          "Más de $50,000 MXN"
+        ],
+        "condicion": {
+          "pregunta_id": "perfil",
+          "operador": "igual",
+          "valor": "Proveedor"
+        }
+      },
+      {
+        "id": "p_monto_aproximado",
+        "tipo": "texto",
+        "texto": "En caso de venta, ¿nos podría compartir un monto aproximado?",
+        "requerida": true,
+        "condicion": {
+          "pregunta_id": "p_proyeccion",
+          "operador": "diferente",
+          "valor": "$0 (No se prevén cierres)"
+        }
+      }
+    ]
+  }
+}
+```
+_Recortado: 19 preguntas; se muestran 5 representativas (requerida, opciones, condicionada por igual y por diferente)._
+
+### POST /encuestas/{id}/respuestas
+
+Body JSON: un campo por pregunta, con su `id` como clave. Límite `api-encuestas` (20/min).
+
+Además de la validación por tipo que hace la web, el servidor exige las preguntas **visibles y requeridas**
+(la misma regla que en la web aplica el navegador), con el mensaje "Este campo es requerido.". Las respuestas vacías
+no se guardan.
+
+200:
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 3,
+    "tipo": "comprador",
+    "evento": {
+      "id": 7,
+      "nombre": "Encuentro de Negocios Julio (demo app)",
+      "sector_economico": "Alimentos y Bebidas"
+    },
+    "completada": true,
+    "completada_at": "2026-09-22T14:07:43-06:00",
+    "enviada_at": "2026-09-22T14:04:08-06:00"
+  },
+  "message": "¡Gracias por responder la encuesta!"
+}
+```
+
+422 falta una requerida:
+`HTTP 422`
+```json
+{
+  "message": "Este campo es requerido.",
+  "errors": {
+    "correo": [
+      "Este campo es requerido."
+    ]
+  }
+}
+```
+
+422 valor fuera de las opciones:
+`HTTP 422`
+```json
+{
+  "message": "El campo cal org staff seleccionado no es válido.",
+  "errors": {
+    "cal_org_staff": [
+      "El campo cal org staff seleccionado no es válido."
+    ]
+  }
+}
+```
+
+422 ya respondida:
+`HTTP 422`
+```json
+{
+  "message": "Esta encuesta ya fue respondida.",
+  "errors": {
+    "error": [
+      "Esta encuesta ya fue respondida."
+    ]
+  }
+}
+```
+
+403 si no es tuya.
+
+---
+
+## 12. Datos de prueba locales
 
 `php artisan impulsate:demo-movil` (solo `APP_ENV=local`, idempotente) deja:
 
 | Cuenta | Contraseña | Qué tiene |
 |---|---|---|
-| `comprador@prueba.impulsate.mx` | `Prueba2026!` | comprador aprobado en el encuentro; 4 citas (confirmada, pendiente, cancelada y una completada en el evento finalizado); 5 notificaciones (3 sin leer) |
+| `comprador@prueba.impulsate.mx` | `Prueba2026!` | comprador aprobado en el encuentro; 5 citas (confirmada, pendiente, cancelada, una en `pendiente_reconfirmacion` con propuesta 13:00 → 14:00 y una completada en el evento finalizado); 1 agenda propuesta pendiente con 3 citas (15:00, 15:30 y 16:00); 1 encuesta de satisfacción por responder (evento finalizado, plantilla activa); 5 notificaciones (3 sin leer) |
 | `proveedor@prueba.impulsate.mx` | `Proveedor2026!` | proveedor "Salsas Doña Chela" con perfil de negocio completo, aprobado en el encuentro, 2 citas recibidas |
 | `admin@prueba.impulsate.mx` | (la existente) | rol admin |
 | `demo.proveedor1..8@prueba.impulsate.mx` | `Proveedor2026!` | 8 proveedores aprobados en el encuentro (sin logo) |
-| `demo.comprador1@prueba.impulsate.mx` | `Prueba2026!` | comprador con una cita pendiente con el proveedor de prueba |
+| `demo.comprador1@prueba.impulsate.mx` | `Prueba2026!` | comprador con una cita pendiente con el proveedor de prueba y `necesidades` capturadas (sirve para `GET /proveedores?orden=coincidencia`) |
 
 Eventos: "Encuentro de Negocios Impúlsate (demo app)" (activo, destacado, en 2 semanas, ventanas abiertas),
 "Bazar Hecho en Yucatán (demo app)" (activo) y "Encuentro de Negocios Julio (demo app)" (finalizado).
+
+Correr el comando otra vez **reinicia** la reagenda, la agenda propuesta (borra las citas que haya creado una
+aceptación anterior) y la encuesta (borra sus respuestas), así que las pantallas de Fase 2 se pueden probar las veces
+que se quiera. Las citas nuevas que se agenden desde la app no se borran.

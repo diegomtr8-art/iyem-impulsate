@@ -2,7 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\AgendaPropuesta;
+use App\Models\AgendaPropuestaCita;
 use App\Models\Cita;
+use App\Models\EncuestaPlantilla;
+use App\Models\EncuestaSatisfaccion;
 use App\Models\Evento;
 use App\Models\Horario;
 use App\Models\Notificacion;
@@ -14,6 +18,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
@@ -90,6 +95,12 @@ class DemoMovilCommand extends Command
 
             // Citas recibidas por el proveedor de prueba.
             $this->cita($encuentro, $principal,       $otroComprador, $dia->copy()->setTime(11, 0),  'pendiente');
+
+            // Fase 2: una reagenda por confirmar, una agenda propuesta por el
+            // admin y una encuesta de satisfaccion por responder.
+            $this->citaConPropuestaDeReagenda($encuentro, $proveedores[3], $comprador, $dia);
+            $this->agendaPropuesta($encuentro, $comprador, $admin, [$proveedores[4], $proveedores[5], $proveedores[6]], $dia);
+            $this->encuestaPendiente($finalizado, $comprador);
 
             $this->notificaciones($comprador, $encuentro, $principal);
         });
@@ -332,6 +343,80 @@ class DemoMovilCommand extends Command
         );
     }
 
+    /** Cita a las 13:00 que el proveedor propone mover a las 14:00 (estado pendiente_reconfirmacion). */
+    private function citaConPropuestaDeReagenda(Evento $encuentro, Restaurantero $r, User $comprador, Carbon $dia): Cita
+    {
+        $cita = $this->cita($encuentro, $r, $comprador, $dia->copy()->setTime(13, 0), 'pendiente_reconfirmacion');
+        $propuesta = $dia->copy()->setTime(14, 0);
+
+        $cita->update([
+            'propuesta_inicio'   => $propuesta,
+            'propuesta_fin'      => $propuesta->copy()->addMinutes(30),
+            'token_confirmacion' => $cita->token_confirmacion ?? Str::random(64),
+        ]);
+
+        return $cita;
+    }
+
+    /**
+     * Agenda que el admin propone al comprador (15:00, 15:30 y 16:00), enviada
+     * y pendiente de respuesta. Al volver a correr el comando se reinicia: se
+     * borran las citas que hubiera generado una aceptacion anterior.
+     */
+    private function agendaPropuesta(Evento $encuentro, User $comprador, ?User $admin, array $proveedores, Carbon $dia): AgendaPropuesta
+    {
+        $propuesta = AgendaPropuesta::firstOrNew(['evento_id' => $encuentro->id, 'user_id' => $comprador->id]);
+
+        if ($propuesta->exists) {
+            Cita::whereIn('id', $propuesta->citas()->whereNotNull('cita_id')->pluck('cita_id'))->delete();
+            $propuesta->citas()->delete();
+        }
+
+        $propuesta->fill([
+            'admin_id'      => $admin?->id ?? User::role('admin')->value('id') ?? $comprador->id,
+            'estado'        => 'pendiente',
+            'enviada_at'    => now(),
+            'respondida_at' => null,
+        ]);
+        $propuesta->token ??= Str::random(64);
+        $propuesta->save();
+
+        foreach ($proveedores as $i => $r) {
+            $inicio = $dia->copy()->setTime(15, 0)->addMinutes(30 * $i);
+            AgendaPropuestaCita::create([
+                'agenda_propuesta_id' => $propuesta->id,
+                'restaurantero_id'    => $r->id,
+                'slot_inicio'         => $inicio,
+                'slot_fin'            => $inicio->copy()->addMinutes(30),
+            ]);
+        }
+
+        return $propuesta;
+    }
+
+    /** Encuesta de satisfaccion del evento finalizado, sin responder (plantilla activa si hay). */
+    private function encuestaPendiente(Evento $finalizado, User $comprador): EncuestaSatisfaccion
+    {
+        $encuesta = EncuestaSatisfaccion::firstOrNew([
+            'evento_id' => $finalizado->id, 'user_id' => $comprador->id, 'tipo' => 'comprador',
+        ]);
+
+        if ($encuesta->exists) {
+            $encuesta->respuestas()->delete();
+        }
+
+        $encuesta->fill([
+            'segmento'              => 'compradores_evento',
+            'completada_at'         => null,
+            'es_prueba'             => false,
+            'encuesta_plantilla_id' => EncuestaPlantilla::where('activa', true)->value('id'),
+        ]);
+        $encuesta->token ??= Str::random(40);
+        $encuesta->save();
+
+        return $encuesta;
+    }
+
     private function notificaciones(User $comprador, Evento $encuentro, Restaurantero $principal): void
     {
         $lista = [
@@ -366,6 +451,10 @@ class DemoMovilCommand extends Command
                 ->selectRaw('estado, count(*) n')->groupBy('estado')->pluck('n', 'estado')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
             ['Citas recibidas por ' . self::CORREO_PROVEEDOR, Cita::where('restaurantero_id', $proveedor->restaurantero->id)->count()],
             ['Perfil de negocio del proveedor completo', $proveedor->restaurantero->perfil_completo ? 'sí' : 'no'],
+            ['Reagendas por confirmar del comprador', Cita::where('cliente_id', $comprador->id)->where('estado', 'pendiente_reconfirmacion')->count()],
+            ['Agendas propuestas pendientes (citas propuestas)', AgendaPropuesta::where('user_id', $comprador->id)->where('estado', 'pendiente')->whereNotNull('enviada_at')->count()
+                . ' (' . AgendaPropuestaCita::whereIn('agenda_propuesta_id', AgendaPropuesta::where('user_id', $comprador->id)->where('estado', 'pendiente')->pluck('id'))->count() . ')'],
+            ['Encuestas por responder del comprador', EncuestaSatisfaccion::where('user_id', $comprador->id)->whereNull('completada_at')->count()],
             ['Notificaciones del comprador (no leídas)', Notificacion::where('user_id', $comprador->id)->count()
                 . ' (' . Notificacion::where('user_id', $comprador->id)->where('leida', false)->count() . ')'],
         ]);

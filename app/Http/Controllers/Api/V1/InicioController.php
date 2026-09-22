@@ -8,7 +8,9 @@ use App\Http\Resources\CitaResumenResource;
 use App\Http\Resources\EventoResource;
 use App\Http\Resources\PublicidadResource;
 use App\Http\Resources\UserResource;
+use App\Models\AgendaPropuesta;
 use App\Models\Cita;
+use App\Models\EncuestaSatisfaccion;
 use App\Models\Evento;
 use App\Models\Publicidad;
 use App\Models\Restaurantero;
@@ -56,6 +58,21 @@ class InicioController extends Controller
                 'evento_destacado'        => $evento ? new EventoResource($evento) : null,
                 'notificaciones_sin_leer' => $notificaciones->contarNoLeidas($user),
                 'publicidad'              => $publicidad ? new PublicidadResource($publicidad) : null,
+                // Fase 2: pendientes del lado comprador (siempre del usuario como comprador).
+                'pendientes'              => [
+                    'reagendas_por_confirmar' => Cita::where('cliente_id', $user->id)
+                        ->where('estado', 'pendiente_reconfirmacion')
+                        ->whereNotNull('propuesta_inicio')
+                        ->count(),
+                    'agendas_por_responder'   => AgendaPropuesta::where('user_id', $user->id)
+                        ->whereNotNull('enviada_at')
+                        ->where('estado', 'pendiente')
+                        ->count(),
+                    'encuestas_por_responder' => EncuestaSatisfaccion::where('user_id', $user->id)
+                        ->whereNull('completada_at')
+                        ->where(fn ($q) => $q->where('es_prueba', false)->orWhereNull('es_prueba'))
+                        ->count(),
+                ],
             ],
         ]);
     }

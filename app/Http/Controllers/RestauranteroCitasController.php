@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\ReglaDeNegocioException;
 use App\Mail\CitaAceptada;
-use App\Mail\CitaCancelada;
 use App\Mail\CitaRechazada;
 use App\Mail\CitaReagendada;
 use App\Models\Cita;
@@ -185,35 +184,16 @@ class RestauranteroCitasController extends Controller
         }
 
         try {
-            $this->agenda->confirmarReagenda($cita);
+            // Mismo camino que la app (POST /api/v1/citas/{id}/reagenda/aceptar).
+            $this->agenda->aceptarReagenda($cita);
         } catch (ReglaDeNegocioException $e) {
-            // El hueco se ocupo mientras la propuesta esperaba respuesta. La cita
-            // queda como estaba y el proveedor puede proponer otro horario.
-            $cita->loadMissing('restaurantero');
-            if ($cita->restaurantero?->user_id) {
-                Notificacion::crear(
-                    $cita->restaurantero->user_id,
-                    'cita_reagendada',
-                    'Reagenda no aplicada',
-                    'El comprador aceptó tu propuesta, pero ese horario ya estaba ocupado. Propón otro para la cita del ' .
-                    $cita->inicio->format('d/m/Y H:i') . '.',
-                    $cita->id
-                );
-            }
-
+            // El hueco se ocupo mientras la propuesta esperaba respuesta: el
+            // servicio ya aviso al proveedor y la cita conserva su horario.
             return view('mail.confirmacion-exitosa', [
                 'error'   => true,
                 'titulo'  => 'Horario ya no disponible',
                 'mensaje' => 'El horario propuesto ya no está disponible. Tu cita conserva su horario original; el proveedor te propondrá otro.',
             ]);
-        }
-
-        $cita->load(['restaurantero', 'cliente']);
-
-        try {
-            Mail::to($cita->restaurantero->user->email)->send(new CitaReagendada($cita, 'proveedor'));
-        } catch (\Throwable $e) {
-            Log::warning('Error enviando correo de confirmación de reagenda al proveedor: ' . $e->getMessage());
         }
 
         return view('mail.confirmacion-exitosa', ['mensaje' => '¡Cita confirmada con la nueva fecha! Nos vemos pronto.']);
@@ -226,33 +206,8 @@ class RestauranteroCitasController extends Controller
             abort(404, 'El enlace no es válido o ya fue utilizado.');
         }
 
-        $cita->update([
-            'estado' => 'cancelada',
-            'token_confirmacion' => null,
-        ]);
-
-        $cita->load(['restaurantero', 'cliente']);
-
-        try {
-            // El comprador rechazo: la cita quedo CANCELADA. Antes se mandaba
-            // el mismo correo que en la aceptacion y el proveedor no podia
-            // distinguir un caso del otro.
-            Mail::to($cita->restaurantero->user->email)->send(new CitaCancelada($cita));
-        } catch (\Throwable $e) {
-            Log::warning('Error notificando cancelacion al proveedor: ' . $e->getMessage());
-        }
-
-        // Sin el operador seguro, un restaurantero sin user_id lanzaba \Error
-        // aqui fuera del try y la ruta publica devolvia 500.
-        if ($cita->restaurantero?->user_id) {
-            Notificacion::crear(
-                $cita->restaurantero->user_id,
-                'cita_cancelada',
-                'Propuesta de reagenda rechazada',
-                'El comprador rechazo la nueva fecha propuesta. La cita del ' .
-                $cita->inicio->format('d/m/Y H:i') . ' quedo cancelada.'
-            );
-        }
+        // Mismo camino que la app (POST /api/v1/citas/{id}/reagenda/rechazar).
+        $this->agenda->rechazarReagenda($cita);
 
         return view('mail.confirmacion-exitosa', ['mensaje' => 'Has rechazado la propuesta. La cita quedó cancelada.']);
     }

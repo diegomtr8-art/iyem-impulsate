@@ -2,17 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Mail\CitaCancelada;
 use App\Models\Cita;
 use App\Models\Evento;
-use App\Models\Notificacion;
-use App\Models\Restaurantero;
-use App\Models\User;
 use App\Services\AgendaCitaService;
-use Carbon\Carbon;
+use App\Services\DirectorioProveedoresService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
 class CitaPublicaController extends Controller
@@ -20,64 +15,30 @@ class CitaPublicaController extends Controller
     public function store(Request $request, AgendaCitaService $agenda)
     {
         // El administrador no agenda citas para sí mismo
-        if ($request->user()->hasRole('admin')) {
-            return back()->withErrors(['error' => 'El administrador no puede agendar citas para sí mismo. Usa el panel de administración para gestionar citas de clientes.']);
-        }
+        $agenda->asegurarNoEsAdmin($request->user());
 
-        $request->validate([
-            'restaurantero_id'    => 'required|exists:restauranteros,id',
-            'fecha'               => 'required|date|after_or_equal:today',
-            'hora'                => 'required|date_format:H:i',
-            'notas'               => 'nullable|string|max:1000',
-            'productos_interes'   => 'nullable|array',
-            'productos_interes.*' => 'string|max:255',
-        ]);
+        $datos = $request->validate(AgendaCitaService::REGLAS_ALTA_COMPRADOR);
 
         // Las reglas (evento aprobado, ventanas, cupo, solapes, duracion) viven en
         // AgendaCitaService; una ReglaDeNegocioException vuelve como withErrors.
-        $evento = $agenda->eventoDelComprador($request->user());
-        $agenda->validarVentanaComprador($evento, Carbon::parse($request->fecha));
-
-        $agenda->agendar(
-            $request->user(),
-            (int) $request->restaurantero_id,
-            $evento,
-            Carbon::parse($request->fecha . ' ' . $request->hora),
-            null,
-            [
-                'estado'            => 'pendiente',
-                'notas'             => $request->notas,
-                'productos_interes' => $request->productos_interes,
-            ],
-        );
+        $agenda->agendarComoComprador($request->user(), $datos);
 
         return redirect()->route('user.dashboard')
             ->with('success', 'Cita solicitada correctamente.');
     }
 
-    public function destroy(Cita $cita)
+    public function destroy(Cita $cita, AgendaCitaService $agenda)
     {
         if ($cita->cliente_id !== auth()->id()) {
             abort(403);
         }
 
-        if (in_array($cita->estado, ['completada', 'cancelada'])) {
-            return back()->withErrors(['error' => 'No puedes cancelar esta cita.']);
-        }
-
-        $cita->load(['restaurantero', 'cliente']);
-        $cita->update(['estado' => 'cancelada']);
-
-        try {
-            Mail::to($cita->cliente->email)->send(new CitaCancelada($cita));
-        } catch (\Exception $e) {
-            // No bloqueamos la operación si el correo falla
-        }
+        $agenda->cancelarComoComprador($cita);
 
         return back()->with('success', 'Cita cancelada correctamente.');
     }
 
-    public function dashboard(Request $request)
+    public function dashboard(Request $request, DirectorioProveedoresService $directorio)
     {
         $evento = Evento::activo();
 
@@ -111,12 +72,7 @@ class CitaPublicaController extends Controller
             ->filter(fn($ev) => $ev->mis_citas->isNotEmpty())
             ->values();
 
-        $necesidades = $request->user()->necesidades ?? '';
-        $keywords = collect(preg_split('/[\s,;\.]+/', mb_strtolower($necesidades)))
-            ->filter(fn($p) => mb_strlen($p) >= 3)
-            ->unique()
-            ->take(15)
-            ->values();
+        $keywords = $directorio->palabrasClave($request->user()->necesidades);
 
         // Solo mostrar proveedores si el comprador está aprobado en el evento activo
         $compradorAprobado = $evento && DB::table('evento_usuario')
@@ -129,33 +85,13 @@ class CitaPublicaController extends Controller
         $proveedores = collect();
 
         if ($compradorAprobado) {
-            $proveedores = Restaurantero::where('activo', true)
-                ->where('aprobado', true)
-                ->whereHas('user', function ($q) use ($evento) {
-                    $q->whereExists(function ($sub) use ($evento) {
-                        $sub->from('evento_usuario')
-                            ->whereColumn('evento_usuario.user_id', 'users.id')
-                            ->where('evento_usuario.evento_id', $evento->id)
-                            ->where('evento_usuario.tipo', 'proveedor')
-                            ->where('evento_usuario.estado', 'aprobado');
-                    });
-                })
+            $proveedores = $directorio->delEvento($evento)
                 ->withCount(['citas as citas_evento_count' => fn($q) =>
                     $q->where('edicion_id', $evento->id)->whereNotIn('estado', ['cancelada', 'rechazada'])
                 ])
                 ->select(['id', 'nombre_restaurante', 'categoria', 'descripcion', 'logo_path', 'municipio', 'productos_top'])
-                ->get()
-                ->sortByDesc(function ($p) use ($keywords) {
-                    if ($keywords->isEmpty()) return 0;
-                    $text = mb_strtolower(
-                        ($p->nombre_restaurante ?? '') . ' ' .
-                        ($p->descripcion ?? '') . ' ' .
-                        ($p->categoria ?? '') . ' ' .
-                        implode(' ', array_column($p->productos_top ?? [], 'nombre')) . ' ' .
-                        implode(' ', is_array($p->productos_top) ? array_filter($p->productos_top, 'is_string') : [])
-                    );
-                    return $keywords->filter(fn($kw) => str_contains($text, $kw))->count();
-                })
+                ->get();
+            $proveedores = $directorio->ordenarPorCoincidencia($proveedores, $keywords)
                 ->take(20)
                 ->values();
         }
@@ -216,14 +152,14 @@ class CitaPublicaController extends Controller
         ]);
     }
 
-    public function actualizarNotas(Request $request, Cita $cita)
+    public function actualizarNotas(Request $request, Cita $cita, AgendaCitaService $agenda)
     {
         if ($cita->cliente_id !== auth()->id()) {
             abort(403);
         }
 
         $request->validate(['notas' => 'nullable|string|max:1000']);
-        $cita->update(['notas' => $request->notas]);
+        $agenda->actualizarNotas($cita, $request->notas);
 
         return back()->with('success', 'Notas actualizadas.');
     }

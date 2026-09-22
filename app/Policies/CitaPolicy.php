@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Cita;
 use App\Models\User;
+use App\Services\AgendaCitaService;
 
 class CitaPolicy
 {
@@ -17,7 +18,16 @@ class CitaPolicy
     public function cancelar(User $user, Cita $cita): bool
     {
         return $this->esComprador($user, $cita)
-            && !in_array($cita->estado, ['completada', 'cancelada']);
+            && !in_array($cita->estado, AgendaCitaService::ESTADOS_NO_CANCELABLES);
+    }
+
+    /**
+     * Cancelar, editar notas o responder a una reagenda como COMPRADOR: solo el
+     * dueno de la cita. Las reglas de estado las decide AgendaCitaService (422).
+     */
+    public function gestionarComoComprador(User $user, Cita $cita): bool
+    {
+        return $this->esComprador($user, $cita);
     }
 
     /** Aceptar, rechazar o proponer otro horario: solo el proveedor de la cita. */
