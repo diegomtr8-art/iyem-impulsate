@@ -117,6 +117,7 @@ class DemoMovilCommand extends Command
             // Fase 4A (admin): solicitudes por decidir en el encuentro,
             // proveedores esperando aprobacion, expositores del bazar y un
             // evento HOY con citas en distintos estados para la torre.
+            $this->superAdminDemo();
             $this->solicitudesPendientes($encuentro);
             $this->proveedoresPorAprobar();
             $this->expositoresBazar($bazar);
@@ -599,6 +600,20 @@ class DemoMovilCommand extends Command
 
     /* ───────────── Fase 4A: material para el panel admin ───────────── */
 
+    /** Cuenta admin + super-admin SOLO local, para probar /admin/usuarios-gestion. */
+    private function superAdminDemo(): void
+    {
+        $u = $this->usuario('superadmin@prueba.impulsate.mx', 'Super Admin de Prueba', 'SuperAdmin2026!', [
+            'active_role'     => null,
+            'perfil_completo' => true,
+        ]);
+        foreach (['admin', 'super-admin'] as $rol) {
+            if (!$u->hasRole($rol)) {
+                $u->assignRole($rol);
+            }
+        }
+    }
+
     /**
      * 2 compradores y 2 proveedores con su solicitud PENDIENTE en el encuentro.
      * Cada corrida la regresa a pendiente (sirve despues de aprobar/rechazar).
@@ -713,6 +728,10 @@ class DemoMovilCommand extends Command
                 ['restaurantero_id' => $r->id, 'nombre' => 'Mesa de Networking'],
                 ['duracion_minutos' => 30, 'precio' => 0, 'activo' => true]
             );
+
+            // Si en una prueba anterior se completo su perfil (p. ej. subiendo
+            // el logo), el hook lo auto-aprobo y lo inscribio al encuentro.
+            DB::table('evento_usuario')->where('user_id', $u->id)->delete();
         }
     }
 
