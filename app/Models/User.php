@@ -104,6 +104,52 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasRole('cliente') && $this->hasRole('restaurantero');
     }
 
+    /**
+     * Los proveedores puros se miden por el perfil del negocio (Restaurantero),
+     * no por el flag generico de users: ese puede quedar en true por datos viejos
+     * aunque el negocio (logo, productos, etc.) siga incompleto.
+     */
+    public function perfilCompletoEfectivo(): bool
+    {
+        return $this->esSoloProveedor()
+            ? (bool) $this->restaurantero?->perfil_completo
+            : (bool) $this->perfil_completo;
+    }
+
+    public function esSoloProveedor(): bool
+    {
+        return $this->hasRole('restaurantero') && !$this->hasRole('cliente');
+    }
+
+    /**
+     * Lo que en la web resuelven EnsureAvisoAceptado, EnsureRolSeleccionado y
+     * EnsureProfileComplete con redirecciones, expresado como dato para la API.
+     * El orden de siguiente_paso es el mismo en que actuan esos middlewares.
+     */
+    public function onboarding(): array
+    {
+        $esAdmin = $this->hasRole('admin') || $this->hasRole('super-admin');
+
+        $avisoAceptado   = $esAdmin || !is_null($this->acepta_aviso_at);
+        $rolSeleccionado = $esAdmin || (bool) $this->rol_seleccionado;
+        $perfilCompleto  = $esAdmin || $this->perfilCompletoEfectivo();
+
+        $siguiente = match (true) {
+            !$avisoAceptado   => 'aceptar_aviso',
+            !$rolSeleccionado => 'seleccionar_rol',
+            !$perfilCompleto  => 'completar_perfil',
+            default           => 'ninguno',
+        };
+
+        return [
+            'aviso_aceptado'   => $avisoAceptado,
+            'rol_seleccionado' => $rolSeleccionado,
+            'perfil_completo'  => $perfilCompleto,
+            'siguiente_paso'   => $siguiente,
+            'rol_activo'       => $esAdmin ? 'admin' : $this->active_role,
+        ];
+    }
+
     protected function casts(): array
     {
         return [

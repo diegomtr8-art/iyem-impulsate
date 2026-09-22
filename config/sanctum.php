@@ -50,7 +50,9 @@ return [
     |
     */
 
-    'expiration' => null,
+    // Los tokens de la app caducan a los 30 dias: un telefono perdido no
+    // debe quedar con sesion abierta para siempre. No afecta a la web (cookie).
+    'expiration' => 60 * 24 * 30,
 
     /*
     |--------------------------------------------------------------------------

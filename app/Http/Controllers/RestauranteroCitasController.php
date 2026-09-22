@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\ReglaDeNegocioException;
 use App\Mail\CitaAceptada;
 use App\Mail\CitaCancelada;
 use App\Mail\CitaRechazada;
 use App\Mail\CitaReagendada;
 use App\Models\Cita;
 use App\Models\Notificacion;
+use App\Services\AgendaCitaService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +19,8 @@ use Inertia\Inertia;
 
 class RestauranteroCitasController extends Controller
 {
+    public function __construct(private AgendaCitaService $agenda) {}
+
     public function index(Request $request)
     {
         $restaurantero = $request->user()->restaurantero;
@@ -114,9 +118,10 @@ class RestauranteroCitasController extends Controller
             'propuesta_hora'  => ['required', 'date_format:H:i'],
         ]);
 
+        // Misma regla de duracion que el alta, y el hueco propuesto debe estar
+        // libre para ambas partes (si no, ReglaDeNegocioException -> withErrors).
         $propuestaInicio = Carbon::parse($request->propuesta_fecha . ' ' . $request->propuesta_hora);
-        $duracion        = $cita->servicio->duracion_minutos ?? 30;
-        $propuestaFin    = $propuestaInicio->copy()->addMinutes($duracion);
+        $propuestaFin    = $this->agenda->proponerReagenda($cita, $propuestaInicio);
         $token           = Str::random(64);
 
         $cita->update([
@@ -179,12 +184,29 @@ class RestauranteroCitasController extends Controller
             abort(404, 'El enlace no es válido o ya fue utilizado.');
         }
 
-        $cita->update([
-            'estado' => 'confirmada',
-            'inicio' => $cita->propuesta_inicio,
-            'fin'    => $cita->propuesta_fin,
-            'token_confirmacion' => null,
-        ]);
+        try {
+            $this->agenda->confirmarReagenda($cita);
+        } catch (ReglaDeNegocioException $e) {
+            // El hueco se ocupo mientras la propuesta esperaba respuesta. La cita
+            // queda como estaba y el proveedor puede proponer otro horario.
+            $cita->loadMissing('restaurantero');
+            if ($cita->restaurantero?->user_id) {
+                Notificacion::crear(
+                    $cita->restaurantero->user_id,
+                    'cita_reagendada',
+                    'Reagenda no aplicada',
+                    'El comprador aceptó tu propuesta, pero ese horario ya estaba ocupado. Propón otro para la cita del ' .
+                    $cita->inicio->format('d/m/Y H:i') . '.',
+                    $cita->id
+                );
+            }
+
+            return view('mail.confirmacion-exitosa', [
+                'error'   => true,
+                'titulo'  => 'Horario ya no disponible',
+                'mensaje' => 'El horario propuesto ya no está disponible. Tu cita conserva su horario original; el proveedor te propondrá otro.',
+            ]);
+        }
 
         $cita->load(['restaurantero', 'cliente']);
 

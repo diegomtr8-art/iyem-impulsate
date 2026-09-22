@@ -3,64 +3,30 @@
 namespace Tests\Feature;
 
 use App\Models\Cita;
-use App\Models\Edicion;
-use App\Models\Restaurantero;
-use App\Models\Servicio;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\Role;
+use Tests\Concerns\CreaEscenarioEvento;
 use Tests\TestCase;
 
 class CitaDobleBookingTest extends TestCase
 {
     use RefreshDatabase;
-
-    private Edicion $edicion;
-    private Restaurantero $restaurantero;
-    private Servicio $servicio;
+    use CreaEscenarioEvento;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        // Spatie Permission caches role data in memory across tests.
-        // RefreshDatabase rolls back the DB but not the cache, which causes
-        // ModelNotFoundException on hasRole() calls — resulting in 404 responses.
-        $this->app->make(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
-
-        // Ensure required roles exist
-        Role::firstOrCreate(['name' => 'cliente', 'guard_name' => 'web']);
-        Role::firstOrCreate(['name' => 'admin',   'guard_name' => 'web']);
-
-        $this->edicion = Edicion::create([
-            'nombre'       => 'Edición Test',
-            'fecha_inicio' => now()->toDateString(),
-            'activa'       => true,
-        ]);
-
-        $providerUser = User::factory()->create();
-
-        $this->restaurantero = Restaurantero::create([
-            'edicion_id'        => $this->edicion->id,
-            'user_id'           => $providerUser->id,
-            'nombre_restaurante' => 'Negocio Test',
-            'activo'            => true,
-        ]);
-
-        $this->servicio = Servicio::create([
-            'restaurantero_id' => $this->restaurantero->id,
-            'nombre'           => 'Servicio Test',
-            'duracion_minutos' => 30,
-            'activo'           => true,
-        ]);
+        // El modelo Edicion ya no existe desde el renombre a Evento (junio);
+        // estas pruebas llevaban rotas desde entonces.
+        $this->crearEscenario();
     }
 
     public function test_cliente_can_book_available_slot(): void
     {
         $this->withoutExceptionHandling();
 
-        $cliente = User::factory()->create();
-        $cliente->assignRole('cliente');
+        $cliente = $this->crearComprador();
 
         $response = $this->actingAs($cliente)->post(route('citas.store'), [
             'restaurantero_id' => $this->restaurantero->id,
@@ -79,11 +45,9 @@ class CitaDobleBookingTest extends TestCase
 
     public function test_same_slot_cannot_be_booked_twice(): void
     {
-        $clienteA = User::factory()->create();
-        $clienteA->assignRole('cliente');
+        $clienteA = $this->crearComprador();
 
-        $clienteB = User::factory()->create();
-        $clienteB->assignRole('cliente');
+        $clienteB = $this->crearComprador();
 
         $payload = [
             'restaurantero_id' => $this->restaurantero->id,
@@ -105,11 +69,9 @@ class CitaDobleBookingTest extends TestCase
 
     public function test_overlapping_slot_within_service_duration_is_blocked(): void
     {
-        $clienteA = User::factory()->create();
-        $clienteA->assignRole('cliente');
+        $clienteA = $this->crearComprador();
 
-        $clienteB = User::factory()->create();
-        $clienteB->assignRole('cliente');
+        $clienteB = $this->crearComprador();
 
         $fecha = now()->addDay()->toDateString();
 
@@ -133,11 +95,9 @@ class CitaDobleBookingTest extends TestCase
 
     public function test_cancelled_slot_can_be_rebooked(): void
     {
-        $clienteA = User::factory()->create();
-        $clienteA->assignRole('cliente');
+        $clienteA = $this->crearComprador();
 
-        $clienteB = User::factory()->create();
-        $clienteB->assignRole('cliente');
+        $clienteB = $this->crearComprador();
 
         $payload = [
             'restaurantero_id' => $this->restaurantero->id,
@@ -165,15 +125,11 @@ class CitaDobleBookingTest extends TestCase
 
     public function test_admin_cannot_double_book_same_slot(): void
     {
-        $admin = User::factory()->create();
-        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
-        $admin->assignRole('admin');
+        $admin = $this->crearAdmin();
 
-        $clienteA = User::factory()->create();
-        $clienteA->assignRole('cliente');
+        $clienteA = $this->crearComprador();
 
-        $clienteB = User::factory()->create();
-        $clienteB->assignRole('cliente');
+        $clienteB = $this->crearComprador();
 
         $fecha = now()->addDay()->toDateString();
 

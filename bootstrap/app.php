@@ -32,5 +32,22 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // La API nunca responde con redirecciones HTML: un 401 sin token debe
+        // llegar a la app como JSON aunque el cliente olvide el Accept.
+        $exceptions->shouldRenderJsonWhen(
+            fn (\Illuminate\Http\Request $request) => $request->is('api/*') || $request->expectsJson()
+        );
+
+        // Regla de negocio de los servicios: 422 con la forma de Laravel en la
+        // API; en la web, el mismo back()->withErrors() que hacian los controladores.
+        $exceptions->render(function (\App\Exceptions\ReglaDeNegocioException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'message' => $e->getMessage(),
+                    'errors'  => [$e->campo => [$e->getMessage()]],
+                ], 422);
+            }
+
+            return back()->withErrors([$e->campo => $e->getMessage()])->withInput();
+        });
     })->create();

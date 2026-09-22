@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Recordatorios cada 5 minutos (requiere que el cron ejecute schedule:run cada minuto)
 Schedule::command('citas:enviar-recordatorios')->everyFiveMinutes();
+
+// Limpia de la BD los tokens de la app movil ya caducados (config/sanctum.php)
+Schedule::command('sanctum:prune-expired --hours=24')->daily();

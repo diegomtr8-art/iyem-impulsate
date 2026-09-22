@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureProfileComplete
@@ -26,20 +27,23 @@ class EnsureProfileComplete
             return $next($request);
         }
 
-        // Los proveedores puros se miden por el perfil del negocio (Restaurantero),
-        // no por el flag genérico de users: ese puede quedar en true por datos viejos
-        // aunque el negocio (logo, productos, etc.) siga incompleto.
-        $esSoloProveedor = $user->hasRole('restaurantero') && !$user->hasRole('cliente');
+        $esSoloProveedor = $user->esSoloProveedor();
 
-        $perfilCompleto = $esSoloProveedor
-            ? (bool) $user->restaurantero?->perfil_completo
-            : (bool) $user->perfil_completo;
-
-        if ($perfilCompleto) {
+        if ($user->perfilCompletoEfectivo()) {
             return $next($request);
         }
 
         if ($request->routeIs(
+            // Rutas publicas: un usuario con sesion no puede tener MENOS acceso
+            // que uno anonimo. El perfil publico daba 200 sin sesion y 302 con
+            // ella, asi que "Ver perfil" nunca abria.
+            'home',
+            'proveedores.*',
+            'aviso.privacidad',
+            'terminos.condiciones',
+            // El bazar se rige por sus propios requisitos (INE + CSF vigente, que
+            // valida registrarBazar), no por el perfil de negocio.
+            'evento.registrar-bazar',
             'perfil.completar',
             'perfil.completar.store',
             'perfil.necesidades',
@@ -67,6 +71,16 @@ class EnsureProfileComplete
             'password.*'
         )) {
             return $next($request);
+        }
+
+        // Redirigir una peticion que no es navegacion la vuelve invisible: Inertia
+        // recibe un 302 hacia una pagina valida, lo toma por exito y dispara
+        // onSuccess. El usuario veia "solicitud registrada" sin que el controlador
+        // se hubiera ejecutado nunca. Un error explicito si se ve.
+        if (!$request->isMethod('GET')) {
+            throw ValidationException::withMessages([
+                'error' => 'Completa tu perfil antes de continuar. Faltan datos obligatorios.',
+            ]);
         }
 
         return redirect()->route($esSoloProveedor ? 'restaurantero.completar-perfil' : 'perfil.completar');
