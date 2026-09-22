@@ -26,4 +26,14 @@ class EventoPolicy
     {
         return !$user->hasRole('admin') && !$user->hasRole('super-admin');
     }
+
+    /**
+     * Gestion del evento desde el panel admin (API /admin/eventos...): crear,
+     * editar, activar, archivar, eliminar, solicitudes, bazar y TV. Mismo
+     * criterio que el middleware web 'admin' (EnsureIsAdmin): rol admin.
+     */
+    public function administrar(User $user, ?Evento $evento = null): bool
+    {
+        return $user->hasRole('admin');
+    }
 }

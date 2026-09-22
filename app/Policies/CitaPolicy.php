@@ -67,4 +67,10 @@ class CitaPolicy
 
         return $restaurantero && (int) $cita->restaurantero_id === (int) $restaurantero->id;
     }
+
+    /** Ver, crear y cambiar de estado citas desde el panel admin (web: middleware 'admin'). */
+    public function administrar(User $user, ?Cita $cita = null): bool
+    {
+        return $user->hasRole('admin');
+    }
 }

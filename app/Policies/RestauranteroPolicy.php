@@ -16,4 +16,10 @@ class RestauranteroPolicy
             ? Response::allow()
             : Response::denyAsNotFound('Proveedor no encontrado.');
     }
+
+    /** Ver, editar, aprobar, rechazar y activar proveedores desde el panel admin (web: middleware 'admin'). */
+    public function administrar(User $user, ?Restaurantero $restaurantero = null): bool
+    {
+        return $user->hasRole('admin');
+    }
 }

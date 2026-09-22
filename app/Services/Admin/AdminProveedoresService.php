@@ -24,7 +24,8 @@ use Illuminate\Validation\Rule;
  */
 class AdminProveedoresService
 {
-    public function listar(?string $search, int $porPagina = 15): LengthAwarePaginator
+    /** $estado (aprobado|pendiente|rechazado) solo lo manda la API. */
+    public function listar(?string $search, int $porPagina = 15, ?string $estado = null): LengthAwarePaginator
     {
         $query = Restaurantero::with('user')
             ->withCount('citas')
@@ -43,6 +44,13 @@ class AdminProveedoresService
                       ->orWhere('email', 'like', "%{$s}%"));
             });
         }
+
+        match ($estado) {
+            'aprobado'  => $query->where('aprobado', true),
+            'rechazado' => $query->where('aprobado', false)->where('rechazado', true),
+            'pendiente' => $query->where('aprobado', false)->where('rechazado', false),
+            default     => null,
+        };
 
         return $query->paginate($porPagina)->withQueryString();
     }

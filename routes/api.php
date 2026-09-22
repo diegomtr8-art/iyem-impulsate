@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin as AdminApi;
 use App\Http\Controllers\NotificacionController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -155,6 +156,118 @@ Route::prefix('v1')->group(function () {
                 Route::post('/citas/{cita}/rechazar',  [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'rechazar'])->whereNumber('cita');
                 Route::post('/citas/{cita}/reagendar', [\App\Http\Controllers\Api\V1\Proveedor\CitaController::class, 'reagendar'])->whereNumber('cita');
             });
+        });
+
+        // Fase 4A — panel de ADMINISTRACION (web: prefijo /admin, middleware 'admin').
+        // Solo cuentas con rol admin (403 JSON); usuarios-gestion ademas super-admin.
+        Route::prefix('admin')->middleware('can:admin')->group(function () {
+            $correo = 'throttle:api-admin-correos';
+
+            Route::get('/dashboard', [AdminApi\DashboardController::class, 'dashboard']);
+            Route::get('/contexto',  [AdminApi\DashboardController::class, 'contexto']);
+
+            // Eventos
+            Route::get('/eventos',             [AdminApi\EventoController::class, 'index']);
+            Route::post('/eventos',            [AdminApi\EventoController::class, 'store']);
+            Route::get('/eventos/{evento}',    [AdminApi\EventoController::class, 'show'])->whereNumber('evento');
+            // POST ademas de PUT/PATCH: PHP no lee multipart (imagenes) en un PUT.
+            Route::match(['put', 'patch', 'post'], '/eventos/{evento}', [AdminApi\EventoController::class, 'update'])->whereNumber('evento');
+            Route::delete('/eventos/{evento}', [AdminApi\EventoController::class, 'destroy'])->whereNumber('evento');
+            Route::post('/eventos/{evento}/activar',  [AdminApi\EventoController::class, 'activar'])->whereNumber('evento');
+            Route::post('/eventos/{evento}/archivar', [AdminApi\EventoController::class, 'archivar'])->whereNumber('evento');
+            Route::post('/eventos/{evento}/enviar-encuestas', [AdminApi\EventoController::class, 'enviarEncuestas'])->whereNumber('evento')->middleware($correo);
+            Route::get('/eventos/{evento}/tv',        [AdminApi\EventoController::class, 'tv'])->whereNumber('evento');
+            Route::post('/eventos/{evento}/tv/rotar', [AdminApi\EventoController::class, 'rotarTv'])->whereNumber('evento');
+
+            // Solicitudes de registro al evento
+            Route::prefix('eventos/{evento}/solicitudes')->whereNumber('evento')->group(function () use ($correo) {
+                Route::get('/',            [AdminApi\SolicitudController::class, 'index']);
+                Route::get('/candidatos',  [AdminApi\SolicitudController::class, 'candidatos']);
+                Route::get('/{user}',      [AdminApi\SolicitudController::class, 'show'])->whereNumber('user');
+                Route::middleware($correo)->group(function () {
+                    Route::post('/aprobar-todos',     [AdminApi\SolicitudController::class, 'aprobarTodos']);
+                    Route::post('/agregar-proveedor', [AdminApi\SolicitudController::class, 'agregarProveedor']);
+                    Route::post('/agregar-comprador', [AdminApi\SolicitudController::class, 'agregarComprador']);
+                    Route::post('/{user}/aprobar',    [AdminApi\SolicitudController::class, 'aprobar'])->whereNumber('user');
+                    Route::post('/{user}/rechazar',   [AdminApi\SolicitudController::class, 'rechazar'])->whereNumber('user');
+                    Route::post('/{user}/eliminar',   [AdminApi\SolicitudController::class, 'eliminar'])->whereNumber('user');
+                });
+                Route::post('/{user}/revertir',   [AdminApi\SolicitudController::class, 'revertir'])->whereNumber('user');
+            });
+
+            // Bazar / exposicion
+            Route::prefix('eventos/{evento}/bazar')->whereNumber('evento')->group(function () use ($correo) {
+                Route::get('/',                      [AdminApi\BazarController::class, 'index']);
+                Route::post('/seleccion',            [AdminApi\BazarController::class, 'seleccion']);
+                Route::post('/enviar-aprobacion',    [AdminApi\BazarController::class, 'enviarAprobacion'])->middleware($correo);
+                Route::post('/enviar-rechazo',       [AdminApi\BazarController::class, 'enviarRechazo'])->middleware($correo);
+                Route::get('/{user}',                [AdminApi\BazarController::class, 'show'])->whereNumber('user');
+                Route::post('/{user}/aprobar',       [AdminApi\BazarController::class, 'aprobar'])->whereNumber('user');
+                Route::post('/{user}/rechazar',      [AdminApi\BazarController::class, 'rechazar'])->whereNumber('user');
+                Route::post('/{user}/evaluar',       [AdminApi\BazarController::class, 'evaluar'])->whereNumber('user');
+                Route::post('/{user}/notas-rechazo', [AdminApi\BazarController::class, 'notasRechazo'])->whereNumber('user');
+            });
+
+            // Proveedores
+            Route::get('/proveedores',            [AdminApi\ProveedorController::class, 'index']);
+            Route::get('/proveedores/pendientes', [AdminApi\ProveedorController::class, 'pendientes']);
+            Route::get('/proveedores/{restaurantero}',       [AdminApi\ProveedorController::class, 'show'])->whereNumber('restaurantero');
+            Route::get('/proveedores/{restaurantero}/citas', [AdminApi\ProveedorController::class, 'citas'])->whereNumber('restaurantero');
+            Route::match(['put', 'patch', 'post'], '/proveedores/{restaurantero}', [AdminApi\ProveedorController::class, 'update'])->whereNumber('restaurantero');
+            Route::patch('/proveedores/{restaurantero}/categoria', [AdminApi\ProveedorController::class, 'categoria'])->whereNumber('restaurantero');
+            Route::post('/proveedores/{restaurantero}/activo',     [AdminApi\ProveedorController::class, 'activo'])->whereNumber('restaurantero');
+            Route::post('/proveedores/{restaurantero}/aprobar',    [AdminApi\ProveedorController::class, 'aprobar'])->whereNumber('restaurantero')->middleware($correo);
+            Route::post('/proveedores/{restaurantero}/rechazar',   [AdminApi\ProveedorController::class, 'rechazar'])->whereNumber('restaurantero')->middleware($correo);
+
+            // Usuarios / compradores
+            Route::get('/usuarios',                   [AdminApi\UsuarioController::class, 'index']);
+            Route::get('/usuarios/{user}',            [AdminApi\UsuarioController::class, 'show'])->whereNumber('user');
+            Route::put('/usuarios/{user}',            [AdminApi\UsuarioController::class, 'update'])->whereNumber('user');
+            Route::delete('/usuarios/{user}',         [AdminApi\UsuarioController::class, 'destroy'])->whereNumber('user');
+            Route::get('/usuarios/{user}/documentos', [AdminApi\UsuarioController::class, 'documentos'])->whereNumber('user');
+
+            // Gestion de cuentas: solo super-admin
+            Route::prefix('usuarios-gestion')->middleware('can:super-admin')->group(function () {
+                Route::get('/',                 [AdminApi\UsuarioGestionController::class, 'index']);
+                Route::get('/roles',            [AdminApi\UsuarioGestionController::class, 'roles']);
+                Route::get('/{user}',           [AdminApi\UsuarioGestionController::class, 'show'])->whereNumber('user');
+                Route::put('/{user}',           [AdminApi\UsuarioGestionController::class, 'update'])->whereNumber('user');
+                Route::post('/{user}/password', [AdminApi\UsuarioGestionController::class, 'password'])->whereNumber('user')->middleware('throttle:api-credenciales');
+                Route::post('/{user}/roles',    [AdminApi\UsuarioGestionController::class, 'actualizarRoles'])->whereNumber('user');
+                Route::delete('/{user}',        [AdminApi\UsuarioGestionController::class, 'destroy'])->whereNumber('user');
+            });
+
+            // Citas
+            Route::get('/citas',                 [AdminApi\CitaController::class, 'index']);
+            Route::get('/citas/formulario',      [AdminApi\CitaController::class, 'formulario']);
+            Route::post('/citas',                [AdminApi\CitaController::class, 'store'])->middleware($correo);
+            Route::get('/citas/{cita}',          [AdminApi\CitaController::class, 'show'])->whereNumber('cita');
+            Route::patch('/citas/{cita}/estado', [AdminApi\CitaController::class, 'estado'])->whereNumber('cita')->middleware($correo);
+
+            // Agenda propuesta (flujo invertido)
+            Route::get('/agenda',                  [AdminApi\AgendaController::class, 'index']);
+            Route::get('/agenda/formulario',       [AdminApi\AgendaController::class, 'formulario']);
+            Route::post('/agenda',                 [AdminApi\AgendaController::class, 'store'])->middleware($correo);
+            Route::get('/agenda/{agenda}',         [AdminApi\AgendaController::class, 'show'])->whereNumber('agenda');
+            Route::post('/agenda/{agenda}/enviar', [AdminApi\AgendaController::class, 'enviar'])->whereNumber('agenda')->middleware($correo);
+            Route::delete('/agenda/{agenda}',      [AdminApi\AgendaController::class, 'destroy'])->whereNumber('agenda');
+
+            // Torre de control
+            Route::get('/torre',         [AdminApi\TorreController::class, 'index']);
+            Route::patch('/torre/mesas', [AdminApi\TorreController::class, 'mesas']);
+            Route::prefix('torre/citas/{cita}')->whereNumber('cita')->group(function () {
+                Route::post('/llamar',    [AdminApi\TorreController::class, 'llamar']);
+                Route::post('/repetir',   [AdminApi\TorreController::class, 'repetir']);
+                Route::post('/iniciar',   [AdminApi\TorreController::class, 'iniciar']);
+                Route::post('/finalizar', [AdminApi\TorreController::class, 'finalizar']);
+                Route::post('/ausente',   [AdminApi\TorreController::class, 'ausente']);
+                Route::post('/retrasar',  [AdminApi\TorreController::class, 'retrasar']);
+                Route::post('/mesa',      [AdminApi\TorreController::class, 'mesa']);
+            });
+
+            // Calendario
+            Route::get('/calendario',             [AdminApi\CalendarioController::class, 'index']);
+            Route::get('/calendario/proveedores', [AdminApi\CalendarioController::class, 'proveedores']);
         });
     });
 });

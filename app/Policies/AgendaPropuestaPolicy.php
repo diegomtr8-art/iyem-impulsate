@@ -20,4 +20,10 @@ class AgendaPropuestaPolicy
     {
         return $this->view($user, $agenda);
     }
+
+    /** Crear, ver, enviar y borrar propuestas desde el panel admin (web: middleware 'admin'). */
+    public function administrar(User $user, ?AgendaPropuesta $agenda = null): bool
+    {
+        return $user->hasRole('admin');
+    }
 }

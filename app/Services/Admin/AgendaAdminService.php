@@ -175,7 +175,7 @@ class AgendaAdminService
     public function citasConfirmadas(AgendaPropuesta $agenda): Collection
     {
         if ($agenda->estado !== 'aceptada') {
-            return collect();
+            return new \Illuminate\Database\Eloquent\Collection();
         }
 
         return Cita::where('cliente_id', $agenda->user_id)

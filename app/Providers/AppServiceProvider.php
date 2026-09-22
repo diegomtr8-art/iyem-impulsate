@@ -83,6 +83,23 @@ class AppServiceProvider extends ServiceProvider
             ? Response::allow()
             : Response::deny('Esta sección es solo para proveedores.'));
 
+        // Fase 4A (admin): las acciones del panel que mandan correo o avisos
+        // masivos (aprobar/rechazar, altas manuales, envios del bazar, agenda,
+        // cambio de estado de citas) llevan un cupo propio.
+        RateLimiter::for('api-admin-correos', fn (Request $request) =>
+            Limit::perMinute(30)->by('admcorreo:' . ($request->user()?->id ?? $request->ip()))
+        );
+
+        // /api/v1/admin/* exige el rol admin (web: middleware 'admin' =
+        // EnsureIsAdmin) y /api/v1/admin/usuarios-gestion/* ademas super-admin
+        // (web: middleware 'super-admin'). 403 JSON con mensaje propio.
+        Gate::define('admin', fn (User $user) => $user->hasRole('admin')
+            ? Response::allow()
+            : Response::deny('Esta sección es solo para administradores.'));
+        Gate::define('super-admin', fn (User $user) => $user->hasRole('super-admin')
+            ? Response::allow()
+            : Response::deny('Acceso exclusivo del super-administrador.'));
+
         // API autenticada: por token/usuario, no por IP (varios telefonos
         // del evento comparten la misma red Wi-Fi).
         RateLimiter::for('api-v1', fn (Request $request) =>
