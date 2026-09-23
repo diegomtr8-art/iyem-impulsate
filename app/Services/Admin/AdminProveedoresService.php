@@ -6,12 +6,17 @@ use App\Exceptions\ReglaDeNegocioException;
 use App\Mail\ProveedorAprobado;
 use App\Mail\ProveedorRechazado;
 use App\Models\Cita;
+use App\Models\Evento;
+use App\Models\Horario;
 use App\Models\Notificacion;
 use App\Models\Restaurantero;
+use App\Models\Servicio;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
@@ -19,11 +24,81 @@ use Illuminate\Validation\Rule;
 /**
  * Proveedores desde el panel admin: listado con busqueda, pendientes de
  * aprobacion, ficha con citas y eventos, edicion (incluido el logo),
- * activar/desactivar, categoria, aprobar y rechazar (con correo y aviso).
+ * activar/desactivar, categoria, aprobar y rechazar (con correo y aviso),
+ * alta de una cuenta de proveedor y baja (negocio + su usuario).
  * Lo usan Admin\RestauranteroAdminController (web) y la API v1.
  */
 class AdminProveedoresService
 {
+    public const REGLAS_ALTA = [
+        'name'               => 'required|string|max:255',
+        'email'              => 'required|email|unique:users,email',
+        'password'           => 'required|string|min:8',
+        'nombre_restaurante' => 'required|string|max:255',
+        'telefono'           => 'nullable|string|max:30',
+        'direccion'          => 'nullable|string|max:255',
+        'municipio'          => 'nullable|string|max:100',
+        'categoria'          => 'nullable|string|max:100',
+        'descripcion'        => 'nullable|string|max:1000',
+    ];
+
+    /**
+     * Alta de un proveedor desde el admin: cuenta con rol restaurantero,
+     * negocio activo ligado a $evento, inscripcion APROBADA en $evento,
+     * servicio "Mesa de Networking" de 30 min y horario L-V 9 a 16.
+     * La web pasa el evento de contexto (sesion); la API, el evento_id que manda.
+     */
+    public function crear(array $datos, ?Evento $evento): Restaurantero
+    {
+        $user = User::create([
+            'name'     => $datos['name'],
+            'email'    => $datos['email'],
+            'password' => Hash::make($datos['password']),
+        ]);
+        $user->assignRole('restaurantero');
+
+        $restaurantero = Restaurantero::create([
+            'user_id'            => $user->id,
+            'edicion_id'         => $evento?->id,
+            'nombre_restaurante' => $datos['nombre_restaurante'],
+            'telefono'           => $datos['telefono'] ?? null,
+            'direccion'          => $datos['direccion'] ?? null,
+            'municipio'          => $datos['municipio'] ?? null,
+            'categoria'          => $datos['categoria'] ?? null,
+            'descripcion'        => $datos['descripcion'] ?? null,
+            'activo'             => true,
+        ]);
+
+        Evento::registrarProveedorEnEvento($user->id, $evento, true);
+
+        Servicio::create([
+            'restaurantero_id' => $restaurantero->id,
+            'nombre'           => 'Mesa de Networking',
+            'duracion_minutos' => 30,
+            'precio'           => 0,
+            'activo'           => true,
+        ]);
+
+        for ($dia = 1; $dia <= 5; $dia++) {
+            Horario::create([
+                'restaurantero_id' => $restaurantero->id,
+                'dia_semana'       => $dia,
+                'hora_inicio'      => '09:00:00',
+                'hora_fin'         => '16:00:00',
+                'activo'           => true,
+            ]);
+        }
+
+        return $restaurantero;
+    }
+
+    /** Baja: borra el negocio y su cuenta de usuario (igual que la web). */
+    public function eliminar(Restaurantero $restaurantero): void
+    {
+        $user = $restaurantero->user;
+        $restaurantero->delete();
+        $user->delete();
+    }
     /** $estado (aprobado|pendiente|rechazado) solo lo manda la API. */
     public function listar(?string $search, int $porPagina = 15, ?string $estado = null): LengthAwarePaginator
     {

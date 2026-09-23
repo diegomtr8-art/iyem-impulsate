@@ -4,16 +4,19 @@ namespace App\Http\Controllers\Admin\SuperAdmin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Publicidad;
+use App\Services\Admin\PublicidadAdminService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
+/** La logica vive en PublicidadAdminService (compartido con la API v1). */
 class PublicidadController extends Controller
 {
+    public function __construct(private PublicidadAdminService $publicidad) {}
+
     public function index()
     {
         return Inertia::render('Admin/SuperAdmin/Publicidad/Index', [
-            'publicidades' => Publicidad::orderByDesc('created_at')->get()->map(fn ($p) => [
+            'publicidades' => $this->publicidad->listar()->map(fn ($p) => [
                 'id'                   => $p->id,
                 'titulo'               => $p->titulo,
                 'imagen_url'           => $p->imagen_url,
@@ -34,13 +37,7 @@ class PublicidadController extends Controller
 
     public function store(Request $request)
     {
-        $data = $this->validar($request);
-
-        if ($request->hasFile('imagen')) {
-            $data['imagen'] = $request->file('imagen')->store('publicidad', 'public');
-        }
-
-        Publicidad::create($data);
+        $this->publicidad->crear($request, $request->validate($this->publicidad->reglas()));
 
         return redirect()->route('admin.publicidad.index')
             ->with('success', 'Anuncio creado correctamente.');
@@ -64,14 +61,7 @@ class PublicidadController extends Controller
 
     public function update(Request $request, Publicidad $publicidad)
     {
-        $data = $this->validar($request, forUpdate: true);
-
-        if ($request->hasFile('imagen')) {
-            if ($publicidad->imagen) Storage::disk('public')->delete($publicidad->imagen);
-            $data['imagen'] = $request->file('imagen')->store('publicidad', 'public');
-        }
-
-        $publicidad->update($data);
+        $this->publicidad->actualizar($publicidad, $request, $request->validate($this->publicidad->reglas()));
 
         return redirect()->route('admin.publicidad.index')
             ->with('success', 'Anuncio actualizado correctamente.');
@@ -79,34 +69,16 @@ class PublicidadController extends Controller
 
     public function toggleActiva(Publicidad $publicidad)
     {
-        $publicidad->update(['activa' => !$publicidad->activa]);
+        $this->publicidad->alternar($publicidad);
         $estado = $publicidad->activa ? 'activado' : 'desactivado';
         return back()->with('success', "Anuncio {$estado}.");
     }
 
     public function destroy(Publicidad $publicidad)
     {
-        if ($publicidad->imagen) Storage::disk('public')->delete($publicidad->imagen);
-        $publicidad->delete();
+        $this->publicidad->eliminar($publicidad);
 
         return redirect()->route('admin.publicidad.index')
             ->with('success', 'Anuncio eliminado.');
-    }
-
-    private function validar(Request $request, bool $forUpdate = false): array
-    {
-        // 'image' a secas acepta SVG, y un SVG con <script> es XSS almacenado
-        // servido desde nuestro propio origen. La publicidad se pinta en la portada.
-        $imageRule = ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'];
-
-        return $request->validate([
-            'titulo'               => ['required', 'string', 'max:255'],
-            'imagen'               => $imageRule,
-            'enlace'               => ['nullable', 'url', 'max:500'],
-            'abre_en_nueva_pestana'=> ['boolean'],
-            'fecha_inicio'         => ['required', 'date'],
-            'fecha_fin'            => ['required', 'date', 'after:fecha_inicio'],
-            'activa'               => ['boolean'],
-        ]);
     }
 }
