@@ -1,7 +1,7 @@
 # API v1 — Impúlsate (app móvil)
 
 Contrato de la API que consume la app Expo. **Todos los ejemplos de respuesta son reales**: se copiaron de llamadas
-hechas el 2026-09-22 contra la BD local (`php artisan impulsate:demo-movil`); las de la sección 12 contra Apache (`http://192.168.10.6/citas/public`). Donde un ejemplo se recortó
+hechas el 2026-09-22 contra la BD local (`php artisan impulsate:demo-movil`); las de las secciones 12 y 14 contra Apache (`http://192.168.10.6/citas/public`). Donde un ejemplo se recortó
 (listas largas), se indica debajo del bloque.
 
 ## Generalidades
@@ -69,6 +69,7 @@ imponen los middlewares de la web). La app debe llevar al usuario a la pantalla 
 | `api-encuestas` | `POST /encuestas/{id}/respuestas` | 20/min por usuario |
 | `api-proveedor-perfil` | `PUT /proveedor/perfil*`, `POST /proveedor/logo`, altas/ediciones/bajas de `/proveedor/productos` | 20/min por usuario |
 | `api-proveedor-citas` | `POST /proveedor/citas/{id}/aceptar\|rechazar\|reagendar` | 30/min por usuario |
+| `api-admin-correos` | acciones del panel admin que mandan correo o avisos (ver sección 14) | 30/min por usuario |
 
 ### Objeto `user` (UserResource)
 
@@ -4869,7 +4870,12 @@ _Recortado: los demás campos no cambian (ver `GET /inicio`)._
 | `comprador@prueba.impulsate.mx` | `Prueba2026!` | comprador aprobado en el encuentro; 5 citas (confirmada, pendiente, cancelada, una en `pendiente_reconfirmacion` con propuesta 13:00 → 14:00 y una completada en el evento finalizado); 1 agenda propuesta pendiente con 3 citas (15:00, 15:30 y 16:00); 1 encuesta de satisfacción por responder (evento finalizado, plantilla activa); 5 notificaciones (3 sin leer) |
 | `proveedor@prueba.impulsate.mx` | `Proveedor2026!` | proveedor "Salsas Doña Chela" con perfil de negocio completo, aprobado en el encuentro, 2 productos con capacidad mensual; 6 citas recibidas: 2 pendientes por aceptar (11:00 y 11:30), 2 confirmadas (10:00 Mesa 3 y 12:00 Mesa 5), 1 rechazada (12:30) y 1 con propuesta de reagenda esperando al comprador (13:30 → 15:30) |
 | `proveedor.nuevo@prueba.impulsate.mx` | `Proveedor2026!` | proveedor "Tortillería La Nueva (demo app)" con perfil de negocio INCOMPLETO (faltan descripción, teléfono, logo, productos y logística), sin registro a eventos: sirve para el wizard |
-| `admin@prueba.impulsate.mx` | (la existente) | rol admin |
+| `admin@prueba.impulsate.mx` | `Admin2026!` | rol admin (sección 14) |
+| `superadmin@prueba.impulsate.mx` | `SuperAdmin2026!` | roles admin + super-admin, **solo local** (para `/admin/usuarios-gestion`) |
+| `demo.solicitud.comprador1..2@prueba.impulsate.mx` | `Prueba2026!` | compradores con solicitud **pendiente** en el encuentro (el 1 es de CANIRAC) |
+| `demo.solicitud.proveedor1..2@prueba.impulsate.mx` | `Proveedor2026!` | proveedores (perfil aprobado) con solicitud **pendiente** en el encuentro |
+| `demo.por-aprobar1..2@prueba.impulsate.mx` | `Proveedor2026!` | proveedores recién registrados esperando la **aprobación del perfil** (perfil incompleto, sin eventos) |
+| `demo.expositor1..3@prueba.impulsate.mx` | `Prueba2026!` | expositores del bazar demo: pendiente, en evaluación (evaluado) y seleccionado |
 | `demo.proveedor1..8@prueba.impulsate.mx` | `Proveedor2026!` | 8 proveedores aprobados en el encuentro (sin logo) |
 | `demo.comprador1@prueba.impulsate.mx` | `Prueba2026!` | comprador con una cita pendiente con el proveedor de prueba y `necesidades` capturadas (sirve para `GET /proveedores?orden=coincidencia`) |
 | `demo.comprador2..5@prueba.impulsate.mx` | `Prueba2026!` | compradores aprobados en el encuentro con una cita cada uno con el proveedor de prueba (pendiente, confirmada, rechazada y la de la reagenda) |
@@ -4884,3 +4890,4562 @@ que se quiera. Las citas nuevas que se agenden desde la app no se borran.
 También **reinicia** las 6 citas del proveedor de prueba (estado y horario), lo vuelve a dejar aprobado con su perfil
 completo, y deja otra vez INCOMPLETO y sin registros a eventos a `proveedor.nuevo@…`, así que el wizard y las
 respuestas a citas (Fase 3) se pueden repetir.
+
+Fase 4A (admin): el bazar demo queda con 2 criterios (Calidad del producto 60 %, Presentación y precio 40 %) y se
+crea el evento **"Encuentro Torre de Control (demo app)"** (activo, no destacado) con fecha de **HOY** y 6 citas de
+09:30 a 12:00 en todos los estados de sala (finalizada, ausente, en curso en la mesa 2, llamando a la mesa 4 y dos
+pendientes). Cada corrida mueve ese evento a la fecha del día y reinicia sus citas, regresa a pendiente las
+solicitudes demo, deja otra vez sin aprobar a `demo.por-aprobar*` (y sin inscripciones) y reinicia a los expositores,
+así que las acciones de la sección 14 se pueden repetir.
+
+## 14. Administración (Fase 4A)
+
+Primera mitad del panel de administración de la web (`/admin/*`) bajo `/api/v1/admin/*`: tablero, eventos,
+solicitudes de registro, bazar, proveedores, usuarios, gestión de cuentas (super-admin), citas, agenda propuesta,
+torre de control y calendario. Las respuestas se capturaron el 2026-09-22 contra Apache
+(`http://192.168.10.6/citas/public/api/v1`) con `admin@prueba.impulsate.mx` (y `superadmin@prueba.impulsate.mx` en
+14.6) tras `php artisan impulsate:demo-movil`. Las acciones destructivas se hicieron sobre datos demo y se
+restauraron volviendo a correr la semilla.
+
+**Misma lógica que la web.** Cada pantalla usa el mismo servicio que su controlador web
+(`app/Services/Admin/*`): mismas reglas, mensajes, correos (encolados) y notificaciones. Donde la API se aparta de la
+web se indica con **Diferencia con la web**.
+
+**Acceso.**
+
+- Sin token → **401** `{"message": "Unauthenticated."}`.
+- Cuenta sin rol `admin` (comprador, proveedor) → **403** (web: middleware `admin`):
+
+`HTTP 403`
+```json
+{
+  "message": "Esta sección es solo para administradores."
+}
+```
+
+- `/admin/usuarios-gestion/*` exige además el rol `super-admin` (web: middleware `super-admin`). Un admin normal:
+
+`HTTP 403`
+```json
+{
+  "message": "Acceso exclusivo del super-administrador."
+}
+```
+
+- El rol activo (`rol_activo`) no importa: cuenta con rol `admin` = acceso. El super-admin también tiene el rol
+  `admin`, así que ve todo el panel.
+- Recurso inexistente → **404**. Las reglas de negocio (evento activo que no se puede borrar, solicitud que no
+  existe, cupo de espacios lleno…) → **422** con el mismo `{message, errors}` que la validación; el campo suele ser
+  `error` (el mismo nombre que usa la web en `back()->withErrors`).
+
+**Evento de contexto.** La web guarda en la **sesión** el evento sobre el que trabaja el admin (selector del menú,
+`POST /admin/eventos/contexto`). La API no tiene sesión: la app guarda el id elegido y lo manda como `evento_id` en
+`POST /admin/citas`, `GET /admin/agenda/formulario`, `POST /admin/agenda` (y como filtro opcional en torre, citas,
+agenda y calendario). Sin `evento_id` se usa el evento activo principal (`predeterminado_id` de
+[GET /admin/contexto](#get-admincontexto)), igual que la web cuando no hay elección. Un `evento_id` de un evento que
+ya no está activo → **422** en `evento_id` (`"Ese evento ya no está activo."`).
+
+**Límites.** Todo va con `api-v1` (120/min por usuario). Las acciones que mandan correo o avisos llevan además:
+
+| Limitador | Rutas | Límite |
+|---|---|---|
+| `api-admin-correos` | aprobar/rechazar/eliminar solicitudes, `aprobar-todos`, altas manuales, `enviar-encuestas`, `bazar/enviar-*`, `proveedores/{id}/aprobar\|rechazar`, `POST /admin/citas`, `PATCH /admin/citas/{id}/estado`, `POST /admin/agenda`, `POST /admin/agenda/{id}/enviar` | 30/min por usuario |
+| `api-credenciales` | `POST /admin/usuarios-gestion/{id}/password` | 6/min por usuario (el mismo de cambiar tu contraseña) |
+
+**Datos sensibles.** Ninguna respuesta incluye rutas de INE/CSF, contraseña, tokens (tampoco el de la agenda ni el de
+la evaluación del bazar) ni rutas de disco: logos e imágenes van como URL absoluta, INE/CSF como `tiene_ine`/`tiene_csf`
+y, en las fichas, como **URL firmada que caduca a los 10 minutos** (el mismo objeto `documentos` de
+`GET /perfil/documentos`, sección 4). El único secreto que sale es el token de la Pantalla TV, a propósito
+(ver [TV](#get-admineventosidtv)).
+
+**Subidas.** Imágenes de evento (`imagen`, `imagen_carrusel`: jpg/jpeg/png/webp, máx. 10 MB) y logo de proveedor
+(`logo`: jpg/jpeg/png/webp, máx. 2 MB, se comprueba el contenido real): las mismas reglas que la web. Van en
+`multipart/form-data` con **POST** (PHP no lee archivos en un PUT); sin archivos se puede usar PUT/PATCH con JSON.
+
+### Índice
+
+| Método | Ruta | Web equivalente |
+|---|---|---|
+| GET | [/admin/dashboard](#get-admindashboard) | `/admin` |
+| GET | [/admin/contexto](#get-admincontexto) | selector de evento del menú |
+| GET, POST | [/admin/eventos](#get-admineventos) | `/admin/eventos` |
+| GET, POST/PUT/PATCH, DELETE | [/admin/eventos/{id}](#get-admineventosid) | `/admin/eventos/{id}` |
+| POST | [/admin/eventos/{id}/activar\|archivar\|enviar-encuestas](#post-admineventosidactivar) | idem |
+| GET, POST | [/admin/eventos/{id}/tv, /tv/rotar](#get-admineventosidtv) | `/admin/tv`, `/admin/tv/rotar-token` |
+| GET | [/admin/eventos/{id}/solicitudes](#get-admineventosidsolicitudes) | `/admin/eventos/{id}/solicitudes` |
+| GET | [/admin/eventos/{id}/solicitudes/{user}](#get-admineventosidsolicitudesuser) | modal "Ver perfil" |
+| GET | [/admin/eventos/{id}/solicitudes/candidatos](#get-admineventosidsolicitudescandidatos) | formulario de alta manual |
+| POST | [/admin/eventos/{id}/solicitudes/{user}/aprobar\|rechazar\|revertir\|eliminar](#post-admineventosidsolicitudesuseraprobar) | idem |
+| POST | [/admin/eventos/{id}/solicitudes/aprobar-todos\|agregar-comprador\|agregar-proveedor](#post-admineventosidsolicitudesaprobar-todos) | idem |
+| GET | [/admin/eventos/{id}/bazar](#get-admineventosidbazar), [/bazar/{user}](#get-admineventosidbazaruser) | `/admin/eventos/{id}/bazar` |
+| POST | [/admin/eventos/{id}/bazar/{user}/aprobar\|rechazar\|evaluar\|notas-rechazo](#post-admineventosidbazaruseraprobar), [/bazar/seleccion](#post-admineventosidbazarseleccion), [/bazar/enviar-aprobacion\|enviar-rechazo](#post-admineventosidbazarenviar-aprobacion) | idem (`toggle-seleccion`) |
+| GET | [/admin/proveedores](#get-adminproveedores), [/proveedores/pendientes](#get-adminproveedorespendientes), [/proveedores/{id}](#get-adminproveedoresid), [/proveedores/{id}/citas](#get-adminproveedoresidcitas) | `/admin/restauranteros` |
+| POST/PUT/PATCH | [/admin/proveedores/{id}](#post-adminproveedoresid) | `/admin/restauranteros/{id}/update` |
+| PATCH, POST | [/proveedores/{id}/categoria](#patch-adminproveedoresidcategoria), [/activo](#post-adminproveedoresidactivo), [/aprobar](#post-adminproveedoresidaprobar), [/rechazar](#post-adminproveedoresidrechazar) | `/categoria`, `/toggle`, `/aprobar`, `/rechazar` |
+| GET, PUT, DELETE | [/admin/usuarios](#get-adminusuarios), [/usuarios/{id}](#get-adminusuariosid), [/usuarios/{id}/documentos](#get-adminusuariosiddocumentos) | `/admin/usuarios`, `/admin/clientes/{id}` |
+| * | [/admin/usuarios-gestion/*](#1461-gestión-de-cuentas-solo-super-admin) | `/admin/usuarios-gestion` (super-admin) |
+| GET, POST, PATCH | [/admin/citas](#get-admincitas), [/citas/formulario](#get-admincitasformulario), [/citas/{id}](#get-admincitasid), [/citas/{id}/estado](#patch-admincitasidestado) | `/admin/citas` |
+| GET, POST, DELETE | [/admin/agenda](#get-adminagenda), [/agenda/formulario](#get-adminagendaformulario), [/agenda/{id}](#get-adminagendaid), [/agenda/{id}/enviar](#post-adminagendaidenviar) | `/admin/agenda` |
+| GET, PATCH, POST | [/admin/torre](#get-admintorre), [/torre/mesas](#patch-admintorremesas), [/torre/citas/{id}/*](#post-admintorrecitasidllamar) | `/admin/torre`, `/admin/config/mesas` |
+| GET | [/admin/calendario](#get-admincalendario), [/calendario/proveedores](#get-admincalendarioproveedores) | `/admin/calendario` |
+
+---
+
+### 14.1 Tablero y contexto
+
+### GET /admin/dashboard
+
+Los KPIs de `/admin` (`AdminDashboardService`): totales, citas por estado, citas de los últimos 7 días (solo los días
+con citas, como la gráfica web) y los contadores del menú lateral (`proveedores_por_aprobar` = insignia
+"Proveedores"; `proveedores_solicitaron` = los que ya pidieron aprobación; `solicitudes_eventos` = solicitudes
+pendientes en todos los eventos).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "totales": {
+      "usuarios": 38,
+      "proveedores": 17,
+      "citas": 40,
+      "citas_hoy": 6
+    },
+    "citas_por_estado": {
+      "pendiente": 9,
+      "confirmada": 14,
+      "cancelada": 8,
+      "completada": 6,
+      "rechazada": 1,
+      "pendiente_reconfirmacion": 2
+    },
+    "citas_ultimos_7_dias": [
+      {
+        "fecha": "2026-09-22",
+        "total": 6
+      },
+      {
+        "fecha": "2026-10-06",
+        "total": 9
+      }
+    ],
+    "pendientes": {
+      "proveedores_por_aprobar": 3,
+      "proveedores_solicitaron": 3,
+      "solicitudes_eventos": 5
+    }
+  }
+}
+```
+
+### GET /admin/contexto
+
+Eventos activos (el selector del menú) y `predeterminado_id`, el que se usa cuando no se manda `evento_id` (el
+destacado; si no hay, el más próximo). Ordenados igual que en la web.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "predeterminado_id": 5,
+    "eventos_activos": [
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "tipo_evento": "encuentro_negocios",
+        "destacado": true,
+        "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+        "fecha_hora_fin": "2026-10-06T18:00:00-06:00"
+      },
+      {
+        "id": 1,
+        "nombre": "Edición Inicial",
+        "tipo_evento": "encuentro_negocios",
+        "destacado": false,
+        "fecha_hora_inicio": "2026-06-04T00:00:00-06:00",
+        "fecha_hora_fin": null
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.eventos_activos` traía 4 elementos; se muestran 2.
+
+---
+
+### 14.2 Eventos
+
+### Objeto `evento` del admin (AdminEventoResource)
+
+Toda la configuración editable del evento. `estado` ∈ `activo | inactivo | finalizado` (finalizado = ya pasó
+`fecha_hora_fin`). `contadores` solo en lista/detalle: `citas`, `proveedores` (negocios vinculados al evento),
+`compradores_con_cita` y `solicitudes_pendientes` (los mismos números que las tarjetas web). **No** trae `tv_token`.
+
+### GET /admin/eventos
+
+Todos los eventos, del más nuevo al más viejo (como la web). Filtros opcionales: `estado` (`activo`, `inactivo`,
+`finalizado`) y `tipo_evento` (`encuentro_negocios`, `bazar_exposicion`). Sin paginación (la web tampoco pagina).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 8,
+      "nombre": "Encuentro Torre de Control (demo app)",
+      "descripcion": "Evento de HOY para probar la torre de control desde la app.",
+      "sector_economico": "Alimentos y Bebidas",
+      "tipo_evento": "encuentro_negocios",
+      "activa": true,
+      "destacado": false,
+      "estado": "activo",
+      "imagen_url": null,
+      "imagen_carrusel_url": null,
+      "convocatoria_url": null,
+      "fecha_hora_inicio": "2026-09-22T09:00:00-06:00",
+      "fecha_hora_fin": "2026-09-22T23:59:00-06:00",
+      "fecha_hora_inicio_proveedores": "2026-09-12T00:00:00-06:00",
+      "fecha_hora_fin_proveedores": "2026-09-20T00:00:00-06:00",
+      "fecha_hora_inicio_compradores": "2026-09-12T00:00:00-06:00",
+      "fecha_hora_fin_compradores": "2026-09-21T00:00:00-06:00",
+      "fecha_aceptacion_solicitudes": null,
+      "fecha_corte": null,
+      "max_citas_por_comprador": 5,
+      "tiempo_entre_citas_minutos": 30,
+      "max_espacios": null,
+      "con_criterios_evaluacion": false,
+      "criterios": [],
+      "contadores": {
+        "citas": 6,
+        "proveedores": 0,
+        "compradores_con_cita": 5,
+        "solicitudes_pendientes": 0
+      },
+      "creado_at": "2026-09-22T15:49:10-06:00"
+    }
+  ],
+  "meta": {
+    "total": 5
+  }
+}
+```
+> Recorte: `data` traía 5 elementos; se muestran 1.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo estado seleccionado no es válido.",
+  "errors": {
+    "estado": [
+      "El campo estado seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### GET /admin/eventos/{id}
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 5,
+    "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+    "descripcion": "Encuentro de negocios entre compradores del sector restaurantero y proveedores locales de Yucatán.",
+    "sector_economico": "Alimentos y Bebidas",
+    "tipo_evento": "encuentro_negocios",
+    "activa": true,
+    "destacado": true,
+    "estado": "activo",
+    "imagen_url": null,
+    "imagen_carrusel_url": null,
+    "convocatoria_url": null,
+    "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+    "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+    "fecha_hora_inicio_proveedores": "2026-09-17T15:50:16-06:00",
+    "fecha_hora_fin_proveedores": "2026-10-04T09:00:00-06:00",
+    "fecha_hora_inicio_compradores": "2026-09-17T15:50:16-06:00",
+    "fecha_hora_fin_compradores": "2026-10-05T09:00:00-06:00",
+    "fecha_aceptacion_solicitudes": null,
+    "fecha_corte": null,
+    "max_citas_por_comprador": 5,
+    "tiempo_entre_citas_minutos": 30,
+    "max_espacios": null,
+    "con_criterios_evaluacion": false,
+    "criterios": [],
+    "contadores": {
+      "citas": 9,
+      "proveedores": 11,
+      "compradores_con_cita": 6,
+      "solicitudes_pendientes": 4
+    },
+    "creado_at": "2026-09-22T13:35:30-06:00"
+  }
+}
+```
+
+### POST /admin/eventos
+
+Crea el evento **inactivo** (se activa aparte). Mismas reglas que el formulario web:
+
+| Campo | Regla |
+|---|---|
+| `nombre` | requerido, máx. 200 |
+| `convocatoria_url` | requerido, URL completa (`https://…`) |
+| `tipo_evento` | requerido: `encuentro_negocios` \| `bazar_exposicion` |
+| `descripcion` (1000), `sector_economico` (100) | opcionales |
+| `fecha_hora_inicio`, `fecha_hora_fin` | fechas; fin ≥ inicio |
+| `fecha_hora_inicio_proveedores`, `fecha_hora_fin_proveedores`, `fecha_hora_inicio_compradores`, `fecha_hora_fin_compradores` | ventanas de registro (encuentro); cada fin ≥ su inicio y la apertura de compradores ≥ la de proveedores |
+| `max_citas_por_comprador` | 1–50 (por defecto 3) |
+| `tiempo_entre_citas_minutos` | 5–120, múltiplo de 5 (por defecto 30) |
+| `fecha_aceptacion_solicitudes` | bazar: desde cuándo se aceptan solicitudes |
+| `max_espacios` | bazar: 1–9999 (en un encuentro se ignora y queda `null`) |
+| `destacado` | bool. Al marcar uno se **desmarcan todos los demás** (solo hay un destacado) |
+| `con_criterios_evaluacion` + `criterios[]` (`{id?, nombre, porcentaje}`) | bazar: los porcentajes deben sumar **100** |
+| `imagen`, `imagen_carrusel` | imagen jpg/jpeg/png/webp, máx. 10 MB (multipart) |
+
+Petición (multipart):
+```json
+{
+  "nombre": "Bazar Navideño (captura API)",
+  "tipo_evento": "bazar_exposicion",
+  "convocatoria_url": "https://ejemplo.com/convocatoria.pdf",
+  "descripcion": "Bazar de temporada.",
+  "fecha_hora_inicio": "2026-12-12 10:00",
+  "fecha_hora_fin": "2026-12-13 19:00",
+  "fecha_aceptacion_solicitudes": "2026-11-01 09:00",
+  "max_espacios": "40",
+  "con_criterios_evaluacion": "1",
+  "criterios[0][nombre]": "Calidad",
+  "criterios[0][porcentaje]": "60",
+  "criterios[1][nombre]": "Precio",
+  "criterios[1][porcentaje]": "40",
+  "imagen": "bazar.png"
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 9,
+    "nombre": "Bazar Navideño (captura API)",
+    "descripcion": "Bazar de temporada.",
+    "sector_economico": null,
+    "tipo_evento": "bazar_exposicion",
+    "activa": false,
+    "destacado": false,
+    "estado": "inactivo",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/eventos/TPK44bemLa2GgSPeeMlyQfbJI8xKsL8BTEA73zjQ.png",
+    "imagen_carrusel_url": null,
+    "convocatoria_url": "https://ejemplo.com/convocatoria.pdf",
+    "fecha_hora_inicio": "2026-12-12T10:00:00-06:00",
+    "fecha_hora_fin": "2026-12-13T19:00:00-06:00",
+    "fecha_hora_inicio_proveedores": null,
+    "fecha_hora_fin_proveedores": null,
+    "fecha_hora_inicio_compradores": null,
+    "fecha_hora_fin_compradores": null,
+    "fecha_aceptacion_solicitudes": "2026-11-01T09:00:00-06:00",
+    "fecha_corte": null,
+    "max_citas_por_comprador": 3,
+    "tiempo_entre_citas_minutos": 30,
+    "max_espacios": 40,
+    "con_criterios_evaluacion": true,
+    "criterios": [
+      {
+        "id": 5,
+        "nombre": "Calidad",
+        "porcentaje": 60,
+        "orden": 0
+      },
+      {
+        "id": 6,
+        "nombre": "Precio",
+        "porcentaje": 40,
+        "orden": 1
+      }
+    ],
+    "contadores": {
+      "citas": 0,
+      "proveedores": 0,
+      "compradores_con_cita": 0,
+      "solicitudes_pendientes": 0
+    },
+    "creado_at": "2026-09-22T15:52:10-06:00"
+  },
+  "message": "Evento creado. Actívalo cuando estés listo."
+}
+```
+
+Petición:
+```json
+{
+  "nombre": "Sin liga",
+  "tipo_evento": "encuentro_negocios",
+  "convocatoria_url": "convocatoria.pdf"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "La liga de la convocatoria debe ser una URL completa, incluyendo https:// (ej. https://ejemplo.com/convocatoria.pdf).",
+  "errors": {
+    "convocatoria_url": [
+      "La liga de la convocatoria debe ser una URL completa, incluyendo https:// (ej. https://ejemplo.com/convocatoria.pdf)."
+    ]
+  }
+}
+```
+
+Petición:
+```json
+{
+  "nombre": "Bazar criterios",
+  "tipo_evento": "bazar_exposicion",
+  "convocatoria_url": "https://ejemplo.com/c.pdf",
+  "con_criterios_evaluacion": true,
+  "criterios": [
+    {
+      "nombre": "Calidad",
+      "porcentaje": 50
+    },
+    {
+      "nombre": "Precio",
+      "porcentaje": 30
+    }
+  ]
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Los porcentajes deben sumar exactamente 100%.",
+  "errors": {
+    "criterios": [
+      "Los porcentajes deben sumar exactamente 100%."
+    ]
+  }
+}
+```
+
+### POST/PUT/PATCH /admin/eventos/{id}
+
+Edita el evento. **Es un reemplazo completo, igual que el formulario web**: los campos que no mandes quedan en
+`null` o en su valor por defecto (`destacado` → `false`, `max_citas_por_comprador` → 3…). Manda siempre el evento
+entero (lo que devolvió `GET /admin/eventos/{id}`) con tus cambios. Imágenes: solo si vienen se reemplazan (y se borra
+la anterior).
+
+Criterios: se **sincronizan sin borrar evaluaciones** — manda el `id` de los que conservas; los que no mandes se
+borran (con sus puntajes); los nuevos van sin `id`. Si `con_criterios_evaluacion` es falso o `criterios` va vacío, no
+se toca ninguno.
+
+Petición (multipart):
+```json
+{
+  "nombre": "Bazar Navideño 2026 (captura API)",
+  "tipo_evento": "bazar_exposicion",
+  "convocatoria_url": "https://ejemplo.com/convocatoria.pdf",
+  "descripcion": "Bazar de temporada.",
+  "fecha_hora_inicio": "2026-12-12 10:00",
+  "fecha_hora_fin": "2026-12-13 19:00",
+  "fecha_aceptacion_solicitudes": "2026-11-01 09:00",
+  "max_espacios": "50",
+  "con_criterios_evaluacion": "1",
+  "criterios[0][id]": "5",
+  "criterios[0][nombre]": "Calidad",
+  "criterios[0][porcentaje]": "100",
+  "imagen_carrusel": "carrusel.png"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 9,
+    "nombre": "Bazar Navideño 2026 (captura API)",
+    "descripcion": "Bazar de temporada.",
+    "sector_economico": null,
+    "tipo_evento": "bazar_exposicion",
+    "activa": false,
+    "destacado": false,
+    "estado": "inactivo",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/eventos/TPK44bemLa2GgSPeeMlyQfbJI8xKsL8BTEA73zjQ.png",
+    "imagen_carrusel_url": "http://192.168.10.6/citas/public/storage/eventos/wJtiH0HVoypHgsWv7k4ZEHNxxKUwbDUx0orace8O.png",
+    "convocatoria_url": "https://ejemplo.com/convocatoria.pdf",
+    "fecha_hora_inicio": "2026-12-12T10:00:00-06:00",
+    "fecha_hora_fin": "2026-12-13T19:00:00-06:00",
+    "fecha_hora_inicio_proveedores": null,
+    "fecha_hora_fin_proveedores": null,
+    "fecha_hora_inicio_compradores": null,
+    "fecha_hora_fin_compradores": null,
+    "fecha_aceptacion_solicitudes": "2026-11-01T09:00:00-06:00",
+    "fecha_corte": null,
+    "max_citas_por_comprador": 3,
+    "tiempo_entre_citas_minutos": 30,
+    "max_espacios": 50,
+    "con_criterios_evaluacion": true,
+    "criterios": [
+      {
+        "id": 5,
+        "nombre": "Calidad",
+        "porcentaje": 100,
+        "orden": 0
+      }
+    ],
+    "contadores": {
+      "citas": 0,
+      "proveedores": 0,
+      "compradores_con_cita": 0,
+      "solicitudes_pendientes": 0
+    },
+    "creado_at": "2026-09-22T15:52:10-06:00"
+  },
+  "message": "Evento actualizado correctamente."
+}
+```
+
+### DELETE /admin/eventos/{id}
+
+Solo eventos **inactivos y sin citas** (como la web).
+
+`HTTP 422`
+```json
+{
+  "message": "No puedes eliminar el evento activo. Archívalo primero.",
+  "errors": {
+    "error": [
+      "No puedes eliminar el evento activo. Archívalo primero."
+    ]
+  }
+}
+```
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Evento eliminado correctamente."
+}
+```
+
+> **Bug web reportado (no corregido):** borrar un evento no borra sus imágenes del disco.
+
+### POST /admin/eventos/{id}/activar
+
+Lo activa (pueden convivir varios activos) y, si el evento tiene `tiempo_entre_citas_minutos`, pone esa duración al
+servicio de todos los proveedores aprobados en él.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 9,
+    "nombre": "Bazar Navideño 2026 (captura API)",
+    "descripcion": "Bazar de temporada.",
+    "sector_economico": null,
+    "tipo_evento": "bazar_exposicion",
+    "activa": true,
+    "destacado": false,
+    "estado": "activo",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/eventos/TPK44bemLa2GgSPeeMlyQfbJI8xKsL8BTEA73zjQ.png",
+    "imagen_carrusel_url": "http://192.168.10.6/citas/public/storage/eventos/wJtiH0HVoypHgsWv7k4ZEHNxxKUwbDUx0orace8O.png",
+    "convocatoria_url": "https://ejemplo.com/convocatoria.pdf",
+    "fecha_hora_inicio": "2026-12-12T10:00:00-06:00",
+    "fecha_hora_fin": "2026-12-13T19:00:00-06:00",
+    "fecha_hora_inicio_proveedores": null,
+    "fecha_hora_fin_proveedores": null,
+    "fecha_hora_inicio_compradores": null,
+    "fecha_hora_fin_compradores": null,
+    "fecha_aceptacion_solicitudes": "2026-11-01T09:00:00-06:00",
+    "fecha_corte": null,
+    "max_citas_por_comprador": 3,
+    "tiempo_entre_citas_minutos": 30,
+    "max_espacios": 50,
+    "con_criterios_evaluacion": true,
+    "criterios": [
+      {
+        "id": 5,
+        "nombre": "Calidad",
+        "porcentaje": 100,
+        "orden": 0
+      }
+    ],
+    "contadores": {
+      "citas": 0,
+      "proveedores": 0,
+      "compradores_con_cita": 0,
+      "solicitudes_pendientes": 0
+    },
+    "creado_at": "2026-09-22T15:52:10-06:00"
+  },
+  "message": "Evento \"Bazar Navideño 2026 (captura API)\" activado."
+}
+```
+
+### POST /admin/eventos/{id}/archivar
+
+Lo desactiva y registra `fecha_corte` = hoy. Solo eventos activos.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 9,
+    "nombre": "Bazar Navideño 2026 (captura API)",
+    "descripcion": "Bazar de temporada.",
+    "sector_economico": null,
+    "tipo_evento": "bazar_exposicion",
+    "activa": false,
+    "destacado": false,
+    "estado": "inactivo",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/eventos/TPK44bemLa2GgSPeeMlyQfbJI8xKsL8BTEA73zjQ.png",
+    "imagen_carrusel_url": "http://192.168.10.6/citas/public/storage/eventos/wJtiH0HVoypHgsWv7k4ZEHNxxKUwbDUx0orace8O.png",
+    "convocatoria_url": "https://ejemplo.com/convocatoria.pdf",
+    "fecha_hora_inicio": "2026-12-12T10:00:00-06:00",
+    "fecha_hora_fin": "2026-12-13T19:00:00-06:00",
+    "fecha_hora_inicio_proveedores": null,
+    "fecha_hora_fin_proveedores": null,
+    "fecha_hora_inicio_compradores": null,
+    "fecha_hora_fin_compradores": null,
+    "fecha_aceptacion_solicitudes": "2026-11-01T09:00:00-06:00",
+    "fecha_corte": "2026-09-22",
+    "max_citas_por_comprador": 3,
+    "tiempo_entre_citas_minutos": 30,
+    "max_espacios": 50,
+    "con_criterios_evaluacion": true,
+    "criterios": [
+      {
+        "id": 5,
+        "nombre": "Calidad",
+        "porcentaje": 100,
+        "orden": 0
+      }
+    ],
+    "contadores": {
+      "citas": 0,
+      "proveedores": 0,
+      "compradores_con_cita": 0,
+      "solicitudes_pendientes": 0
+    },
+    "creado_at": "2026-09-22T15:52:10-06:00"
+  },
+  "message": "Evento \"Bazar Navideño 2026 (captura API)\" archivado correctamente."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "Este evento no está activo.",
+  "errors": {
+    "error": [
+      "Este evento no está activo."
+    ]
+  }
+}
+```
+
+### POST /admin/eventos/{id}/enviar-encuestas
+
+Envía la encuesta de satisfacción (plantilla activa) a los participantes del evento; las ya enviadas se omiten.
+Respuesta: `{"data": {"enviadas": N}, "message": "Encuestas enviadas a N participante(s). Las ya existentes se omitieron."}`.
+Sin plantilla activa → **422** `"No hay plantilla de encuesta activa. Activa una plantilla primero."`. (La gestión de
+encuestas y plantillas es de la Fase 4B.)
+
+### GET /admin/eventos/{id}/tv
+
+Enlace de la **Pantalla TV** pública del evento (la web lo abre desde `/admin/tv` con el evento de contexto). Si el
+evento aún no tiene token se genera. `url` es la pantalla web pública (`/tv/{token}`); cualquiera con ese enlace ve
+la pantalla, por eso se puede rotar.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "evento_id": 8,
+    "token": "SAbqBLopAUQILrMMxDqurkwLtu5kdfQ4nmiZT3QddzsRN8Qe",
+    "url": "http://192.168.10.6/citas/public/tv/SAbqBLopAUQILrMMxDqurkwLtu5kdfQ4nmiZT3QddzsRN8Qe"
+  }
+}
+```
+
+### POST /admin/eventos/{id}/tv/rotar
+
+Genera otro token: las pantallas abiertas con el enlace anterior dejan de funcionar.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "evento_id": 8,
+    "token": "ZSWbb9qk02HEZFo5v5gMpfhcq0M3fXAE4rvf1HYDtdwpsjz5",
+    "url": "http://192.168.10.6/citas/public/tv/ZSWbb9qk02HEZFo5v5gMpfhcq0M3fXAE4rvf1HYDtdwpsjz5"
+  },
+  "message": "Token de la pantalla TV rotado. Las pantallas abiertas dejaran de funcionar."
+}
+```
+
+---
+
+### 14.3 Solicitudes de registro a un evento
+
+### Objeto `solicitud` (SolicitudEventoResource)
+
+| Campo | Nota |
+|---|---|
+| `id`, `user_id`, `tipo` (`comprador`\|`proveedor`\|`expositor`), `estado` (`pendiente`\|`aprobado`\|`rechazado`), `motivo_rechazo`, `respondido_at`, `solicitado_at` | la fila de `evento_usuario` |
+| `citas_activas` | citas no canceladas ni rechazadas del usuario (como proveedor si `tipo = proveedor`) |
+| `usuario` | contacto, empresa, CANIRAC, `citas_historico`, `tiene_ine`, `tiene_csf`, `csf_fecha` |
+| `negocio` | solo `tipo = proveedor`: el perfil de negocio que muestra el modal web (crédito, factura, logística, productos, `logo_url`, `citas_count`) |
+
+### GET /admin/eventos/{id}/solicitudes
+
+La web trae todo el evento y filtra en el navegador (pestañas y botones de tipo/CANIRAC); aquí los mismos filtros van
+por query y la lista se **pagina**:
+
+| Parámetro | Valores |
+|---|---|
+| `estado` | `pendiente`, `aprobado`, `rechazado` (pestañas) |
+| `tipo` | `comprador`, `proveedor`, `expositor` |
+| `canirac` | `1` = solo compradores de CANIRAC (botón "CANIRAC" de la web) |
+| `q` | busca en nombre, correo, empresa y nombre del negocio |
+| `per_page` (1–100, por defecto 30), `page` | |
+
+Orden: las más recientes primero. `meta.contadores` cuenta **todo** el evento por estado y tipo (las insignias de las
+pestañas), sin aplicar filtros.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 33,
+      "user_id": 45,
+      "tipo": "comprador",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "respondido_at": null,
+      "solicitado_at": "2026-09-22T15:50:17-06:00",
+      "citas_activas": 0,
+      "usuario": {
+        "id": 45,
+        "nombre": "Compras Cafetería Los Almendros",
+        "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+        "telefono": "9993330001",
+        "sitio_web": null,
+        "necesidades": "Café de especialidad y miel local.",
+        "rfc": null,
+        "nombre_empresa": "Cafetería Los Almendros",
+        "camara_asociacion": "CANIRAC",
+        "nombre_establecimiento": "Cafetería Los Almendros",
+        "registrado_at": "2026-09-22T15:49:05-06:00",
+        "citas_historico": 0,
+        "tiene_ine": false,
+        "tiene_csf": false,
+        "csf_fecha": null
+      },
+      "negocio": null
+    },
+    {
+      "id": 34,
+      "user_id": 46,
+      "tipo": "comprador",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "respondido_at": null,
+      "solicitado_at": "2026-09-22T15:50:17-06:00",
+      "citas_activas": 0,
+      "usuario": {
+        "id": 46,
+        "nombre": "Compras Hotel Casa Lecanda",
+        "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+        "telefono": "9993330002",
+        "sitio_web": null,
+        "necesidades": "Amenidades artesanales y textiles.",
+        "rfc": null,
+        "nombre_empresa": "Hotel Casa Lecanda",
+        "camara_asociacion": "Ninguna",
+        "nombre_establecimiento": null,
+        "registrado_at": "2026-09-22T15:49:06-06:00",
+        "citas_historico": 0,
+        "tiene_ine": false,
+        "tiene_csf": false,
+        "csf_fecha": null
+      },
+      "negocio": null
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/eventos/5/solicitudes",
+    "per_page": 30,
+    "to": 4,
+    "total": 4,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "activa": true,
+      "tipo_evento": "encuentro_negocios"
+    },
+    "contadores": {
+      "pendiente": {
+        "comprador": 2,
+        "proveedor": 2
+      },
+      "aprobado": {
+        "comprador": 6,
+        "proveedor": 9
+      },
+      "rechazado": []
+    }
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`; `data` traía 4 elementos; se muestran 2.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 33,
+      "user_id": 45,
+      "tipo": "comprador",
+      "estado": "pendiente",
+      "motivo_rechazo": null,
+      "respondido_at": null,
+      "solicitado_at": "2026-09-22T15:50:17-06:00",
+      "citas_activas": 0,
+      "usuario": {
+        "id": 45,
+        "nombre": "Compras Cafetería Los Almendros",
+        "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+        "telefono": "9993330001",
+        "sitio_web": null,
+        "necesidades": "Café de especialidad y miel local.",
+        "rfc": null,
+        "nombre_empresa": "Cafetería Los Almendros",
+        "camara_asociacion": "CANIRAC",
+        "nombre_establecimiento": "Cafetería Los Almendros",
+        "registrado_at": "2026-09-22T15:49:05-06:00",
+        "citas_historico": 0,
+        "tiene_ine": false,
+        "tiene_csf": false,
+        "csf_fecha": null
+      },
+      "negocio": null
+    },
+    {
+      "id": 16,
+      "user_id": 24,
+      "tipo": "comprador",
+      "estado": "aprobado",
+      "motivo_rechazo": null,
+      "respondido_at": "2026-09-22T15:50:16-06:00",
+      "solicitado_at": "2026-09-22T15:50:16-06:00",
+      "citas_activas": 2,
+      "usuario": {
+        "id": 24,
+        "nombre": "Restaurante La Tradición",
+        "email": "demo.comprador1@prueba.impulsate.mx",
+        "telefono": "9992223344",
+        "sitio_web": null,
+        "necesidades": "Salsas, recados y miel para el menú de temporada.",
+        "rfc": null,
+        "nombre_empresa": "Restaurante La Tradición",
+        "camara_asociacion": "CANIRAC",
+        "nombre_establecimiento": "La Tradición",
+        "registrado_at": "2026-09-22T13:35:33-06:00",
+        "citas_historico": 2,
+        "tiene_ine": false,
+        "tiene_csf": false,
+        "csf_fecha": null
+      },
+      "negocio": null
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/eventos/5/solicitudes",
+    "per_page": 5,
+    "to": 2,
+    "total": 2,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+      "activa": true,
+      "tipo_evento": "encuentro_negocios"
+    },
+    "contadores": {
+      "pendiente": {
+        "comprador": 2,
+        "proveedor": 2
+      },
+      "aprobado": {
+        "comprador": 6,
+        "proveedor": 9
+      },
+      "rechazado": []
+    }
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo tipo seleccionado no es válido.",
+  "errors": {
+    "tipo": [
+      "El campo tipo seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### GET /admin/eventos/{id}/solicitudes/{user}
+
+El modal "Ver perfil completo" de la web: todas las solicitudes del usuario en ese evento, datos extra del comprador,
+el perfil de negocio completo si tiene uno (`perfil_proveedor`: mismo formato que `GET /proveedor/perfil`, sección 12)
+y sus documentos con URL firmada. **404** si el usuario no tiene solicitudes en el evento.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "solicitudes": [
+      {
+        "id": 33,
+        "user_id": 45,
+        "tipo": "comprador",
+        "estado": "pendiente",
+        "motivo_rechazo": null,
+        "respondido_at": null,
+        "solicitado_at": "2026-09-22T15:50:17-06:00",
+        "citas_activas": 0,
+        "usuario": {
+          "id": 45,
+          "nombre": "Compras Cafetería Los Almendros",
+          "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+          "telefono": "9993330001",
+          "sitio_web": null,
+          "necesidades": "Café de especialidad y miel local.",
+          "rfc": null,
+          "nombre_empresa": "Cafetería Los Almendros",
+          "camara_asociacion": "CANIRAC",
+          "nombre_establecimiento": "Cafetería Los Almendros",
+          "registrado_at": "2026-09-22T15:49:05-06:00",
+          "citas_historico": 0,
+          "tiene_ine": false,
+          "tiene_csf": false,
+          "csf_fecha": null
+        },
+        "negocio": null
+      }
+    ],
+    "perfil_comprador": {
+      "curp": null,
+      "municipio": "Mérida",
+      "genero": null,
+      "roles": [
+        "cliente"
+      ]
+    },
+    "perfil_proveedor": null,
+    "documentos": {
+      "ine": {
+        "subido": false,
+        "url_temporal": null
+      },
+      "csf": {
+        "subido": false,
+        "fecha": null,
+        "vigente": false,
+        "url_temporal": null
+      },
+      "url_expira_en_minutos": 10
+    }
+  }
+}
+```
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "solicitudes": [
+      {
+        "id": 35,
+        "user_id": 47,
+        "tipo": "proveedor",
+        "estado": "pendiente",
+        "motivo_rechazo": null,
+        "respondido_at": null,
+        "solicitado_at": "2026-09-22T15:50:17-06:00",
+        "citas_activas": 0,
+        "usuario": {
+          "id": 47,
+          "nombre": "Contacto Chocolates Ek Balam",
+          "email": "demo.solicitud.proveedor1@prueba.impulsate.mx",
+          "telefono": "9994440001",
+          "sitio_web": null,
+          "necesidades": null,
+          "rfc": null,
+          "nombre_empresa": null,
+          "camara_asociacion": null,
+          "nombre_establecimiento": null,
+          "registrado_at": "2026-09-22T15:49:06-06:00",
+          "citas_historico": 0,
+          "tiene_ine": false,
+          "tiene_csf": false,
+          "csf_fecha": null
+        },
+        "negocio": {
+          "id": 20,
+          "nombre_negocio": "Chocolates Ek Balam",
+          "descripcion": "Chocolates Ek Balam: Alimentos y Bebidas de Valladolid.",
+          "categoria": "Alimentos y Bebidas",
+          "municipio": "Valladolid",
+          "rfc": null,
+          "domicilio_en_yucatan": null,
+          "telefono": "9994440001",
+          "sitio_web": null,
+          "redes_sociales": null,
+          "logo_url": null,
+          "activo": true,
+          "aprobado": true,
+          "perfil_completo": false,
+          "acepta_credito": false,
+          "credito_monto_maximo": null,
+          "credito_tiempo_cantidad": null,
+          "credito_tiempo_unidad": null,
+          "pago_contraentrega": false,
+          "factura": false,
+          "regimen_fiscal": null,
+          "entrega_domicilio": false,
+          "cobertura_entrega": null,
+          "forma_entrega": null,
+          "productos": [
+            {
+              "nombre": "Chocolate de mesa",
+              "descripcion": null,
+              "foto_url": null,
+              "capacidad_cantidad": 50,
+              "capacidad_unidad": "piezas"
+            },
+            {
+              "nombre": "Cacao en polvo",
+              "descripcion": null,
+              "foto_url": null,
+              "capacidad_cantidad": 50,
+              "capacidad_unidad": "piezas"
+            }
+          ],
+          "citas_count": 0
+        }
+      }
+    ],
+    "perfil_comprador": {
+      "curp": null,
+      "municipio": "Valladolid",
+      "genero": null,
+      "roles": [
+        "restaurantero"
+      ]
+    },
+    "perfil_proveedor": {
+      "negocio": {
+        "id": 20,
+        "nombre_negocio": "Chocolates Ek Balam",
+        "estado": "aprobado",
+        "motivo_rechazo": null,
+        "activo": true,
+        "visible_en_directorio": true,
+        "perfil_completo": false,
+        "porcentaje": 85,
+        "logo_url": null,
+        "solicitado_aprobacion_at": "2026-09-22T15:49:06-06:00"
+      },
+      "faltantes": [
+        {
+          "campo": "logo",
+          "etiqueta": "Logo",
+          "seccion": "contacto"
+        }
+      ],
+      "secciones": [
+        {
+          "clave": "negocio",
+          "etiqueta": "Mi negocio",
+          "completa": true,
+          "faltantes": []
+        },
+        {
+          "clave": "oferta",
+          "etiqueta": "Productos y servicios",
+          "completa": true,
+          "faltantes": []
+        }
+      ],
+      "valores": "… (igual que GET /proveedor/perfil)",
+      "logo_url": null,
+      "productos": [
+        {
+          "indice": 0,
+          "nombre": "Chocolate de mesa",
+          "descripcion": null,
+          "foto_url": null,
+          "capacidad_cantidad": 50,
+          "capacidad_unidad": "piezas"
+        },
+        {
+          "indice": 1,
+          "nombre": "Cacao en polvo",
+          "descripcion": null,
+          "foto_url": null,
+          "capacidad_cantidad": 50,
+          "capacidad_unidad": "piezas"
+        }
+      ]
+    },
+    "documentos": {
+      "ine": {
+        "subido": false,
+        "url_temporal": null
+      },
+      "csf": {
+        "subido": false,
+        "fecha": null,
+        "vigente": false,
+        "url_temporal": null
+      },
+      "url_expira_en_minutos": 10
+    }
+  }
+}
+```
+> Recorte: se resume `valores` (mismo formato que `GET /proveedor/perfil`, sección 12); `data.perfil_proveedor.secciones` traía 4 elementos; se muestran 2.
+
+`HTTP 404`
+```json
+{
+  "message": "Este usuario no tiene solicitudes en el evento."
+}
+```
+
+### GET /admin/eventos/{id}/solicitudes/candidatos
+
+Para el alta manual: proveedores (negocios) y compradores (cualquier cuenta que no sea admin) que aún no tienen una
+solicitud de ese tipo en el evento.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "proveedores": [
+      {
+        "id": 2,
+        "nombre_negocio": "El Sabor de María",
+        "user_id": 3
+      },
+      {
+        "id": 1,
+        "nombre_negocio": "La Hacienda de Carlos",
+        "user_id": 2
+      }
+    ],
+    "compradores": [
+      {
+        "id": 2,
+        "nombre": "Carlos Restaurantero",
+        "nombre_empresa": null
+      },
+      {
+        "id": 5,
+        "nombre": "Cliente Número 1",
+        "nombre_empresa": null
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.proveedores` traía 6 elementos; se muestran 2; `data.compradores` traía 26 elementos; se muestran 2.
+
+### POST /admin/eventos/{id}/solicitudes/{user}/aprobar
+
+Cuerpo: `{"tipo": "comprador" | "proveedor" | "expositor"}`. Aprueba la solicitud (esté pendiente o rechazada, como la
+web), vincula el negocio al evento si es proveedor, crea la notificación **"Solicitud aprobada"** y encola el correo
+`EventoSolicitudAprobadaMail`. Responde la solicitud actualizada.
+
+Petición:
+```json
+{
+  "tipo": "comprador"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 33,
+    "user_id": 45,
+    "tipo": "comprador",
+    "estado": "aprobado",
+    "motivo_rechazo": null,
+    "respondido_at": "2026-09-22T15:52:24-06:00",
+    "solicitado_at": "2026-09-22T15:50:17-06:00",
+    "citas_activas": 0,
+    "usuario": {
+      "id": 45,
+      "nombre": "Compras Cafetería Los Almendros",
+      "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+      "telefono": "9993330001",
+      "sitio_web": null,
+      "necesidades": "Café de especialidad y miel local.",
+      "rfc": null,
+      "nombre_empresa": "Cafetería Los Almendros",
+      "camara_asociacion": "CANIRAC",
+      "nombre_establecimiento": "Cafetería Los Almendros",
+      "registrado_at": "2026-09-22T15:49:05-06:00",
+      "citas_historico": 0,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null
+    },
+    "negocio": null
+  },
+  "message": "Solicitud aprobada."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo tipo es obligatorio.",
+  "errors": {
+    "tipo": [
+      "El campo tipo es obligatorio."
+    ]
+  }
+}
+```
+
+Petición:
+```json
+{
+  "tipo": "proveedor"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Solicitud no encontrada.",
+  "errors": {
+    "error": [
+      "Solicitud no encontrada."
+    ]
+  }
+}
+```
+
+### POST /admin/eventos/{id}/solicitudes/{user}/rechazar
+
+Cuerpo: `{tipo, motivo_rechazo}` (motivo requerido, máx. 500). Notificación **"Solicitud rechazada"** con el motivo y
+correo `EventoSolicitudRechazadaMail`.
+
+Petición:
+```json
+{
+  "tipo": "comprador",
+  "motivo_rechazo": "El registro de compradores de hoteles ya se llenó."
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 34,
+    "user_id": 46,
+    "tipo": "comprador",
+    "estado": "rechazado",
+    "motivo_rechazo": "El registro de compradores de hoteles ya se llenó.",
+    "respondido_at": "2026-09-22T15:52:26-06:00",
+    "solicitado_at": "2026-09-22T15:50:17-06:00",
+    "citas_activas": 0,
+    "usuario": {
+      "id": 46,
+      "nombre": "Compras Hotel Casa Lecanda",
+      "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+      "telefono": "9993330002",
+      "sitio_web": null,
+      "necesidades": "Amenidades artesanales y textiles.",
+      "rfc": null,
+      "nombre_empresa": "Hotel Casa Lecanda",
+      "camara_asociacion": "Ninguna",
+      "nombre_establecimiento": null,
+      "registrado_at": "2026-09-22T15:49:06-06:00",
+      "citas_historico": 0,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null
+    },
+    "negocio": null
+  },
+  "message": "Solicitud rechazada."
+}
+```
+
+Petición:
+```json
+{
+  "tipo": "comprador"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo motivo rechazo es obligatorio.",
+  "errors": {
+    "motivo_rechazo": [
+      "El campo motivo rechazo es obligatorio."
+    ]
+  }
+}
+```
+
+### POST /admin/eventos/{id}/solicitudes/{user}/revertir
+
+Regresa una solicitud **rechazada** a pendiente (borra el motivo). Sin correo ni aviso.
+
+Petición:
+```json
+{
+  "tipo": "comprador"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 34,
+    "user_id": 46,
+    "tipo": "comprador",
+    "estado": "pendiente",
+    "motivo_rechazo": null,
+    "respondido_at": null,
+    "solicitado_at": "2026-09-22T15:50:17-06:00",
+    "citas_activas": 0,
+    "usuario": {
+      "id": 46,
+      "nombre": "Compras Hotel Casa Lecanda",
+      "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+      "telefono": "9993330002",
+      "sitio_web": null,
+      "necesidades": "Amenidades artesanales y textiles.",
+      "rfc": null,
+      "nombre_empresa": "Hotel Casa Lecanda",
+      "camara_asociacion": "Ninguna",
+      "nombre_establecimiento": null,
+      "registrado_at": "2026-09-22T15:49:06-06:00",
+      "citas_historico": 0,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null
+    },
+    "negocio": null
+  },
+  "message": "Solicitud regresada a pendiente."
+}
+```
+
+**Diferencia con la web:** si no había una solicitud rechazada de ese tipo, la web contesta "regresada a pendiente"
+sin hacer nada; la API responde **422**:
+
+Petición:
+```json
+{
+  "tipo": "comprador"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Solo se pueden regresar a pendiente solicitudes rechazadas.",
+  "errors": {
+    "error": [
+      "Solo se pueden regresar a pendiente solicitudes rechazadas."
+    ]
+  }
+}
+```
+
+### POST /admin/eventos/{id}/solicitudes/{user}/eliminar
+
+Saca del evento a un participante **aprobado**: borra su registro, **cancela sus citas vivas** y le avisa
+("Eliminado del evento", con el motivo; sin correo, como la web). Cuerpo: `{tipo, motivo_eliminacion}`.
+
+Petición:
+```json
+{
+  "tipo": "comprador",
+  "motivo_eliminacion": "Registro duplicado."
+}
+```
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Usuario eliminado del evento."
+}
+```
+
+Petición:
+```json
+{
+  "tipo": "comprador"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo motivo eliminacion es obligatorio.",
+  "errors": {
+    "motivo_eliminacion": [
+      "El campo motivo eliminacion es obligatorio."
+    ]
+  }
+}
+```
+
+> **Bug web reportado (no corregido):** al eliminar, se cancelan las citas del usuario en **todos** los eventos, no
+> solo en este.
+
+### POST /admin/eventos/{id}/solicitudes/aprobar-todos
+
+Cuerpo: `{"tipo": …}`. Aprueba todas las pendientes de ese tipo, con aviso y correo a cada una.
+
+Petición:
+```json
+{
+  "tipo": "proveedor"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "aprobadas": 2
+  },
+  "message": "2 solicitudes aprobadas."
+}
+```
+
+> Si no había pendientes: `{"data": {"aprobadas": 0}, "message": "No hay solicitudes pendientes de ese tipo."}` (200).
+
+### POST /admin/eventos/{id}/solicitudes/agregar-comprador
+
+Cuerpo: `{"user_id": N}`. Alta directa ya **aprobada**, con aviso "Agregado al evento" y correo de aprobación. 201.
+
+Petición:
+```json
+{
+  "user_id": 51
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 51,
+    "user_id": 51,
+    "tipo": "comprador",
+    "estado": "aprobado",
+    "motivo_rechazo": null,
+    "respondido_at": "2026-09-22T15:52:30-06:00",
+    "solicitado_at": "2026-09-22T15:52:30-06:00",
+    "citas_activas": 0,
+    "usuario": {
+      "id": 51,
+      "nombre": "Expositor Bordados Xmatkuil",
+      "email": "demo.expositor1@prueba.impulsate.mx",
+      "telefono": "9996660001",
+      "sitio_web": null,
+      "necesidades": null,
+      "rfc": null,
+      "nombre_empresa": "Bordados Xmatkuil",
+      "camara_asociacion": null,
+      "nombre_establecimiento": null,
+      "registrado_at": "2026-09-22T15:49:09-06:00",
+      "citas_historico": 0,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": "2026-08-22"
+    },
+    "negocio": null
+  },
+  "message": "Comprador \"Bordados Xmatkuil\" agregado al evento correctamente."
+}
+```
+
+Petición:
+```json
+{
+  "user_id": 51
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Este comprador ya está registrado en el evento.",
+  "errors": {
+    "error": [
+      "Este comprador ya está registrado en el evento."
+    ]
+  }
+}
+```
+
+### POST /admin/eventos/{id}/solicitudes/agregar-proveedor
+
+Cuerpo: `{"restaurantero_id": N}` (id del **negocio**, de `candidatos.proveedores`). Igual que el anterior y además
+vincula el negocio al evento.
+
+Petición:
+```json
+{
+  "restaurantero_id": 13
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Este proveedor ya está registrado en el evento.",
+  "errors": {
+    "error": [
+      "Este proveedor ya está registrado en el evento."
+    ]
+  }
+}
+```
+
+---
+
+### 14.4 Bazar / exposición
+
+Solo eventos `bazar_exposicion`; en un encuentro → **404** (como la web).
+
+`HTTP 404`
+```json
+{
+  "message": "Este evento no es de tipo Bazar/Exposición."
+}
+```
+
+Flujo: la solicitud del expositor llega `pendiente` → el admin la **aprueba** (pasa a "en evaluación") o la
+**rechaza** con motivo → evalúa por criterios (`puntaje_total` ponderado) → **selecciona** hasta `max_espacios` → envía
+los correos de resultado (seleccionados y no seleccionados).
+
+**Diferencia con la web:** las acciones sobre un participante (`aprobar`, `rechazar`, `evaluar`, `notas-rechazo`)
+exigen que tenga solicitud de expositor en ese bazar (**404**). La web no lo comprueba: actualiza 0 filas y responde
+éxito, y al evaluar llega a guardar puntajes de alguien que no participa (**bug web reportado**).
+
+`HTTP 404`
+```json
+{
+  "message": "Ese participante no tiene una solicitud de expositor en este evento."
+}
+```
+
+### GET /admin/eventos/{id}/bazar
+
+Expositores (orden de la web: pendientes, en evaluación, rechazados; dentro, por puntaje), criterios y KPIs. Filtros:
+`estado` (`pendiente`\|`aprobado`\|`rechazado`) y `seleccionado` (`1`\|`0`). Los KPIs siempre son del bazar completo.
+`aprobado` = "en evaluación". Sin enlaces a documentos (van en el detalle).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "user_id": 51,
+      "nombre": "Expositor Bordados Xmatkuil",
+      "email": "demo.expositor1@prueba.impulsate.mx",
+      "nombre_empresa": "Bordados Xmatkuil",
+      "telefono": "9996660001",
+      "municipio": "Mérida",
+      "curp": null,
+      "rfc": null,
+      "estado": "pendiente",
+      "puntaje_total": null,
+      "seleccionado": false,
+      "evaluado": false,
+      "evaluaciones": [
+        {
+          "criterio_id": 3,
+          "nombre": "Calidad del producto",
+          "porcentaje": 60,
+          "puntaje": null
+        },
+        {
+          "criterio_id": 4,
+          "nombre": "Presentación y precio",
+          "porcentaje": 40,
+          "puntaje": null
+        }
+      ],
+      "notas_rechazo": null,
+      "motivo_rechazo": null,
+      "correo_aprobacion_enviado": false,
+      "correo_rechazo_enviado": false,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": "2026-08-22",
+      "csf_vigente": true,
+      "solicitado_at": "2026-09-22T15:50:17-06:00"
+    },
+    {
+      "user_id": 53,
+      "nombre": "Expositor Cerámica Ticul Sur",
+      "email": "demo.expositor3@prueba.impulsate.mx",
+      "nombre_empresa": "Cerámica Ticul Sur",
+      "telefono": "9996660003",
+      "municipio": "Mérida",
+      "curp": null,
+      "rfc": null,
+      "estado": "aprobado",
+      "puntaje_total": 93,
+      "seleccionado": true,
+      "evaluado": true,
+      "evaluaciones": [
+        {
+          "criterio_id": 3,
+          "nombre": "Calidad del producto",
+          "porcentaje": 60,
+          "puntaje": 95
+        },
+        {
+          "criterio_id": 4,
+          "nombre": "Presentación y precio",
+          "porcentaje": 40,
+          "puntaje": 90
+        }
+      ],
+      "notas_rechazo": null,
+      "motivo_rechazo": null,
+      "correo_aprobacion_enviado": false,
+      "correo_rechazo_enviado": false,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": "2026-08-22",
+      "csf_vigente": true,
+      "solicitado_at": "2026-09-22T15:50:17-06:00"
+    }
+  ],
+  "meta": {
+    "evento": {
+      "id": 6,
+      "nombre": "Bazar Hecho en Yucatán (demo app)",
+      "max_espacios": 30,
+      "con_criterios_evaluacion": true
+    },
+    "criterios": [
+      {
+        "id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "orden": 0
+      },
+      {
+        "id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "orden": 1
+      }
+    ],
+    "kpis": {
+      "total": 3,
+      "pendientes": 1,
+      "en_evaluacion": 2,
+      "seleccionados": 1,
+      "no_seleccionados": 1,
+      "rechazados": 0,
+      "max_espacios": 30,
+      "disponibles": 29
+    }
+  }
+}
+```
+> Recorte: `data` traía 3 elementos; se muestran 2.
+
+### GET /admin/eventos/{id}/bazar/{user}
+
+Un expositor con su INE/CSF por URL firmada.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "user_id": 51,
+    "nombre": "Expositor Bordados Xmatkuil",
+    "email": "demo.expositor1@prueba.impulsate.mx",
+    "nombre_empresa": "Bordados Xmatkuil",
+    "telefono": "9996660001",
+    "municipio": "Mérida",
+    "curp": null,
+    "rfc": null,
+    "estado": "pendiente",
+    "puntaje_total": null,
+    "seleccionado": false,
+    "evaluado": false,
+    "evaluaciones": [
+      {
+        "criterio_id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "puntaje": null
+      },
+      {
+        "criterio_id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "puntaje": null
+      }
+    ],
+    "notas_rechazo": null,
+    "motivo_rechazo": null,
+    "correo_aprobacion_enviado": false,
+    "correo_rechazo_enviado": false,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": "2026-08-22",
+    "csf_vigente": true,
+    "solicitado_at": "2026-09-22T15:50:17-06:00",
+    "documentos": {
+      "ine": {
+        "subido": false,
+        "url_temporal": null
+      },
+      "csf": {
+        "subido": false,
+        "fecha": "2026-08-22",
+        "vigente": false,
+        "url_temporal": null
+      },
+      "url_expira_en_minutos": 10
+    }
+  }
+}
+```
+
+### POST /admin/eventos/{id}/bazar/{user}/aprobar
+
+Pasa la solicitud a "en evaluación" y avisa "Solicitud en revisión" (sin correo, como la web). Todas las acciones del
+bazar responden el expositor actualizado y `meta.kpis`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "user_id": 51,
+    "nombre": "Expositor Bordados Xmatkuil",
+    "email": "demo.expositor1@prueba.impulsate.mx",
+    "nombre_empresa": "Bordados Xmatkuil",
+    "telefono": "9996660001",
+    "municipio": "Mérida",
+    "curp": null,
+    "rfc": null,
+    "estado": "aprobado",
+    "puntaje_total": null,
+    "seleccionado": false,
+    "evaluado": false,
+    "evaluaciones": [
+      {
+        "criterio_id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "puntaje": null
+      },
+      {
+        "criterio_id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "puntaje": null
+      }
+    ],
+    "notas_rechazo": null,
+    "motivo_rechazo": null,
+    "correo_aprobacion_enviado": false,
+    "correo_rechazo_enviado": false,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": "2026-08-22",
+    "csf_vigente": true,
+    "solicitado_at": "2026-09-22T15:50:17-06:00"
+  },
+  "message": "Solicitud aprobada para evaluación.",
+  "meta": {
+    "kpis": {
+      "total": 3,
+      "pendientes": 0,
+      "en_evaluacion": 3,
+      "seleccionados": 1,
+      "no_seleccionados": 2,
+      "rechazados": 0,
+      "max_espacios": 30,
+      "disponibles": 29
+    }
+  }
+}
+```
+
+### POST /admin/eventos/{id}/bazar/{user}/rechazar
+
+Cuerpo: `{"motivo_rechazo": "…"}` (requerido, máx. 500). Aviso "Solicitud revisada" con el motivo.
+
+Petición:
+```json
+{
+  "motivo_rechazo": "Falta CSF vigente."
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "user_id": 51,
+    "nombre": "Expositor Bordados Xmatkuil",
+    "email": "demo.expositor1@prueba.impulsate.mx",
+    "nombre_empresa": "Bordados Xmatkuil",
+    "telefono": "9996660001",
+    "municipio": "Mérida",
+    "curp": null,
+    "rfc": null,
+    "estado": "rechazado",
+    "puntaje_total": 79,
+    "seleccionado": false,
+    "evaluado": true,
+    "evaluaciones": [
+      {
+        "criterio_id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "puntaje": 85
+      },
+      {
+        "criterio_id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "puntaje": 70
+      }
+    ],
+    "notas_rechazo": "Mejorar la presentación del empaque.",
+    "motivo_rechazo": "Falta CSF vigente.",
+    "correo_aprobacion_enviado": false,
+    "correo_rechazo_enviado": false,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": "2026-08-22",
+    "csf_vigente": true,
+    "solicitado_at": "2026-09-22T15:50:17-06:00"
+  },
+  "message": "Solicitud rechazada.",
+  "meta": {
+    "kpis": {
+      "total": 3,
+      "pendientes": 0,
+      "en_evaluacion": 2,
+      "seleccionados": 2,
+      "no_seleccionados": 0,
+      "rechazados": 1,
+      "max_espacios": 30,
+      "disponibles": 28
+    }
+  }
+}
+```
+
+### POST /admin/eventos/{id}/bazar/{user}/evaluar
+
+Cuerpo: `{"evaluaciones": [{"criterio_id", "puntaje" (0–100)}]}`. El criterio debe ser **de este bazar**.
+`puntaje_total` = Σ puntaje × porcentaje / 100.
+
+Petición:
+```json
+{
+  "evaluaciones": [
+    {
+      "criterio_id": 3,
+      "puntaje": 85
+    },
+    {
+      "criterio_id": 4,
+      "puntaje": 70
+    }
+  ]
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "user_id": 51,
+    "nombre": "Expositor Bordados Xmatkuil",
+    "email": "demo.expositor1@prueba.impulsate.mx",
+    "nombre_empresa": "Bordados Xmatkuil",
+    "telefono": "9996660001",
+    "municipio": "Mérida",
+    "curp": null,
+    "rfc": null,
+    "estado": "aprobado",
+    "puntaje_total": 79,
+    "seleccionado": false,
+    "evaluado": true,
+    "evaluaciones": [
+      {
+        "criterio_id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "puntaje": 85
+      },
+      {
+        "criterio_id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "puntaje": 70
+      }
+    ],
+    "notas_rechazo": null,
+    "motivo_rechazo": null,
+    "correo_aprobacion_enviado": false,
+    "correo_rechazo_enviado": false,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": "2026-08-22",
+    "csf_vigente": true,
+    "solicitado_at": "2026-09-22T15:50:17-06:00"
+  },
+  "message": "Evaluación guardada.",
+  "meta": {
+    "kpis": {
+      "total": 3,
+      "pendientes": 0,
+      "en_evaluacion": 3,
+      "seleccionados": 1,
+      "no_seleccionados": 2,
+      "rechazados": 0,
+      "max_espacios": 30,
+      "disponibles": 29
+    }
+  }
+}
+```
+
+Petición:
+```json
+{
+  "evaluaciones": [
+    {
+      "criterio_id": 999999,
+      "puntaje": 80
+    }
+  ]
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo evaluaciones.0.criterio_id seleccionado no es válido.",
+  "errors": {
+    "evaluaciones.0.criterio_id": [
+      "El campo evaluaciones.0.criterio_id seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### POST /admin/eventos/{id}/bazar/{user}/notas-rechazo
+
+Cuerpo: `{"notas_rechazo": "…"}` (máx. 2000): la retroalimentación que verá el no seleccionado en su evaluación.
+
+Petición:
+```json
+{
+  "notas_rechazo": "Mejorar la presentación del empaque."
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "user_id": 51,
+    "nombre": "Expositor Bordados Xmatkuil",
+    "email": "demo.expositor1@prueba.impulsate.mx",
+    "nombre_empresa": "Bordados Xmatkuil",
+    "telefono": "9996660001",
+    "municipio": "Mérida",
+    "curp": null,
+    "rfc": null,
+    "estado": "aprobado",
+    "puntaje_total": 79,
+    "seleccionado": false,
+    "evaluado": true,
+    "evaluaciones": [
+      {
+        "criterio_id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "puntaje": 85
+      },
+      {
+        "criterio_id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "puntaje": 70
+      }
+    ],
+    "notas_rechazo": "Mejorar la presentación del empaque.",
+    "motivo_rechazo": null,
+    "correo_aprobacion_enviado": false,
+    "correo_rechazo_enviado": false,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": "2026-08-22",
+    "csf_vigente": true,
+    "solicitado_at": "2026-09-22T15:50:17-06:00"
+  },
+  "message": "Notas guardadas.",
+  "meta": {
+    "kpis": {
+      "total": 3,
+      "pendientes": 0,
+      "en_evaluacion": 3,
+      "seleccionados": 2,
+      "no_seleccionados": 1,
+      "rechazados": 0,
+      "max_espacios": 30,
+      "disponibles": 28
+    }
+  }
+}
+```
+
+### POST /admin/eventos/{id}/bazar/seleccion
+
+Cuerpo: `{"user_id": N, "seleccionado": true|false}`. Solo se selecciona a quien ya pasó la revisión (`aprobado`) y
+mientras haya espacios.
+
+Petición:
+```json
+{
+  "user_id": 52,
+  "seleccionado": true
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "user_id": 52,
+    "nombre": "Expositor Jabones Sac-Nité",
+    "email": "demo.expositor2@prueba.impulsate.mx",
+    "nombre_empresa": "Jabones Sac-Nité",
+    "telefono": "9996660002",
+    "municipio": "Mérida",
+    "curp": null,
+    "rfc": null,
+    "estado": "aprobado",
+    "puntaje_total": 76,
+    "seleccionado": true,
+    "evaluado": true,
+    "evaluaciones": [
+      {
+        "criterio_id": 3,
+        "nombre": "Calidad del producto",
+        "porcentaje": 60,
+        "puntaje": 80
+      },
+      {
+        "criterio_id": 4,
+        "nombre": "Presentación y precio",
+        "porcentaje": 40,
+        "puntaje": 70
+      }
+    ],
+    "notas_rechazo": null,
+    "motivo_rechazo": null,
+    "correo_aprobacion_enviado": false,
+    "correo_rechazo_enviado": false,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": "2026-08-22",
+    "csf_vigente": true,
+    "solicitado_at": "2026-09-22T15:50:17-06:00"
+  },
+  "message": "Participante seleccionado.",
+  "meta": {
+    "kpis": {
+      "total": 3,
+      "pendientes": 0,
+      "en_evaluacion": 3,
+      "seleccionados": 2,
+      "no_seleccionados": 1,
+      "rechazados": 0,
+      "max_espacios": 30,
+      "disponibles": 28
+    }
+  }
+}
+```
+
+Petición:
+```json
+{
+  "user_id": 45,
+  "seleccionado": true
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Ese participante no tiene una solicitud de expositor en este evento.",
+  "errors": {
+    "error": [
+      "Ese participante no tiene una solicitud de expositor en este evento."
+    ]
+  }
+}
+```
+
+> Otros 422: `"Ya alcanzaste el límite de N espacios."` y `"Ese participante no tiene una solicitud de expositor en este evento."`.
+
+### POST /admin/eventos/{id}/bazar/enviar-aprobacion
+
+Encola el correo "Fuiste seleccionado" (plantilla `bazar_seleccionado`) a los seleccionados aún no notificados, con
+aviso "Seleccionado en el bazar". `POST …/enviar-rechazo` hace lo mismo con los aprobados **no** seleccionados
+(plantilla `bazar_rechazado`, con el enlace a su evaluación) y responde igual.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "enviados": 2
+  },
+  "message": "Correo de aprobación enviado a 2 participante(s)."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "No hay participantes seleccionados pendientes de notificar.",
+  "errors": {
+    "error": [
+      "No hay participantes seleccionados pendientes de notificar."
+    ]
+  }
+}
+```
+
+> Otros 422: `"Plantilla \"bazar_seleccionado\" no encontrada."` / `"No hay participantes no seleccionados pendientes de notificar."`.
+
+---
+
+### 14.5 Proveedores
+
+### Objeto `proveedor` del admin (AdminProveedorResource)
+
+`estado` ∈ `aprobado | pendiente | rechazado` (del PERFIL del negocio, no de su inscripción a un evento);
+`motivo_rechazo` solo si está rechazado; `usuario` = la cuenta dueña; `citas_count` en listas y fichas.
+
+### GET /admin/proveedores
+
+La lista de `/admin/restauranteros`: búsqueda `search` (nombre del negocio, teléfono, municipio, RFC, descripción,
+nombre o correo del usuario), `estado` (solo API) y `per_page` (por defecto 15, como la web). `meta.pendientes_aprobacion`
+= los que ya pidieron aprobación.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 22,
+      "nombre_negocio": "Panadería San Cristóbal (demo app)",
+      "categoria": "Alimentos y Bebidas",
+      "municipio": "Motul",
+      "telefono": "9995550001",
+      "rfc": null,
+      "descripcion": "Pan dulce y de sal para cafeterías.",
+      "logo_url": null,
+      "estado": "pendiente",
+      "aprobado": false,
+      "rechazado": false,
+      "motivo_rechazo": null,
+      "activo": false,
+      "perfil_completo": false,
+      "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+      "citas_count": 0,
+      "usuario": {
+        "id": 49,
+        "nombre": "Contacto Panadería San Cristóbal (demo app)",
+        "email": "demo.por-aprobar1@prueba.impulsate.mx"
+      },
+      "creado_at": "2026-09-22T15:49:08-06:00"
+    },
+    {
+      "id": 23,
+      "nombre_negocio": "Uniformes Península (demo app)",
+      "categoria": "Textiles",
+      "municipio": "Mérida",
+      "telefono": "9995550002",
+      "rfc": null,
+      "descripcion": "Uniformes para cocina y meseros.",
+      "logo_url": null,
+      "estado": "pendiente",
+      "aprobado": false,
+      "rechazado": false,
+      "motivo_rechazo": null,
+      "activo": false,
+      "perfil_completo": false,
+      "solicitado_aprobacion_at": "2026-09-22T13:50:17-06:00",
+      "citas_count": 0,
+      "usuario": {
+        "id": 50,
+        "nombre": "Contacto Uniformes Península (demo app)",
+        "email": "demo.por-aprobar2@prueba.impulsate.mx"
+      },
+      "creado_at": "2026-09-22T15:49:08-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 9,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/proveedores",
+    "per_page": 2,
+    "to": 2,
+    "total": 17,
+    "pendientes_aprobacion": 3
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 22,
+      "nombre_negocio": "Panadería San Cristóbal (demo app)",
+      "categoria": "Alimentos y Bebidas",
+      "municipio": "Motul",
+      "telefono": "9995550001",
+      "rfc": null,
+      "descripcion": "Pan dulce y de sal para cafeterías.",
+      "logo_url": null,
+      "estado": "pendiente",
+      "aprobado": false,
+      "rechazado": false,
+      "motivo_rechazo": null,
+      "activo": false,
+      "perfil_completo": false,
+      "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+      "citas_count": 0,
+      "usuario": {
+        "id": 49,
+        "nombre": "Contacto Panadería San Cristóbal (demo app)",
+        "email": "demo.por-aprobar1@prueba.impulsate.mx"
+      },
+      "creado_at": "2026-09-22T15:49:08-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/proveedores",
+    "per_page": 15,
+    "to": 3,
+    "total": 3,
+    "pendientes_aprobacion": 3
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`; `data` traía 3 elementos; se muestran 1.
+
+### GET /admin/proveedores/pendientes
+
+El bloque "Pendientes de aprobación" de la web (no aprobados ni rechazados; primero los que ya pidieron aprobación).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 18,
+      "nombre_negocio": "Tortillería La Nueva (demo app)",
+      "categoria": null,
+      "municipio": "Progreso",
+      "telefono": null,
+      "rfc": null,
+      "descripcion": null,
+      "logo_url": null,
+      "estado": "pendiente",
+      "aprobado": false,
+      "rechazado": false,
+      "motivo_rechazo": null,
+      "activo": false,
+      "perfil_completo": false,
+      "solicitado_aprobacion_at": "2026-09-22T14:45:50-06:00",
+      "usuario": {
+        "id": 44,
+        "nombre": "Proveedor Nuevo de Prueba",
+        "email": "proveedor.nuevo@prueba.impulsate.mx"
+      },
+      "creado_at": "2026-09-22T14:42:51-06:00"
+    },
+    {
+      "id": 22,
+      "nombre_negocio": "Panadería San Cristóbal (demo app)",
+      "categoria": "Alimentos y Bebidas",
+      "municipio": "Motul",
+      "telefono": "9995550001",
+      "rfc": null,
+      "descripcion": "Pan dulce y de sal para cafeterías.",
+      "logo_url": null,
+      "estado": "pendiente",
+      "aprobado": false,
+      "rechazado": false,
+      "motivo_rechazo": null,
+      "activo": false,
+      "perfil_completo": false,
+      "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+      "usuario": {
+        "id": 49,
+        "nombre": "Contacto Panadería San Cristóbal (demo app)",
+        "email": "demo.por-aprobar1@prueba.impulsate.mx"
+      },
+      "creado_at": "2026-09-22T15:49:08-06:00"
+    }
+  ],
+  "meta": {
+    "total": 3,
+    "pendientes_aprobacion": 3
+  }
+}
+```
+> Recorte: `data` traía 3 elementos; se muestran 2.
+
+### GET /admin/proveedores/{id}
+
+Ficha: `proveedor`, `perfil` (perfil de negocio completo por secciones, mismo formato que `GET /proveedor/perfil`),
+`stats` (citas totales/confirmadas/pendientes), `eventos` (en los que se registró y su estado) y `documentos`
+(INE/CSF de la cuenta dueña, URL firmada).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "proveedor": {
+      "id": 13,
+      "nombre_negocio": "Salsas Doña Chela",
+      "categoria": "Alimentos y Bebidas",
+      "municipio": "Mérida",
+      "telefono": "9991112233",
+      "rfc": "SDC200101AB1",
+      "descripcion": "Salsas y recados artesanales yucatecos para restaurantes.",
+      "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "estado": "aprobado",
+      "aprobado": true,
+      "rechazado": false,
+      "motivo_rechazo": null,
+      "activo": true,
+      "perfil_completo": true,
+      "solicitado_aprobacion_at": "2026-09-22T14:45:39-06:00",
+      "citas_count": 6,
+      "usuario": {
+        "id": 23,
+        "nombre": "Proveedor de Prueba",
+        "email": "proveedor@prueba.impulsate.mx"
+      },
+      "creado_at": "2026-09-22T13:35:33-06:00"
+    },
+    "perfil": {
+      "negocio": {
+        "id": 13,
+        "nombre_negocio": "Salsas Doña Chela",
+        "estado": "aprobado",
+        "motivo_rechazo": null,
+        "activo": true,
+        "visible_en_directorio": true,
+        "perfil_completo": true,
+        "porcentaje": 100,
+        "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+        "solicitado_aprobacion_at": "2026-09-22T14:45:39-06:00"
+      },
+      "faltantes": [],
+      "secciones": [
+        {
+          "clave": "negocio",
+          "etiqueta": "Mi negocio",
+          "completa": true,
+          "faltantes": []
+        },
+        {
+          "clave": "oferta",
+          "etiqueta": "Productos y servicios",
+          "completa": true,
+          "faltantes": []
+        }
+      ],
+      "valores": "… (igual que GET /proveedor/perfil)",
+      "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+      "productos": [
+        {
+          "indice": 0,
+          "nombre": "Recado rojo 1 kg",
+          "descripcion": "Achiote artesanal",
+          "foto_url": null,
+          "capacidad_cantidad": 500,
+          "capacidad_unidad": "kilogramos"
+        },
+        {
+          "indice": 1,
+          "nombre": "Salsa de habanero 250 ml",
+          "descripcion": "Picor alto",
+          "foto_url": null,
+          "capacidad_cantidad": 2000,
+          "capacidad_unidad": "piezas"
+        }
+      ]
+    },
+    "stats": {
+      "total": 6,
+      "aceptadas": 2,
+      "pendientes": 2
+    },
+    "eventos": [
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+        "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+        "activa": true,
+        "estado_registro": "aprobado"
+      }
+    ],
+    "documentos": {
+      "ine": {
+        "subido": false,
+        "url_temporal": null
+      },
+      "csf": {
+        "subido": false,
+        "fecha": null,
+        "vigente": false,
+        "url_temporal": null
+      },
+      "url_expira_en_minutos": 10
+    }
+  }
+}
+```
+> Recorte: se resume `valores` (mismo formato que `GET /proveedor/perfil`, sección 12); `data.perfil.secciones` traía 4 elementos; se muestran 2.
+
+### GET /admin/proveedores/{id}/citas
+
+Las citas del proveedor (pestaña de la ficha web), más recientes primero, paginadas (`per_page`, por defecto 20).
+Objeto `cita` del admin: ver [14.7](#objeto-cita-del-admin-admincitaresource).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 50,
+      "inicio": "2026-10-06T13:30:00-06:00",
+      "fin": "2026-10-06T14:00:00-06:00",
+      "estado": "pendiente_reconfirmacion",
+      "estado_texto": "Nuevo horario por confirmar",
+      "estado_tv": "pendiente",
+      "mesa": null,
+      "notas": "Cita de demostración para la app.",
+      "productos_interes": [],
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "proveedor": {
+        "id": 13,
+        "nombre_negocio": "Salsas Doña Chela",
+        "categoria": "Alimentos y Bebidas",
+        "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png"
+      },
+      "comprador": {
+        "id": 43,
+        "nombre": "Compras Restaurante Chaya Maya",
+        "email": "demo.comprador5@prueba.impulsate.mx",
+        "telefono": "9992220005",
+        "nombre_empresa": null
+      },
+      "servicio": {
+        "id": 19,
+        "nombre": "Mesa de Networking"
+      },
+      "propuesta_reagenda": {
+        "inicio": "2026-10-06T15:30:00-06:00",
+        "fin": "2026-10-06T16:00:00-06:00"
+      },
+      "creada_at": "2026-09-22T14:42:51-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 3,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/proveedores/13/citas",
+    "per_page": 2,
+    "to": 2,
+    "total": 6
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`; `data` traía 2 elementos; se muestran 1.
+
+### POST /admin/proveedores/{id}
+
+(o PUT/PATCH sin logo). Mismos campos y reglas que el formulario de edición web: `nombre_restaurante` (requerido),
+`telefono`, `direccion`, `municipio`, `descripcion`, `rfc` (13), `sitio_web` (URL), `categoria`, `acepta_credito`,
+`credito_monto_maximo`, `credito_tiempo_cantidad`, `credito_tiempo_unidad` (`dias|semanas|meses`),
+`credito_a_negociar`, `pago_contraentrega`, `factura`, `regimen_fiscal`, `entrega_domicilio`, `cobertura_entrega`
+(`local|regional|nacional`), `forma_entrega` (`programada|flexible`), `logo` (imagen ≤ 2 MB) y, opcionales,
+`user_name` / `user_email` para la cuenta dueña. Solo se cambian los campos que mandes.
+
+> Ojo (igual que la web): si con la edición el perfil queda **completo** y el negocio no estaba aprobado ni
+> rechazado, se **auto-aprueba** (correo "Proveedor aprobado", aviso a los admins e inscripción pendiente al evento
+> principal).
+
+Petición (multipart):
+```json
+{
+  "nombre_restaurante": "Panadería San Cristóbal (demo app)",
+  "telefono": "9995550001",
+  "municipio": "Motul",
+  "categoria": "Alimentos y Bebidas",
+  "logo": "logo.png"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 22,
+    "nombre_negocio": "Panadería San Cristóbal (demo app)",
+    "categoria": "Alimentos y Bebidas",
+    "municipio": "Motul",
+    "telefono": "9995550001",
+    "rfc": null,
+    "descripcion": "Pan dulce y de sal para cafeterías.",
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/logo_22_6ab2f8b3a90ca.png",
+    "estado": "aprobado",
+    "aprobado": true,
+    "rechazado": false,
+    "motivo_rechazo": null,
+    "activo": true,
+    "perfil_completo": true,
+    "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+    "citas_count": 0,
+    "usuario": {
+      "id": 49,
+      "nombre": "Contacto Panadería San Cristóbal (demo app)",
+      "email": "demo.por-aprobar1@prueba.impulsate.mx"
+    },
+    "creado_at": "2026-09-22T15:49:08-06:00"
+  },
+  "message": "Perfil actualizado correctamente."
+}
+```
+
+Petición:
+```json
+{
+  "nombre_restaurante": "",
+  "sitio_web": "no-es-url"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo nombre restaurante es obligatorio. (and 1 more error)",
+  "errors": {
+    "nombre_restaurante": [
+      "El campo nombre restaurante es obligatorio."
+    ],
+    "sitio_web": [
+      "El campo sitio web debe ser una URL válida."
+    ]
+  }
+}
+```
+
+### PATCH /admin/proveedores/{id}/categoria
+
+Cuerpo: `{"categoria": "…" | null}`.
+
+Petición:
+```json
+{
+  "categoria": "Alimentos y Bebidas"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 22,
+    "nombre_negocio": "Panadería San Cristóbal (demo app)",
+    "categoria": "Alimentos y Bebidas",
+    "municipio": "Motul",
+    "telefono": "9995550001",
+    "rfc": null,
+    "descripcion": "Pan dulce y de sal para cafeterías.",
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/logo_22_6ab2f8b3a90ca.png",
+    "estado": "aprobado",
+    "aprobado": true,
+    "rechazado": false,
+    "motivo_rechazo": null,
+    "activo": true,
+    "perfil_completo": true,
+    "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+    "citas_count": 0,
+    "usuario": {
+      "id": 49,
+      "nombre": "Contacto Panadería San Cristóbal (demo app)",
+      "email": "demo.por-aprobar1@prueba.impulsate.mx"
+    },
+    "creado_at": "2026-09-22T15:49:08-06:00"
+  },
+  "message": "Categoría actualizada correctamente."
+}
+```
+
+### POST /admin/proveedores/{id}/activo
+
+Activa o desactiva el negocio en el directorio. La web solo **alterna**; la API acepta además `{"activo": true|false}`
+(idempotente). Sin cuerpo alterna como la web.
+
+Petición:
+```json
+{
+  "activo": true
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 22,
+    "nombre_negocio": "Panadería San Cristóbal (demo app)",
+    "categoria": "Alimentos y Bebidas",
+    "municipio": "Motul",
+    "telefono": "9995550001",
+    "rfc": null,
+    "descripcion": "Pan dulce y de sal para cafeterías.",
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/logo_22_6ab2f8b3a90ca.png",
+    "estado": "aprobado",
+    "aprobado": true,
+    "rechazado": false,
+    "motivo_rechazo": null,
+    "activo": true,
+    "perfil_completo": true,
+    "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+    "citas_count": 0,
+    "usuario": {
+      "id": 49,
+      "nombre": "Contacto Panadería San Cristóbal (demo app)",
+      "email": "demo.por-aprobar1@prueba.impulsate.mx"
+    },
+    "creado_at": "2026-09-22T15:49:08-06:00"
+  },
+  "message": "Estado actualizado correctamente."
+}
+```
+
+### POST /admin/proveedores/{id}/aprobar
+
+Aprueba el perfil (activo, sin rechazo), encola el correo `ProveedorAprobado` y avisa "🎉 ¡Tu perfil fue aprobado!".
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 22,
+    "nombre_negocio": "Panadería San Cristóbal (demo app)",
+    "categoria": "Alimentos y Bebidas",
+    "municipio": "Motul",
+    "telefono": "9995550001",
+    "rfc": null,
+    "descripcion": "Pan dulce y de sal para cafeterías.",
+    "logo_url": "http://192.168.10.6/citas/public/storage/logos/logo_22_6ab2f8b3a90ca.png",
+    "estado": "aprobado",
+    "aprobado": true,
+    "rechazado": false,
+    "motivo_rechazo": null,
+    "activo": true,
+    "perfil_completo": true,
+    "solicitado_aprobacion_at": "2026-09-22T14:50:17-06:00",
+    "citas_count": 0,
+    "usuario": {
+      "id": 49,
+      "nombre": "Contacto Panadería San Cristóbal (demo app)",
+      "email": "demo.por-aprobar1@prueba.impulsate.mx"
+    },
+    "creado_at": "2026-09-22T15:49:08-06:00"
+  },
+  "message": "Proveedor aprobado y notificado."
+}
+```
+
+### POST /admin/proveedores/{id}/rechazar
+
+Cuerpo: `{"motivo": "…"}` (requerido, máx. 500). Lo desactiva, encola `ProveedorRechazado` (con el motivo) y avisa
+"Resultado de revisión de perfil".
+
+Petición:
+```json
+{
+  "motivo": "La constancia fiscal no corresponde al negocio."
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 23,
+    "nombre_negocio": "Uniformes Península (demo app)",
+    "categoria": "Textiles",
+    "municipio": "Mérida",
+    "telefono": "9995550002",
+    "rfc": null,
+    "descripcion": "Uniformes para cocina y meseros.",
+    "logo_url": null,
+    "estado": "rechazado",
+    "aprobado": false,
+    "rechazado": true,
+    "motivo_rechazo": "La constancia fiscal no corresponde al negocio.",
+    "activo": false,
+    "perfil_completo": false,
+    "solicitado_aprobacion_at": "2026-09-22T13:50:17-06:00",
+    "citas_count": 0,
+    "usuario": {
+      "id": 50,
+      "nombre": "Contacto Uniformes Península (demo app)",
+      "email": "demo.por-aprobar2@prueba.impulsate.mx"
+    },
+    "creado_at": "2026-09-22T15:49:08-06:00"
+  },
+  "message": "Perfil rechazado y proveedor notificado."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo motivo es obligatorio.",
+  "errors": {
+    "motivo": [
+      "El campo motivo es obligatorio."
+    ]
+  }
+}
+```
+
+---
+
+### 14.6 Usuarios
+
+### Objeto `usuario` del admin (AdminUsuarioResource)
+
+Datos de contacto y de empresa, `roles` (nombres internos: `cliente`, `restaurantero`, `admin`, `super-admin`),
+`rol_activo`, `perfil_completo`, `tiene_ine`/`tiene_csf`/`csf_fecha` y `citas_count` en la lista. Nunca contraseña,
+tokens ni rutas.
+
+### GET /admin/usuarios
+
+Todas las cuentas **menos las de administrador**, más nuevas primero, con su número de citas como comprador.
+`search` (nombre o correo), `per_page` (por defecto 20).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 48,
+      "nombre": "Contacto Hamacas Tixkokob Real",
+      "email": "demo.solicitud.proveedor2@prueba.impulsate.mx",
+      "email_verificado": true,
+      "telefono": "9994440002",
+      "curp": null,
+      "rfc": null,
+      "municipio": "Tixkokob",
+      "nombre_empresa": null,
+      "sitio_web": null,
+      "camara_asociacion": null,
+      "nombre_establecimiento": null,
+      "necesidades": null,
+      "rol_activo": "proveedor",
+      "roles": [
+        "restaurantero"
+      ],
+      "perfil_completo": false,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null,
+      "citas_count": 0,
+      "registrado_at": "2026-09-22T15:49:07-06:00"
+    },
+    {
+      "id": 46,
+      "nombre": "Compras Hotel Casa Lecanda",
+      "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+      "email_verificado": true,
+      "telefono": "9993330002",
+      "curp": null,
+      "rfc": null,
+      "municipio": "Mérida",
+      "nombre_empresa": "Hotel Casa Lecanda",
+      "sitio_web": null,
+      "camara_asociacion": "Ninguna",
+      "nombre_establecimiento": null,
+      "necesidades": "Amenidades artesanales y textiles.",
+      "rol_activo": "comprador",
+      "roles": [
+        "cliente"
+      ],
+      "perfil_completo": true,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null,
+      "citas_count": 0,
+      "registrado_at": "2026-09-22T15:49:06-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/usuarios",
+    "per_page": 20,
+    "to": 4,
+    "total": 4
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`; `data` traía 4 elementos; se muestran 2.
+
+### GET /admin/usuarios/{id}
+
+Ficha del comprador (`/admin/clientes/{id}`): datos, `stats`, `eventos` (registros con `tipo` y `estado_registro`),
+`citas` como comprador y `documentos` firmados.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "usuario": {
+      "id": 46,
+      "nombre": "Compras Hotel Casa Lecanda",
+      "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+      "email_verificado": true,
+      "telefono": "9993330002",
+      "curp": null,
+      "rfc": null,
+      "municipio": "Mérida",
+      "nombre_empresa": "Hotel Casa Lecanda",
+      "sitio_web": null,
+      "camara_asociacion": "Ninguna",
+      "nombre_establecimiento": null,
+      "necesidades": "Amenidades artesanales y textiles.",
+      "rol_activo": "comprador",
+      "roles": [
+        "cliente"
+      ],
+      "perfil_completo": true,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null,
+      "registrado_at": "2026-09-22T15:49:06-06:00"
+    },
+    "stats": {
+      "total": 0,
+      "aceptadas": 0,
+      "pendientes": 0
+    },
+    "eventos": [
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)",
+        "fecha_hora_inicio": "2026-10-06T09:00:00-06:00",
+        "fecha_hora_fin": "2026-10-06T18:00:00-06:00",
+        "activa": true,
+        "tipo": "comprador",
+        "estado_registro": "pendiente"
+      }
+    ],
+    "citas": [],
+    "documentos": {
+      "ine": {
+        "subido": false,
+        "url_temporal": null
+      },
+      "csf": {
+        "subido": false,
+        "fecha": null,
+        "vigente": false,
+        "url_temporal": null
+      },
+      "url_expira_en_minutos": 10
+    }
+  }
+}
+```
+
+### GET /admin/usuarios/{id}/documentos
+
+Solo el objeto `documentos` (para refrescar las URL firmadas cuando caducan).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "ine": {
+      "subido": false,
+      "url_temporal": null
+    },
+    "csf": {
+      "subido": false,
+      "fecha": null,
+      "vigente": false,
+      "url_temporal": null
+    },
+    "url_expira_en_minutos": 10
+  }
+}
+```
+
+### PUT /admin/usuarios/{id}
+
+Mismos campos que `/admin/clientes/{id}/editar`: `name`, `email` (únicos, requeridos), `telefono`, `rfc`, `municipio`,
+`nombre_empresa`, `sitio_web`, `camara_asociacion`, `nombre_establecimiento`.
+
+Petición:
+```json
+{
+  "name": "Compras Hotel Casa Lecanda",
+  "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+  "telefono": "9993330002",
+  "municipio": "Mérida",
+  "nombre_empresa": "Hotel Casa Lecanda"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 46,
+    "nombre": "Compras Hotel Casa Lecanda",
+    "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+    "email_verificado": true,
+    "telefono": "9993330002",
+    "curp": null,
+    "rfc": null,
+    "municipio": "Mérida",
+    "nombre_empresa": "Hotel Casa Lecanda",
+    "sitio_web": null,
+    "camara_asociacion": "Ninguna",
+    "nombre_establecimiento": null,
+    "necesidades": "Amenidades artesanales y textiles.",
+    "rol_activo": "comprador",
+    "roles": [
+      "cliente"
+    ],
+    "perfil_completo": true,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": null,
+    "registrado_at": "2026-09-22T15:49:06-06:00"
+  },
+  "message": "Comprador actualizado correctamente."
+}
+```
+
+Petición:
+```json
+{
+  "name": "",
+  "email": "admin@prueba.impulsate.mx"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo nombre es obligatorio. (and 1 more error)",
+  "errors": {
+    "name": [
+      "El campo nombre es obligatorio."
+    ],
+    "email": [
+      "El campo correo electrónico ya está siendo utilizado."
+    ]
+  }
+}
+```
+
+**Diferencia con la web:** un admin **no** puede editar ni borrar por aquí cuentas con rol `admin` o `super-admin`
+(eso es de usuarios-gestión). En la web `PUT /admin/clientes/{id}` no lo impide: cualquier admin puede cambiar el
+correo de otro admin o del super-admin y luego pedir la recuperación de contraseña (**bug de seguridad web
+reportado, no corregido**).
+
+Petición:
+```json
+{
+  "name": "X",
+  "email": "x@example.com"
+}
+```
+`HTTP 403`
+```json
+{
+  "message": "Las cuentas de administrador solo las gestiona el super-administrador."
+}
+```
+
+### DELETE /admin/usuarios/{id}
+
+Borra la cuenta (no admins).
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Usuario eliminado correctamente."
+}
+```
+
+`HTTP 403`
+```json
+{
+  "message": "Las cuentas de administrador solo las gestiona el super-administrador."
+}
+```
+
+### 14.6.1 Gestión de cuentas (solo super-admin)
+
+`/admin/usuarios-gestion/*` = `/admin/usuarios-gestion` de la web. Todas las cuentas (incluidos admins). Un admin sin
+`super-admin` recibe 403 (ver arriba).
+
+### GET /admin/usuarios-gestion
+
+Filtros de la web: `search` (nombre, correo, empresa), `rol` (nombre del rol), `canirac` (`si`\|`no`); `per_page`
+(20). `meta.roles` = roles existentes.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 49,
+      "nombre": "Contacto Panadería San Cristóbal (demo app)",
+      "email": "demo.por-aprobar1@prueba.impulsate.mx",
+      "email_verificado": true,
+      "telefono": "9995550001",
+      "curp": null,
+      "rfc": null,
+      "municipio": "Motul",
+      "nombre_empresa": null,
+      "sitio_web": null,
+      "camara_asociacion": null,
+      "nombre_establecimiento": null,
+      "necesidades": null,
+      "rol_activo": "proveedor",
+      "roles": [
+        "restaurantero"
+      ],
+      "perfil_completo": true,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null,
+      "registrado_at": "2026-09-22T15:49:08-06:00"
+    },
+    {
+      "id": 50,
+      "nombre": "Contacto Uniformes Península (demo app)",
+      "email": "demo.por-aprobar2@prueba.impulsate.mx",
+      "email_verificado": true,
+      "telefono": "9995550002",
+      "curp": null,
+      "rfc": null,
+      "municipio": "Mérida",
+      "nombre_empresa": null,
+      "sitio_web": null,
+      "camara_asociacion": null,
+      "nombre_establecimiento": null,
+      "necesidades": null,
+      "rol_activo": "proveedor",
+      "roles": [
+        "restaurantero"
+      ],
+      "perfil_completo": false,
+      "tiene_ine": false,
+      "tiene_csf": false,
+      "csf_fecha": null,
+      "registrado_at": "2026-09-22T15:49:08-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 9,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/usuarios-gestion",
+    "per_page": 2,
+    "to": 2,
+    "total": 17,
+    "roles": [
+      "admin",
+      "cliente"
+    ]
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`; `meta.roles` traía 4 elementos; se muestran 2.
+
+### GET /admin/usuarios-gestion/roles
+
+Petición:
+```json
+{
+  "roles": [
+    "cliente"
+  ]
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 45,
+    "nombre": "Compras Cafetería Los Almendros",
+    "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+    "email_verificado": true,
+    "telefono": "9993330001",
+    "curp": null,
+    "rfc": null,
+    "municipio": "Mérida",
+    "nombre_empresa": "Cafetería Los Almendros",
+    "sitio_web": null,
+    "camara_asociacion": "CANIRAC",
+    "nombre_establecimiento": "Cafetería Los Almendros",
+    "necesidades": "Café de especialidad y miel local.",
+    "rol_activo": "comprador",
+    "roles": [
+      "cliente"
+    ],
+    "perfil_completo": true,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": null,
+    "registrado_at": "2026-09-22T15:49:05-06:00"
+  },
+  "message": "Roles actualizados correctamente."
+}
+```
+
+### GET /admin/usuarios-gestion/{id}
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 45,
+    "nombre": "Compras Cafetería Los Almendros",
+    "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+    "email_verificado": true,
+    "telefono": "9993330001",
+    "curp": null,
+    "rfc": null,
+    "municipio": "Mérida",
+    "nombre_empresa": "Cafetería Los Almendros",
+    "sitio_web": null,
+    "camara_asociacion": "CANIRAC",
+    "nombre_establecimiento": "Cafetería Los Almendros",
+    "necesidades": "Café de especialidad y miel local.",
+    "rol_activo": "comprador",
+    "roles": [
+      "cliente"
+    ],
+    "perfil_completo": true,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": null,
+    "registrado_at": "2026-09-22T15:49:05-06:00"
+  }
+}
+```
+
+### PUT /admin/usuarios-gestion/{id}
+
+`name`, `email`, `telefono` (20), `curp` (20), `rfc` (20), `municipio`, `nombre_empresa`, `sitio_web`,
+`camara_asociacion` (`CANIRAC`\|`Ninguna`), `nombre_establecimiento` (se borra si la cámara no es CANIRAC).
+
+Petición:
+```json
+{
+  "name": "Compras Cafetería Los Almendros",
+  "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+  "camara_asociacion": "CANIRAC",
+  "nombre_establecimiento": "Cafetería Los Almendros",
+  "municipio": "Mérida",
+  "nombre_empresa": "Cafetería Los Almendros"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 45,
+    "nombre": "Compras Cafetería Los Almendros",
+    "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+    "email_verificado": true,
+    "telefono": "9993330001",
+    "curp": null,
+    "rfc": null,
+    "municipio": "Mérida",
+    "nombre_empresa": "Cafetería Los Almendros",
+    "sitio_web": null,
+    "camara_asociacion": "CANIRAC",
+    "nombre_establecimiento": "Cafetería Los Almendros",
+    "necesidades": "Café de especialidad y miel local.",
+    "rol_activo": "comprador",
+    "roles": [
+      "cliente"
+    ],
+    "perfil_completo": true,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": null,
+    "registrado_at": "2026-09-22T15:49:05-06:00"
+  },
+  "message": "Datos del usuario actualizados correctamente."
+}
+```
+
+### POST /admin/usuarios-gestion/{id}/password
+
+`{password, password_confirmation}` (mín. 8). Queda en el log quién cambió la contraseña de quién.
+
+Petición:
+```json
+{
+  "password": "Prueba2026!",
+  "password_confirmation": "Prueba2026!"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Contraseña actualizada correctamente."
+}
+```
+
+Petición:
+```json
+{
+  "password": "Prueba2026!",
+  "password_confirmation": "otra"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "La confirmación de contraseña no coincide.",
+  "errors": {
+    "password": [
+      "La confirmación de contraseña no coincide."
+    ]
+  }
+}
+```
+
+### POST /admin/usuarios-gestion/{id}/roles
+
+`{"roles": ["cliente", …]}` reemplaza todos los roles. No puedes quitarte `super-admin` a ti mismo.
+
+Petición:
+```json
+{
+  "roles": [
+    "cliente"
+  ]
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 45,
+    "nombre": "Compras Cafetería Los Almendros",
+    "email": "demo.solicitud.comprador1@prueba.impulsate.mx",
+    "email_verificado": true,
+    "telefono": "9993330001",
+    "curp": null,
+    "rfc": null,
+    "municipio": "Mérida",
+    "nombre_empresa": "Cafetería Los Almendros",
+    "sitio_web": null,
+    "camara_asociacion": "CANIRAC",
+    "nombre_establecimiento": "Cafetería Los Almendros",
+    "necesidades": "Café de especialidad y miel local.",
+    "rol_activo": "comprador",
+    "roles": [
+      "cliente"
+    ],
+    "perfil_completo": true,
+    "tiene_ine": false,
+    "tiene_csf": false,
+    "csf_fecha": null,
+    "registrado_at": "2026-09-22T15:49:05-06:00"
+  },
+  "message": "Roles actualizados correctamente."
+}
+```
+
+Petición:
+```json
+{
+  "roles": [
+    "admin"
+  ]
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "No puedes quitarte el rol super-admin a ti mismo.",
+  "errors": {
+    "roles": [
+      "No puedes quitarte el rol super-admin a ti mismo."
+    ]
+  }
+}
+```
+
+### DELETE /admin/usuarios-gestion/{id}
+
+Borra cualquier cuenta menos la tuya. `{"data": null, "message": "Usuario <correo> eliminado correctamente."}`.
+
+`HTTP 422`
+```json
+{
+  "message": "No puedes eliminar tu propia cuenta.",
+  "errors": {
+    "general": [
+      "No puedes eliminar tu propia cuenta."
+    ]
+  }
+}
+```
+
+---
+
+### 14.7 Citas
+
+### Objeto `cita` del admin (AdminCitaResource)
+
+`id`, `inicio`, `fin`, `estado`, `estado_texto`, `estado_tv` (sala), `mesa`, `notas`, `productos_interes`, `evento`,
+`proveedor` (`{id, nombre_negocio, categoria, logo_url}`), `comprador` (`{id, nombre, email, telefono, nombre_empresa}`),
+`servicio`, `propuesta_reagenda`, `creada_at`.
+
+### GET /admin/citas
+
+La lista de `/admin/citas`, más recientes primero. Filtros de la web: `estado`, `search` (nombre o correo del
+comprador). Solo API: `evento_id`, `restaurantero_id`, `fecha` (`YYYY-MM-DD`). `per_page` (20).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 48,
+      "inicio": "2026-10-06T12:00:00-06:00",
+      "fin": "2026-10-06T12:30:00-06:00",
+      "estado": "confirmada",
+      "estado_texto": "Confirmada",
+      "estado_tv": "pendiente",
+      "mesa": "Mesa 5",
+      "notas": "Cita de demostración para la app.",
+      "productos_interes": [],
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "proveedor": {
+        "id": 13,
+        "nombre_negocio": "Salsas Doña Chela",
+        "categoria": "Alimentos y Bebidas",
+        "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png"
+      },
+      "comprador": {
+        "id": 41,
+        "nombre": "Compras Cocina Económica Doña Mary",
+        "email": "demo.comprador3@prueba.impulsate.mx",
+        "telefono": "9992220003",
+        "nombre_empresa": "Cocina Económica Doña Mary"
+      },
+      "servicio": {
+        "id": 19,
+        "nombre": "Mesa de Networking"
+      },
+      "propuesta_reagenda": null,
+      "creada_at": "2026-09-22T14:42:51-06:00"
+    },
+    {
+      "id": 27,
+      "inicio": "2026-10-06T10:00:00-06:00",
+      "fin": "2026-10-06T10:30:00-06:00",
+      "estado": "confirmada",
+      "estado_texto": "Confirmada",
+      "estado_tv": "pendiente",
+      "mesa": "Mesa 3",
+      "notas": "Cita de demostración para la app.",
+      "productos_interes": [],
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "proveedor": {
+        "id": 13,
+        "nombre_negocio": "Salsas Doña Chela",
+        "categoria": "Alimentos y Bebidas",
+        "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png"
+      },
+      "comprador": {
+        "id": 14,
+        "nombre": "Comprador de Prueba",
+        "email": "comprador@prueba.impulsate.mx",
+        "telefono": null,
+        "nombre_empresa": "Empresa de Prueba"
+      },
+      "servicio": {
+        "id": 19,
+        "nombre": "Mesa de Networking"
+      },
+      "propuesta_reagenda": null,
+      "creada_at": "2026-09-22T13:35:33-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/citas",
+    "per_page": 2,
+    "to": 2,
+    "total": 2
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`.
+
+### GET /admin/citas/formulario
+
+Listas del formulario "Nueva cita": compradores (rol `cliente`) y proveedores activos.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "clientes": [
+      {
+        "id": 2,
+        "nombre": "Carlos Restaurantero",
+        "email": "carlos@restaurante.com"
+      }
+    ],
+    "proveedores": [
+      {
+        "id": 8,
+        "nombre_negocio": "Artesanías Kanasín"
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.clientes` traía 17 elementos; se muestran 1; `data.proveedores` traía 15 elementos; se muestran 1.
+
+### GET /admin/citas/{id}
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 55,
+    "inicio": "2026-09-22T09:30:00-06:00",
+    "fin": "2026-09-22T10:00:00-06:00",
+    "estado": "completada",
+    "estado_texto": "Completada",
+    "estado_tv": "finalizada",
+    "mesa": "1",
+    "notas": "Cita de demostración para la app.",
+    "productos_interes": [],
+    "evento": {
+      "id": 8,
+      "nombre": "Encuentro Torre de Control (demo app)"
+    },
+    "proveedor": {
+      "id": 5,
+      "nombre_negocio": "Miel Melipona del Mayab",
+      "categoria": "Alimentos y Bebidas",
+      "logo_url": null
+    },
+    "comprador": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx",
+      "telefono": "9992220002",
+      "nombre_empresa": "Hotel Hacienda Xcanatún"
+    },
+    "servicio": {
+      "id": 11,
+      "nombre": "Mesa de Networking"
+    },
+    "propuesta_reagenda": null,
+    "creada_at": "2026-09-22T15:49:10-06:00"
+  }
+}
+```
+
+### POST /admin/citas
+
+Cita para un comprador. Cuerpo: `cliente_id`, `restaurantero_id` (id del negocio), `fecha` (`YYYY-MM-DD`), `hora`
+(`HH:mm`), `duracion` (5–480 min), `notas` (opcional), `evento_id` (opcional, ver contexto). Nace **confirmada** y
+pasa por las reglas de `AgendaCitaService` (cupo por comprador, solapes con 10 min de colchón para el comprador,
+proveedor sin servicio) con los mensajes "de admin"; se avisa a las partes igual que en la web. 201.
+
+Petición:
+```json
+{
+  "cliente_id": 46,
+  "restaurantero_id": 8,
+  "fecha": "2026-10-06",
+  "hora": "17:00",
+  "duracion": 30,
+  "notas": "Agendada por el admin desde la app.",
+  "evento_id": 5
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 61,
+    "inicio": "2026-10-06T17:00:00-06:00",
+    "fin": "2026-10-06T17:30:00-06:00",
+    "estado": "confirmada",
+    "estado_texto": "Confirmada",
+    "estado_tv": "pendiente",
+    "mesa": null,
+    "notas": "Agendada por el admin desde la app.",
+    "productos_interes": [],
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 8,
+      "nombre_negocio": "Artesanías Kanasín",
+      "categoria": "Artesanías",
+      "logo_url": null
+    },
+    "comprador": {
+      "id": 46,
+      "nombre": "Compras Hotel Casa Lecanda",
+      "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+      "telefono": "9993330002",
+      "nombre_empresa": "Hotel Casa Lecanda"
+    },
+    "servicio": {
+      "id": 14,
+      "nombre": "Mesa de Networking"
+    },
+    "propuesta_reagenda": null,
+    "creada_at": "2026-09-22T15:53:29-06:00"
+  },
+  "message": "Cita agendada correctamente para Compras Hotel Casa Lecanda."
+}
+```
+
+Petición:
+```json
+{
+  "cliente_id": 13,
+  "restaurantero_id": 8,
+  "fecha": "2026-10-06",
+  "hora": "17:00",
+  "duracion": 30,
+  "evento_id": 5
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "No se puede agendar una cita para un administrador.",
+  "errors": {
+    "cliente": [
+      "No se puede agendar una cita para un administrador."
+    ]
+  }
+}
+```
+
+Petición:
+```json
+{
+  "cliente_id": 46,
+  "restaurantero_id": 8,
+  "fecha": "2026-10-06",
+  "hora": "17:00",
+  "duracion": 30,
+  "evento_id": 7
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "Ese evento ya no está activo.",
+  "errors": {
+    "evento_id": [
+      "Ese evento ya no está activo."
+    ]
+  }
+}
+```
+
+> Otros 422: `limit` ("Este cliente ya alcanzó el límite de N citas en este evento."), `fecha` ("Este cliente ya tiene
+> una cita a las HH:mm…" / "El proveedor ya tiene una cita en ese horario. Elige otro."), `servicio`.
+
+### PATCH /admin/citas/{id}/estado
+
+`{"estado": "pendiente" | "confirmada" | "cancelada" | "completada"}` (los de la web). Al pasar a `confirmada` o
+`cancelada` (si cambió) se encola al comprador `CitaConfirmada` / `CitaCancelada`.
+
+Petición:
+```json
+{
+  "estado": "cancelada"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 61,
+    "inicio": "2026-10-06T17:00:00-06:00",
+    "fin": "2026-10-06T17:30:00-06:00",
+    "estado": "cancelada",
+    "estado_texto": "Cancelada",
+    "estado_tv": "pendiente",
+    "mesa": null,
+    "notas": "Agendada por el admin desde la app.",
+    "productos_interes": [],
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "proveedor": {
+      "id": 8,
+      "nombre_negocio": "Artesanías Kanasín",
+      "categoria": "Artesanías",
+      "logo_url": null
+    },
+    "comprador": {
+      "id": 46,
+      "nombre": "Compras Hotel Casa Lecanda",
+      "email": "demo.solicitud.comprador2@prueba.impulsate.mx",
+      "telefono": "9993330002",
+      "nombre_empresa": "Hotel Casa Lecanda"
+    },
+    "servicio": {
+      "id": 14,
+      "nombre": "Mesa de Networking"
+    },
+    "propuesta_reagenda": null,
+    "creada_at": "2026-09-22T15:53:29-06:00"
+  },
+  "message": "Estado de la cita actualizado."
+}
+```
+
+Petición:
+```json
+{
+  "estado": "rechazada"
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo estado seleccionado no es válido.",
+  "errors": {
+    "estado": [
+      "El campo estado seleccionado no es válido."
+    ]
+  }
+}
+```
+
+---
+
+### 14.8 Agenda propuesta (flujo invertido)
+
+El admin elige un **comprador** aprobado, le asigna proveedores aprobados en slots de 10 minutos y le **envía** la
+propuesta por correo (plantilla `agenda_propuesta`, con enlaces para aceptar/rechazar). El comprador responde desde
+el correo o desde la app (`/agendas/{id}/aceptar|rechazar`, sección 10). La web no permite **editar** una propuesta:
+se borra y se crea otra; la API igual.
+
+### Objeto `agenda` del admin (AdminAgendaResource)
+
+`estado` (`pendiente`\|`aceptada`\|`rechazada`), `enviada`, `puede_enviar` (= pendiente), `evento`, `comprador`,
+`citas` (slots con su proveedor; `cita_id` = la cita que generó al aceptarse), fechas. Nunca el token del correo.
+
+### GET /admin/agenda
+
+Todas las propuestas, más nuevas primero. Filtros (solo API): `evento_id`, `estado`. `per_page` (20).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 4,
+      "estado": "pendiente",
+      "estado_texto": "Pendiente de respuesta",
+      "enviada": true,
+      "puede_enviar": true,
+      "evento": {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      },
+      "comprador": {
+        "id": 14,
+        "nombre": "Comprador de Prueba",
+        "nombre_empresa": "Empresa de Prueba",
+        "email": "comprador@prueba.impulsate.mx"
+      },
+      "citas": [
+        {
+          "id": 63,
+          "inicio": "2026-10-06T15:00:00-06:00",
+          "fin": "2026-10-06T15:30:00-06:00",
+          "cita_id": null,
+          "proveedor": {
+            "id": 9,
+            "nombre_negocio": "Limpieza Peninsular",
+            "logo_url": null
+          }
+        }
+      ],
+      "enviada_at": "2026-09-22T15:50:16-06:00",
+      "respondida_at": null,
+      "creada_at": "2026-09-22T14:04:08-06:00"
+    }
+  ],
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 1,
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/agenda",
+    "per_page": 20,
+    "to": 1,
+    "total": 1
+  }
+}
+```
+> Recorte: se omite `links`; se omite `meta.links`; `data[].citas` traía 3 elementos; se muestran 1.
+
+### GET /admin/agenda/formulario
+
+Datos para construirla (web: `/admin/agenda/crear`): el evento de contexto, compradores y proveedores **aprobados** en
+él y los slots de 09:00 a 17:00 del día del evento. Sin evento activo → 422 `"No hay un evento activo para crear agendas."`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "compradores": [
+      {
+        "id": 51,
+        "nombre": "Expositor Bordados Xmatkuil",
+        "nombre_empresa": "Bordados Xmatkuil",
+        "municipio": "Mérida",
+        "camara_asociacion": null
+      },
+      {
+        "id": 41,
+        "nombre": "Compras Cocina Económica Doña Mary",
+        "nombre_empresa": "Cocina Económica Doña Mary",
+        "municipio": "Umán",
+        "camara_asociacion": "Ninguna"
+      }
+    ],
+    "proveedores": [
+      {
+        "id": 8,
+        "nombre_negocio": "Artesanías Kanasín",
+        "categoria": "Artesanías",
+        "descripcion": "Artesanías Kanasín: proveedor local de Artesanías en Kanasín.",
+        "logo_url": null
+      },
+      {
+        "id": 6,
+        "nombre_negocio": "Café Puuc",
+        "categoria": "Alimentos y Bebidas",
+        "descripcion": "Café Puuc: proveedor local de Alimentos y Bebidas en Oxkutzcab.",
+        "logo_url": null
+      }
+    ],
+    "slots": [
+      {
+        "inicio": "2026-10-06T09:00:00-06:00",
+        "fin": "2026-10-06T09:10:00-06:00",
+        "label": "09:00"
+      },
+      {
+        "inicio": "2026-10-06T09:10:00-06:00",
+        "fin": "2026-10-06T09:20:00-06:00",
+        "label": "09:10"
+      }
+    ],
+    "minutos_slot": 10
+  }
+}
+```
+> Recorte: `data.compradores` traía 7 elementos; se muestran 2; `data.proveedores` traía 11 elementos; se muestran 2; `data.slots` traía 48 elementos; se muestran 2.
+
+### POST /admin/agenda
+
+Cuerpo: `user_id` (comprador), `citas[]` (`{restaurantero_id, slot_inicio, slot_fin}`, al menos una), `enviar` (bool:
+guardar y enviar de una vez), `evento_id` (opcional). Reglas de la web (422 en `error`): un proveedor no puede ir dos
+veces, no puede haber otra propuesta pendiente para ese comprador en el evento y el proveedor no puede tener un slot
+ya aceptado que se cruce. 201.
+
+Petición:
+```json
+{
+  "user_id": 40,
+  "enviar": true,
+  "evento_id": 5,
+  "citas": [
+    {
+      "restaurantero_id": 6,
+      "slot_inicio": "2026-10-06T10:00:00-06:00",
+      "slot_fin": "2026-10-06T10:10:00-06:00"
+    },
+    {
+      "restaurantero_id": 20,
+      "slot_inicio": "2026-10-06T10:30:00-06:00",
+      "slot_fin": "2026-10-06T10:40:00-06:00"
+    }
+  ]
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 5,
+    "estado": "pendiente",
+    "estado_texto": "Pendiente de respuesta",
+    "enviada": true,
+    "puede_enviar": true,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "nombre_empresa": "Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx"
+    },
+    "citas": [
+      {
+        "id": 66,
+        "inicio": "2026-10-06T10:00:00-06:00",
+        "fin": "2026-10-06T10:10:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 6,
+          "nombre_negocio": "Café Puuc",
+          "logo_url": null
+        }
+      },
+      {
+        "id": 67,
+        "inicio": "2026-10-06T10:30:00-06:00",
+        "fin": "2026-10-06T10:40:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 20,
+          "nombre_negocio": "Chocolates Ek Balam",
+          "logo_url": null
+        }
+      }
+    ],
+    "enviada_at": "2026-09-22T15:53:36-06:00",
+    "respondida_at": null,
+    "creada_at": "2026-09-22T15:53:36-06:00"
+  },
+  "message": "Propuesta de agenda guardada y enviada al comprador."
+}
+```
+
+Petición:
+```json
+{
+  "user_id": 40,
+  "citas": [
+    {
+      "restaurantero_id": 8,
+      "slot_inicio": "2026-10-06T09:00:00-06:00",
+      "slot_fin": "2026-10-06T09:10:00-06:00"
+    },
+    {
+      "restaurantero_id": 8,
+      "slot_inicio": "2026-10-06T09:30:00-06:00",
+      "slot_fin": "2026-10-06T09:40:00-06:00"
+    }
+  ],
+  "evento_id": 5
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "No puedes asignar el mismo proveedor dos veces en la misma propuesta.",
+  "errors": {
+    "error": [
+      "No puedes asignar el mismo proveedor dos veces en la misma propuesta."
+    ]
+  }
+}
+```
+
+> Otros 422: `"Ya existe una propuesta pendiente para este comprador."`, `"El proveedor X ya tiene una cita confirmada en ese horario."`.
+
+### GET /admin/agenda/{id}
+
+La propuesta y, si ya fue aceptada, `meta.citas_confirmadas` (las citas del comprador en ese evento, como la web).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 4,
+    "estado": "pendiente",
+    "estado_texto": "Pendiente de respuesta",
+    "enviada": true,
+    "puede_enviar": true,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 14,
+      "nombre": "Comprador de Prueba",
+      "nombre_empresa": "Empresa de Prueba",
+      "email": "comprador@prueba.impulsate.mx"
+    },
+    "citas": [
+      {
+        "id": 63,
+        "inicio": "2026-10-06T15:00:00-06:00",
+        "fin": "2026-10-06T15:30:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 9,
+          "nombre_negocio": "Limpieza Peninsular",
+          "logo_url": null
+        }
+      },
+      {
+        "id": 64,
+        "inicio": "2026-10-06T15:30:00-06:00",
+        "fin": "2026-10-06T16:00:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 10,
+          "nombre_negocio": "Cristalería Progreso",
+          "logo_url": null
+        }
+      }
+    ],
+    "enviada_at": "2026-09-22T15:50:16-06:00",
+    "respondida_at": null,
+    "creada_at": "2026-09-22T14:04:08-06:00"
+  },
+  "meta": {
+    "citas_confirmadas": []
+  }
+}
+```
+> Recorte: `data.citas` traía 3 elementos; se muestran 2.
+
+### POST /admin/agenda/{id}/enviar
+
+Envía o **reenvía** el correo (solo propuestas pendientes; si no → 422 `"Solo se pueden enviar propuestas pendientes."`).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 5,
+    "estado": "pendiente",
+    "estado_texto": "Pendiente de respuesta",
+    "enviada": true,
+    "puede_enviar": true,
+    "evento": {
+      "id": 5,
+      "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+    },
+    "comprador": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "nombre_empresa": "Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx"
+    },
+    "citas": [
+      {
+        "id": 66,
+        "inicio": "2026-10-06T10:00:00-06:00",
+        "fin": "2026-10-06T10:10:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 6,
+          "nombre_negocio": "Café Puuc",
+          "logo_url": null
+        }
+      },
+      {
+        "id": 67,
+        "inicio": "2026-10-06T10:30:00-06:00",
+        "fin": "2026-10-06T10:40:00-06:00",
+        "cita_id": null,
+        "proveedor": {
+          "id": 20,
+          "nombre_negocio": "Chocolates Ek Balam",
+          "logo_url": null
+        }
+      }
+    ],
+    "enviada_at": "2026-09-22T15:53:37-06:00",
+    "respondida_at": null,
+    "creada_at": "2026-09-22T15:53:36-06:00"
+  },
+  "message": "Correo enviado al comprador."
+}
+```
+
+### DELETE /admin/agenda/{id}
+
+"Deshacer": borra la propuesta. Si estaba **aceptada**, cancela (no borra) las citas que generó y avisa a cada
+proveedor; el `message` dice cuántas se cancelaron.
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Propuesta de agenda eliminada correctamente."
+}
+```
+
+---
+
+### 14.9 Torre de control
+
+El tablero del día del evento (web: `/admin/torre`, que consulta cada 3 s): las citas de **hoy** no canceladas ni
+rechazadas, con su estado en sala `estado_tv` (`pendiente` → `llamando` → `en_curso` → `finalizada`, o `ausente`),
+mesa, hora de llamada y horas reales. La web muestra las citas de hoy de **todos** los eventos; la API igual, o solo
+las de un evento con `evento_id`.
+
+Cada cita es el mismo objeto que usa la web (`hora_prog`, `hora_fin_prog`, `hora_real_inicio`, `hora_real_fin`,
+`llamada_at`/`llamada_ts`, `mesa`, `estado_tv`, `estado`, `duracion_real` en minutos, `comprador`, `comprador_tel`,
+`proveedor`, `categoria`).
+
+### GET /admin/torre
+
+**Polling eficiente** (no hay websockets):
+
+1. Primera consulta sin `desde`: tablero completo + `meta.actualizado_at` (última modificación de una cita de hoy,
+   incluidas las canceladas) y `meta.servidor_at` (hora del servidor al responder).
+2. Siguientes consultas con `?desde=<servidor_at de la respuesta anterior>`: si ninguna cita de hoy cambió desde
+   entonces, responde `meta.sin_cambios: true` y `data.citas: null` (una sola consulta ligera, sin cargar el
+   tablero). Si algo cambió, el tablero completo otra vez.
+
+`desde` es **inclusivo** con precisión de segundos: un cambio en el mismo segundo que la respuesta anterior se
+reporta como cambio (a lo sumo una recarga de más, nunca un cambio perdido). Usa `servidor_at`, no `actualizado_at`.
+Recomendado: cada 3–5 s con la pantalla abierta (el límite `api-v1` es 120/min).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "citas": [
+      {
+        "id": 55,
+        "hora_prog": "09:30",
+        "hora_fin_prog": "10:00",
+        "hora_real_inicio": "09:31",
+        "hora_real_fin": "09:54",
+        "llamada_at": "09:28:00",
+        "llamada_ts": 1790090880,
+        "mesa": "1",
+        "estado_tv": "finalizada",
+        "estado": "completada",
+        "duracion_real": 23,
+        "comprador": "Compras Hotel Hacienda Xcanatún",
+        "comprador_tel": "9992220002",
+        "proveedor": "Miel Melipona del Mayab",
+        "categoria": "Alimentos y Bebidas"
+      }
+    ],
+    "mesas_ocupadas": [
+      "2"
+    ],
+    "num_mesas": 50
+  },
+  "meta": {
+    "sin_cambios": false,
+    "actualizado_at": "2026-09-22T15:49:10-06:00",
+    "servidor_at": "2026-09-22T15:53:40-06:00",
+    "evento_id": 8
+  }
+}
+```
+> Recorte: `data.citas` traía 6 elementos; se muestran 1; `data.mesas_ocupadas` traía 2 elementos; se muestran 1.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "citas": null,
+    "mesas_ocupadas": null,
+    "num_mesas": 50
+  },
+  "meta": {
+    "sin_cambios": true,
+    "actualizado_at": "2026-09-22T15:49:10-06:00",
+    "servidor_at": "2026-09-22T15:53:43-06:00",
+    "evento_id": 8
+  }
+}
+```
+
+Después de llamar a una mesa, con el mismo `desde`:
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "citas": [
+      {
+        "id": 55,
+        "hora_prog": "09:30",
+        "hora_fin_prog": "10:00",
+        "hora_real_inicio": "09:31",
+        "hora_real_fin": "09:54",
+        "llamada_at": "09:28:00",
+        "llamada_ts": 1790090880,
+        "mesa": "1",
+        "estado_tv": "finalizada",
+        "estado": "completada",
+        "duracion_real": 23,
+        "comprador": "Compras Hotel Hacienda Xcanatún",
+        "comprador_tel": "9992220002",
+        "proveedor": "Miel Melipona del Mayab",
+        "categoria": "Alimentos y Bebidas"
+      }
+    ],
+    "mesas_ocupadas": [
+      "2"
+    ],
+    "num_mesas": 50
+  },
+  "meta": {
+    "sin_cambios": false,
+    "actualizado_at": "2026-09-22T15:53:45-06:00",
+    "servidor_at": "2026-09-22T15:53:46-06:00",
+    "evento_id": 8
+  }
+}
+```
+> Recorte: `data.citas` traía 6 elementos; se muestran 1; `data.mesas_ocupadas` traía 3 elementos; se muestran 1.
+
+### Acciones: POST /admin/torre/citas/{id}/…
+
+Todas responden la cita actualizada (`data`) y un `message`; la app puede actualizar la fila sin recargar el tablero.
+
+| Acción | Cuerpo | Efecto |
+|---|---|---|
+| `llamar` | `{"mesa": "5"}` (texto, máx. 20) | asigna mesa, `estado_tv = llamando`, `llamada_at = ahora` |
+| `repetir` | — | vuelve a anunciar: `llamada_at = ahora`, `llamando` |
+| `iniciar` | — | `en_curso`, `hora_real_inicio = ahora` |
+| `finalizar` | — | `finalizada`, `hora_real_fin = ahora` y la cita pasa a `completada` |
+| `ausente` | — | `estado_tv = ausente` |
+| `retrasar` | `{"minutos": 5 \| 10 \| 15 \| 20}` | mueve inicio y fin |
+| `mesa` | `{"mesa": "6"}` | cambia la mesa sin cambiar el estado |
+
+Igual que la web, las acciones no comprueban el estado previo (se puede "iniciar" una cita ausente, por ejemplo) y
+`retrasar` no revisa choques con otras citas.
+
+### POST /admin/torre/citas/{id}/llamar
+
+Petición:
+```json
+{
+  "mesa": "5"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 59,
+    "hora_prog": "11:30",
+    "hora_fin_prog": "12:00",
+    "hora_real_inicio": null,
+    "hora_real_fin": null,
+    "llamada_at": "15:53:45",
+    "llamada_ts": 1790114025,
+    "mesa": "5",
+    "estado_tv": "llamando",
+    "estado": "confirmada",
+    "duracion_real": null,
+    "comprador": "Restaurante La Tradición",
+    "comprador_tel": "9992223344",
+    "proveedor": "Limpieza Peninsular",
+    "categoria": "Limpieza e higiene"
+  },
+  "message": "Llamando a la mesa 5."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo mesa es obligatorio.",
+  "errors": {
+    "mesa": [
+      "El campo mesa es obligatorio."
+    ]
+  }
+}
+```
+
+### POST /admin/torre/citas/{id}/repetir
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 58,
+    "hora_prog": "11:00",
+    "hora_fin_prog": "11:30",
+    "hora_real_inicio": null,
+    "hora_real_fin": null,
+    "llamada_at": "15:53:47",
+    "llamada_ts": 1790114027,
+    "mesa": "4",
+    "estado_tv": "llamando",
+    "estado": "confirmada",
+    "duracion_real": null,
+    "comprador": "Compras Restaurante Chaya Maya",
+    "comprador_tel": "9992220005",
+    "proveedor": "Artesanías Kanasín",
+    "categoria": "Artesanías"
+  },
+  "message": "Anuncio repetido."
+}
+```
+
+### POST /admin/torre/citas/{id}/iniciar
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 58,
+    "hora_prog": "11:00",
+    "hora_fin_prog": "11:30",
+    "hora_real_inicio": "15:53",
+    "hora_real_fin": null,
+    "llamada_at": "15:53:47",
+    "llamada_ts": 1790114027,
+    "mesa": "4",
+    "estado_tv": "en_curso",
+    "estado": "confirmada",
+    "duracion_real": null,
+    "comprador": "Compras Restaurante Chaya Maya",
+    "comprador_tel": "9992220005",
+    "proveedor": "Artesanías Kanasín",
+    "categoria": "Artesanías"
+  },
+  "message": "Cita en curso."
+}
+```
+
+### POST /admin/torre/citas/{id}/finalizar
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 57,
+    "hora_prog": "10:30",
+    "hora_fin_prog": "11:00",
+    "hora_real_inicio": "10:31",
+    "hora_real_fin": "15:53",
+    "llamada_at": "10:28:00",
+    "llamada_ts": 1790094480,
+    "mesa": "2",
+    "estado_tv": "finalizada",
+    "estado": "completada",
+    "duracion_real": 322.81666666666666,
+    "comprador": "Compras Taquería El Trompo",
+    "comprador_tel": "9992220004",
+    "proveedor": "Textiles Xokbil",
+    "categoria": "Textiles"
+  },
+  "message": "Cita finalizada."
+}
+```
+
+### POST /admin/torre/citas/{id}/ausente
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 60,
+    "hora_prog": "12:00",
+    "hora_fin_prog": "12:30",
+    "hora_real_inicio": null,
+    "hora_real_fin": null,
+    "llamada_at": null,
+    "llamada_ts": null,
+    "mesa": null,
+    "estado_tv": "ausente",
+    "estado": "confirmada",
+    "duracion_real": null,
+    "comprador": "Compras Hotel Hacienda Xcanatún",
+    "comprador_tel": "9992220002",
+    "proveedor": "Cristalería Progreso",
+    "categoria": "Cristalería, plásticos y utensilios"
+  },
+  "message": "Marcada como ausente."
+}
+```
+
+### POST /admin/torre/citas/{id}/retrasar
+
+Petición:
+```json
+{
+  "minutos": 10
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 60,
+    "hora_prog": "12:10",
+    "hora_fin_prog": "12:40",
+    "hora_real_inicio": null,
+    "hora_real_fin": null,
+    "llamada_at": null,
+    "llamada_ts": null,
+    "mesa": null,
+    "estado_tv": "ausente",
+    "estado": "confirmada",
+    "duracion_real": null,
+    "comprador": "Compras Hotel Hacienda Xcanatún",
+    "comprador_tel": "9992220002",
+    "proveedor": "Cristalería Progreso",
+    "categoria": "Cristalería, plásticos y utensilios"
+  },
+  "message": "Cita retrasada 10 minutos."
+}
+```
+
+Petición:
+```json
+{
+  "minutos": 7
+}
+```
+`HTTP 422`
+```json
+{
+  "message": "El campo minutos seleccionado no es válido.",
+  "errors": {
+    "minutos": [
+      "El campo minutos seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### POST /admin/torre/citas/{id}/mesa
+
+Petición:
+```json
+{
+  "mesa": "6"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 59,
+    "hora_prog": "11:30",
+    "hora_fin_prog": "12:00",
+    "hora_real_inicio": null,
+    "hora_real_fin": null,
+    "llamada_at": "15:53:45",
+    "llamada_ts": 1790114025,
+    "mesa": "6",
+    "estado_tv": "llamando",
+    "estado": "confirmada",
+    "duracion_real": null,
+    "comprador": "Restaurante La Tradición",
+    "comprador_tel": "9992223344",
+    "proveedor": "Limpieza Peninsular",
+    "categoria": "Limpieza e higiene"
+  },
+  "message": "Mesa actualizada."
+}
+```
+
+### PATCH /admin/torre/mesas
+
+Número de mesas de la sala (web: `/admin/config/mesas`), 1–500. Es un ajuste **global** (no por evento), como en la web.
+
+Petición:
+```json
+{
+  "num_mesas": 50
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "num_mesas": 50
+  },
+  "message": "Número de mesas actualizado a 50."
+}
+```
+
+---
+
+### 14.10 Calendario
+
+### GET /admin/calendario
+
+El feed de `/admin/calendario` (FullCalendar): cada entrada con `title`, `start`, `end`, `color` (confirmada verde,
+cancelada rojo, completada índigo, resto ámbar) y `extendedProps`. **Diferencia con la web:** `start` y `end` son
+obligatorios y el rango no puede pasar de 62 días (la web los acepta vacíos y entonces devuelve TODAS las citas).
+Filtros: `restaurantero_id`, `evento_id`.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 27,
+      "title": "Comprador de Prueba — Mesa de Networking",
+      "start": "2026-10-06T10:00:00-06:00",
+      "end": "2026-10-06T10:30:00-06:00",
+      "color": "#22c55e",
+      "extendedProps": {
+        "estado": "confirmada",
+        "cliente": "Comprador de Prueba",
+        "clienteEmail": "comprador@prueba.impulsate.mx",
+        "restaurantero": "Salsas Doña Chela",
+        "servicio": "Mesa de Networking",
+        "notas": "Cita de demostración para la app."
+      }
+    },
+    {
+      "id": 31,
+      "title": "Restaurante La Tradición — Mesa de Networking",
+      "start": "2026-10-06T11:00:00-06:00",
+      "end": "2026-10-06T11:30:00-06:00",
+      "color": "#f59e0b",
+      "extendedProps": {
+        "estado": "pendiente",
+        "cliente": "Restaurante La Tradición",
+        "clienteEmail": "demo.comprador1@prueba.impulsate.mx",
+        "restaurantero": "Salsas Doña Chela",
+        "servicio": "Mesa de Networking",
+        "notas": "Cita de demostración para la app."
+      }
+    }
+  ],
+  "meta": {
+    "total": 6
+  }
+}
+```
+> Recorte: `data` traía 6 elementos; se muestran 2.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo start es obligatorio. (and 1 more error)",
+  "errors": {
+    "start": [
+      "El campo start es obligatorio."
+    ],
+    "end": [
+      "El campo end es obligatorio."
+    ]
+  }
+}
+```
+
+### GET /admin/calendario/proveedores
+
+El selector de proveedor del calendario.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 8,
+      "nombre_negocio": "Artesanías Kanasín"
+    }
+  ]
+}
+```
+> Recorte: `data` traía 17 elementos; se muestran 1.
