@@ -1,7 +1,7 @@
 # API v1 — Impúlsate (app móvil)
 
 Contrato de la API que consume la app Expo. **Todos los ejemplos de respuesta son reales**: se copiaron de llamadas
-hechas el 2026-09-22 contra la BD local (`php artisan impulsate:demo-movil`); las de las secciones 12 y 14 contra Apache (`http://192.168.10.6/citas/public`). Donde un ejemplo se recortó
+hechas el 2026-09-22 contra la BD local (`php artisan impulsate:demo-movil`); las de las secciones 12 y 14 contra Apache (`http://192.168.10.6/citas/public`), y las de la sección 15 el 2026-09-23 también contra Apache. Donde un ejemplo se recortó
 (listas largas), se indica debajo del bloque.
 
 ## Generalidades
@@ -63,13 +63,15 @@ imponen los middlewares de la web). La app debe llevar al usuario a la pantalla 
 | `api-documentos` | `POST /perfil/documentos` | 10/min por usuario |
 | `api-credenciales` | `PUT /perfil/contrasena`, `DELETE /cuenta` | 6/min por usuario |
 | `api-registro-evento` | `POST /eventos/{id}/registro` | 10/min por usuario |
-| `api-archivos` | `GET /documentos/{user}/{tipo}` (URL firmada) | 60/min por IP |
+| `api-archivos` | `GET /documentos/{user}/{tipo}` y `GET /exportaciones/{archivo}` (URLs firmadas) | 60/min por IP |
 | `api-agendar` | `POST /citas` | 10/min por usuario |
 | `api-respuestas` | `POST /citas/{id}/reagenda/*`, `POST /agendas/{id}/aceptar\|rechazar` | 10/min por usuario |
 | `api-encuestas` | `POST /encuestas/{id}/respuestas` | 20/min por usuario |
 | `api-proveedor-perfil` | `PUT /proveedor/perfil*`, `POST /proveedor/logo`, altas/ediciones/bajas de `/proveedor/productos` | 20/min por usuario |
 | `api-proveedor-citas` | `POST /proveedor/citas/{id}/aceptar\|rechazar\|reagendar` | 30/min por usuario |
 | `api-admin-correos` | acciones del panel admin que mandan correo o avisos (ver sección 14) | 30/min por usuario |
+| `api-admin-exportaciones` | `POST /admin/exportaciones/{tipo}` (sección 15) | 10/min por usuario |
+| `api-admin-correo-masivo` | `POST /admin/correo-masivo/enviar` (sección 15) | 3/min por usuario |
 
 ### Objeto `user` (UserResource)
 
@@ -4898,6 +4900,13 @@ pendientes). Cada corrida mueve ese evento a la fecha del día y reinicia sus ci
 solicitudes demo, deja otra vez sin aprobar a `demo.por-aprobar*` (y sin inscripciones) y reinicia a los expositores,
 así que las acciones de la sección 14 se pueden repetir.
 
+Fase 4B (admin): el evento finalizado "Encuentro de Negocios Julio (demo app)" queda con **5 encuestas** de la
+plantilla activa: la de `comprador@…` sin responder y **4 respondidas** (`demo.comprador2`, `demo.comprador3`,
+`proveedor@…` y `demo.proveedor1`, contestadas con el mismo servicio que la app, respetando las condiciones de la
+plantilla), así que `/admin/encuestas/resumen` y `/graficas` tienen datos. Además un **anuncio vigente** "Anuncio de
+prueba (demo app)" (de ayer a +30 días, con imagen) y las **plantillas de correo** del sistema
+(`PlantillasCorreoSeeder`, sin pisar las editadas). Cada corrida vuelve a contestar esas 4 encuestas.
+
 ## 14. Administración (Fase 4A)
 
 Primera mitad del panel de administración de la web (`/admin/*`) bajo `/api/v1/admin/*`: tablero, eventos,
@@ -9449,3 +9458,2324 @@ El selector de proveedor del calendario.
 }
 ```
 > Recorte: `data` traía 17 elementos; se muestran 1.
+
+---
+
+## 15. Administración (Fase 4B)
+
+Segunda mitad del panel de administración bajo `/api/v1/admin/*`: encuestas de satisfacción, métricas,
+exportaciones (Excel y PDF), alta y baja de proveedor, vista previa de la Pantalla TV y los módulos **solo
+super-admin**: plantillas de correo, correo masivo, publicidad y categorías. Las respuestas se capturaron el
+2026-09-23 contra Apache (`http://192.168.10.6/citas/public/api/v1`) con `admin@prueba.impulsate.mx` y
+`superadmin@prueba.impulsate.mx` tras `php artisan impulsate:demo-movil`. Todo lo que crearon las capturas
+(plantillas, anuncios, categorías, el proveedor de alta, encuestas de prueba, archivos exportados, trabajos en cola y
+tokens) se borró después.
+
+Rigen las mismas reglas generales que la [sección 14](#14-administración-fase-4a): 401 sin token, 403 sin rol
+`admin`, 404 si el recurso no existe, 422 `{message, errors}` para validación y reglas de negocio (campo `error` como
+en `back()->withErrors` de la web), `evento_id` explícito en lugar del evento de sesión.
+
+**Misma lógica que la web.** Cada controlador web se pasó a un servicio y la web y la API lo usan igual (pruebas de
+regresión web en `tests/Feature/WebAdmin4BRegresionTest.php`):
+
+| Servicio (`app/Services/Admin`) | Controlador web que lo usa | Controlador API (`Api\V1\Admin`) |
+|---|---|---|
+| `EncuestasAdminService` | `EncuestaAdminController` | `EncuestaController`, `EncuestaPlantillaController` |
+| `MetricasAdminService` | `MetricasController` | `MetricasController` |
+| `ExportacionesAdminService` | `ExportController` (y los reportes de `EncuestaAdminController`) | `ExportacionController` |
+| `PlantillasCorreoService` | `SuperAdmin\PlantillasCorreoController` | `PlantillaCorreoController` |
+| `CorreoMasivoService` | `SuperAdmin\CorreoMasivoController` | `CorreoMasivoController` |
+| `PublicidadAdminService` | `SuperAdmin\PublicidadController` | `PublicidadController` |
+| `CategoriasAdminService` | `SuperAdmin\CategoriasController` | `CategoriaController` |
+| `PantallaTvService` | `PantallaTvController` (pantalla pública) | `EventoController@tvDatos` |
+| `AdminProveedoresService` (`crear`, `eliminar`) | `RestauranteroAdminController@store/destroy` | `ProveedorController@store/destroy` |
+
+**Admin vs super-admin (igual que la web).** Encuestas, métricas, exportaciones, alta/baja de proveedor y TV: rol
+`admin`. Plantillas de correo, correo masivo, publicidad y categorías: además `super-admin` (web: middleware
+`super-admin`). Un admin normal en esas rutas:
+
+`HTTP 403`
+```json
+{
+  "message": "Acceso exclusivo del super-administrador."
+}
+```
+
+**Correos.** Todo lo que manda correo lo hace EN COLA, igual que la web (`PlantillaCorreoMail`,
+`EncuestaSatisfaccionMail` y `EncuestaRecordatorioMail` implementan `ShouldQueue`; los recordatorios a pendientes son
+trabajos `SendRecordatorioJob` en la cola `encuestas`). La respuesta dice cuántos se encolaron, no cuántos llegaron.
+
+**Límites.** Además de `api-v1` (120/min):
+
+| Limitador | Rutas | Límite |
+|---|---|---|
+| `api-admin-correos` | `POST /admin/encuestas/enviar-*`, `POST /admin/plantillas-correo/{id}/enviar`, `POST /admin/correo-masivo/prueba` | 30/min por usuario |
+| `api-admin-exportaciones` | `POST /admin/exportaciones/{tipo}` | 10/min por usuario |
+| `api-admin-correo-masivo` | `POST /admin/correo-masivo/enviar` | 3/min por usuario |
+| `api-archivos` | `GET /exportaciones/{archivo}` (URL firmada, sin token) | 60/min por IP |
+
+**Datos sensibles.** Ninguna respuesta trae el token de respuesta de las encuestas, rutas de disco (imagen de la
+publicidad y logos van como URL absoluta), contraseñas ni tokens.
+
+### Índice
+
+| Método | Ruta | Web equivalente |
+|---|---|---|
+| GET | [/admin/encuestas/resumen](#get-adminencuestasresumen) | cabecera de `/admin/encuestas` |
+| GET | [/admin/encuestas](#get-adminencuestas) | tabla de `/admin/encuestas` |
+| GET | [/admin/encuestas/graficas](#get-adminencuestasgraficas) | `/admin/encuestas/graficas` |
+| GET, DELETE | [/admin/encuestas/{id}](#get-adminencuestasid) | `/admin/encuestas/{id}/ver`, `/eliminar-respuestas` |
+| GET | [/admin/encuestas/participantes](#get-adminencuestasparticipantes) | `/admin/encuestas/participantes` |
+| POST | [/admin/encuestas/enviar-evento\|enviar-seleccion\|enviar-prueba\|enviar-recordatorio\|enviar-recordatorio-prueba](#post-adminencuestasenviar-evento) | idem |
+| GET, POST, PUT, DELETE | [/admin/encuestas/plantillas](#get-adminencuestasplantillas), [/{id}](#get-adminencuestasplantillasid), [/{id}/activar](#post-adminencuestasplantillasidactivar) | `/admin/encuestas/plantillas` |
+| GET, PATCH | [/admin/metricas](#get-adminmetricas), [/metricas/no-identificados](#get-adminmetricasno-identificados), [/usuarios/{id}/genero](#patch-adminusuariosidgenero) | `/admin/metricas`, `/admin/usuarios/{id}/genero` |
+| GET, POST | [/admin/exportaciones](#get-adminexportaciones), [/exportaciones/{tipo}](#post-adminexportacionestipo), [descarga firmada](#get-exportacionesarchivo-url-firmada) | `/admin/exportar/*`, `/admin/encuestas/exportar\|reporte-pdf\|reporte-excel`, `/admin/metricas/exportar` |
+| POST, DELETE | [/admin/proveedores](#post-adminproveedores), [/admin/proveedores/{id}](#delete-adminproveedoresid) | `POST /admin/restauranteros`, `DELETE /admin/restauranteros/{id}` |
+| GET | [/admin/eventos/{id}/tv/datos](#get-admineventosidtvdatos) | `/api/tv/{token}/publico` |
+| * | [/admin/plantillas-correo/*](#156-plantillas-de-correo-solo-super-admin) | `/admin/plantillas-correo` (super-admin) |
+| * | [/admin/correo-masivo/*](#157-correo-masivo-solo-super-admin) | `/admin/correo-masivo` (super-admin) |
+| * | [/admin/publicidad/*](#158-publicidad-solo-super-admin) | `/admin/publicidad` (super-admin) |
+| * | [/admin/categorias/*](#159-categorías-solo-super-admin) | `/admin/categorias` (super-admin) |
+
+**Configuración (`/admin/config`).** En la web solo existe `PATCH /admin/config/mesas` (número de mesas de la torre),
+que ya está en la API como [PATCH /admin/torre/mesas](#patch-admintorremesas). No hay más configuración.
+
+---
+
+### 15.1 Encuestas de satisfacción
+
+### Objeto `encuesta` del admin (AdminEncuestaResource)
+
+`id`, `tipo` (`comprador|proveedor`), `segmento`, `es_prueba`, `evento {id, nombre}`, `usuario {id, nombre, email}`
+(en las de prueba solo `email`), `completada`, `completada_at`, `enviada_at` y, **solo en el detalle** y en
+`ultimas_respondidas`, `plantilla {id, nombre}` y `respuestas [{id, pregunta, tipo, respuesta}]`. `pregunta` es el
+TEXTO de la pregunta (así se guarda). Las de prueba (`es_prueba`) no aparecen en listas ni métricas.
+
+### GET /admin/encuestas/resumen
+
+KPIs de la cabecera de `/admin/encuestas`: enviadas, respondidas, pendientes, tasa (%), promedio por pregunta de
+**escala** y % de "Sí" por pregunta **binaria**; la plantilla activa y las 10 últimas respondidas con sus respuestas.
+Filtro opcional `evento_id`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "metricas": {
+      "total_enviadas": 5,
+      "total_respondidas": 4,
+      "total_pendientes": 1,
+      "tasa_respuesta": 80,
+      "escala": [],
+      "binario": []
+    },
+    "plantilla_activa": {
+      "id": 1,
+      "nombre": "Satisfacción e Impacto — Encuentro de Negocios Impúlsate"
+    },
+    "ultimas_respondidas": [
+      {
+        "id": 15,
+        "tipo": "proveedor",
+        "segmento": "proveedores_evento",
+        "es_prueba": false,
+        "evento": {
+          "id": 7,
+          "nombre": "Encuentro de Negocios Julio (demo app)"
+        },
+        "usuario": {
+          "id": 15,
+          "nombre": "Contacto Miel Melipona del Mayab",
+          "email": "demo.proveedor1@prueba.impulsate.mx"
+        },
+        "completada": true,
+        "completada_at": "2026-08-27T18:00:00-06:00",
+        "enviada_at": "2026-09-23T08:57:47-06:00",
+        "respuestas": [
+          {
+            "id": 364,
+            "pregunta": "Correo electrónico",
+            "tipo": "texto",
+            "respuesta": "demo.proveedor1@prueba.impulsate.mx"
+          },
+          {
+            "id": 365,
+            "pregunta": "Nombre del negocio o empresa",
+            "tipo": "texto",
+            "respuesta": "Miel Melipona del Mayab"
+          }
+        ]
+      },
+      {
+        "id": 14,
+        "tipo": "proveedor",
+        "segmento": "proveedores_evento",
+        "es_prueba": false,
+        "evento": {
+          "id": 7,
+          "nombre": "Encuentro de Negocios Julio (demo app)"
+        },
+        "usuario": {
+          "id": 23,
+          "nombre": "Proveedor de Prueba",
+          "email": "proveedor@prueba.impulsate.mx"
+        },
+        "completada": true,
+        "completada_at": "2026-08-26T18:00:00-06:00",
+        "enviada_at": "2026-09-23T08:57:47-06:00",
+        "respuestas": [
+          {
+            "id": 348,
+            "pregunta": "Correo electrónico",
+            "tipo": "texto",
+            "respuesta": "proveedor@prueba.impulsate.mx"
+          },
+          {
+            "id": 349,
+            "pregunta": "Nombre del negocio o empresa",
+            "tipo": "texto",
+            "respuesta": "Salsas Doña Chela"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.ultimas_respondidas` traía 4 elementos; se muestran 2; `data.ultimas_respondidas[].respuestas` traía 16 elementos; se muestran 2.
+
+### GET /admin/encuestas
+
+Lista paginada (`per_page` 1–100, por defecto 50 como la web). Filtros: `evento_id`; **solo API**: `estado`
+(`respondida|pendiente`), `tipo` (`comprador|proveedor`), `search` (nombre o correo).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 12,
+      "tipo": "comprador",
+      "segmento": "compradores_evento",
+      "es_prueba": false,
+      "evento": {
+        "id": 7,
+        "nombre": "Encuentro de Negocios Julio (demo app)"
+      },
+      "usuario": {
+        "id": 40,
+        "nombre": "Compras Hotel Hacienda Xcanatún",
+        "email": "demo.comprador2@prueba.impulsate.mx"
+      },
+      "completada": true,
+      "completada_at": "2026-08-24T18:00:00-06:00",
+      "enviada_at": "2026-09-23T08:57:47-06:00"
+    },
+    {
+      "id": 13,
+      "tipo": "comprador",
+      "segmento": "compradores_evento",
+      "es_prueba": false,
+      "evento": {
+        "id": 7,
+        "nombre": "Encuentro de Negocios Julio (demo app)"
+      },
+      "usuario": {
+        "id": 41,
+        "nombre": "Compras Cocina Económica Doña Mary",
+        "email": "demo.comprador3@prueba.impulsate.mx"
+      },
+      "completada": true,
+      "completada_at": "2026-08-25T18:00:00-06:00",
+      "enviada_at": "2026-09-23T08:57:47-06:00"
+    }
+  ],
+  "links": {
+    "first": "http://192.168.10.6/citas/public/api/v1/admin/encuestas?evento_id=7&per_page=2&page=1",
+    "last": "http://192.168.10.6/citas/public/api/v1/admin/encuestas?evento_id=7&per_page=2&page=3",
+    "prev": null,
+    "next": "http://192.168.10.6/citas/public/api/v1/admin/encuestas?evento_id=7&per_page=2&page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "from": 1,
+    "last_page": 3,
+    "links": [
+      {
+        "url": null,
+        "label": "&laquo; Anterior",
+        "page": null,
+        "active": false
+      },
+      {
+        "url": "http://192.168.10.6/citas/public/api/v1/admin/encuestas?evento_id=7&per_page=2&page=1",
+        "label": "1",
+        "page": 1,
+        "active": true
+      }
+    ],
+    "path": "http://192.168.10.6/citas/public/api/v1/admin/encuestas",
+    "per_page": 2,
+    "to": 2,
+    "total": 5
+  }
+}
+```
+> Recorte: `meta.links` traía 5 elementos; se muestran 2.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo estado seleccionado no es válido.",
+  "errors": {
+    "estado": [
+      "El campo estado seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### GET /admin/encuestas/graficas
+
+Los **datos** de `/admin/encuestas/graficas` (la app dibuja sus gráficas). Filtros: `evento_id`, `plantilla_id`
+(sin él, la activa), `segmento` (`comprador|proveedor`, por ROL del usuario como la web), `desde` y `hasta`
+(`YYYY-MM-DD`, sobre `completada_at`), `canirac` (`si|no`).
+
+- `kpis`: `total_enviadas` (sin filtro de fechas ni CANIRAC, como la web), `total_respondidas`, `tasa`, `compradores`,
+  `proveedores`, `canirac`.
+- `preguntas`: una entrada por texto de pregunta (orden alfabético, como la web) con `tipo`, `total`, `promedio`
+  (solo `escala`/`nps`), `opciones [{valor, count, porcentaje}]` y `textos` (solo `texto`). **Diferencia con la web:**
+  la web lo manda como objeto con la pregunta de clave; aquí es lista.
+- `respondientes`: vista "Por persona" (`id` de la encuesta, `nombre`, `email`, `tipo` por rol, `fecha`
+  `d/m/Y H:i` como la web, `respuestas`).
+- `plantilla`: la usada para el orden/tipos (`preguntas` con la misma forma que guarda el editor).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "plantilla": {
+      "id": 1,
+      "nombre": "Satisfacción e Impacto — Encuentro de Negocios Impúlsate",
+      "preguntas": [
+        {
+          "id": "correo",
+          "tipo": "texto",
+          "texto": "Correo electrónico",
+          "requerida": true
+        },
+        {
+          "id": "nombre_negocio",
+          "tipo": "texto",
+          "texto": "Nombre del negocio o empresa",
+          "requerida": false
+        }
+      ]
+    },
+    "kpis": {
+      "total_enviadas": 5,
+      "total_respondidas": 4,
+      "tasa": 80,
+      "compradores": 2,
+      "proveedores": 2,
+      "canirac": 0
+    },
+    "preguntas": [
+      {
+        "pregunta": "¿Cómo fue su experiencia con los compradores participantes?",
+        "tipo": "opciones",
+        "total": 2,
+        "promedio": null,
+        "opciones": [
+          {
+            "valor": "Mala",
+            "count": 1,
+            "porcentaje": 50
+          },
+          {
+            "valor": "Regular",
+            "count": 1,
+            "porcentaje": 50
+          }
+        ],
+        "textos": []
+      },
+      {
+        "pregunta": "¿Cuántas intenciones de compra o alianzas comerciales estimas concretar a raíz de este evento?",
+        "tipo": "opciones",
+        "total": 2,
+        "promedio": null,
+        "opciones": [
+          {
+            "valor": "De 1 a 3 alianzas/compras.",
+            "count": 1,
+            "porcentaje": 50
+          },
+          {
+            "valor": "Ninguna por el momento.",
+            "count": 1,
+            "porcentaje": 50
+          }
+        ],
+        "textos": []
+      }
+    ],
+    "respondientes": [
+      {
+        "id": 13,
+        "nombre": "Compras Cocina Económica Doña Mary",
+        "email": "demo.comprador3@prueba.impulsate.mx",
+        "tipo": "comprador",
+        "fecha": "25/08/2026 18:00",
+        "respuestas": [
+          {
+            "pregunta": "Correo electrónico",
+            "respuesta": "demo.comprador3@prueba.impulsate.mx",
+            "tipo": "texto"
+          },
+          {
+            "pregunta": "Nombre del negocio o empresa",
+            "respuesta": "Cocina Económica Doña Mary",
+            "tipo": "texto"
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "nombre": "Compras Hotel Hacienda Xcanatún",
+        "email": "demo.comprador2@prueba.impulsate.mx",
+        "tipo": "comprador",
+        "fecha": "24/08/2026 18:00",
+        "respuestas": [
+          {
+            "pregunta": "Correo electrónico",
+            "respuesta": "demo.comprador2@prueba.impulsate.mx",
+            "tipo": "texto"
+          },
+          {
+            "pregunta": "Nombre del negocio o empresa",
+            "respuesta": "Hotel Hacienda Xcanatún",
+            "tipo": "texto"
+          }
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "filtros": {
+      "evento_id": "7"
+    }
+  }
+}
+```
+> Recorte: `data.plantilla.preguntas` traía 19 elementos; se muestran 2; `data.preguntas` traía 19 elementos; se muestran 2; `data.respondientes` traía 4 elementos; se muestran 2; `data.respondientes[].respuestas` traía 14 elementos; se muestran 2.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo desde no corresponde con el formato Y-m-d.",
+  "errors": {
+    "desde": [
+      "El campo desde no corresponde con el formato Y-m-d."
+    ]
+  }
+}
+```
+
+### GET /admin/encuestas/{id}
+
+Detalle con respuestas (web: `/admin/encuestas/{id}/ver`).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 12,
+    "tipo": "comprador",
+    "segmento": "compradores_evento",
+    "es_prueba": false,
+    "evento": {
+      "id": 7,
+      "nombre": "Encuentro de Negocios Julio (demo app)"
+    },
+    "usuario": {
+      "id": 40,
+      "nombre": "Compras Hotel Hacienda Xcanatún",
+      "email": "demo.comprador2@prueba.impulsate.mx"
+    },
+    "completada": true,
+    "completada_at": "2026-08-24T18:00:00-06:00",
+    "enviada_at": "2026-09-23T08:57:47-06:00",
+    "plantilla": {
+      "id": 1,
+      "nombre": "Satisfacción e Impacto — Encuentro de Negocios Impúlsate"
+    },
+    "respuestas": [
+      {
+        "id": 320,
+        "pregunta": "Correo electrónico",
+        "tipo": "texto",
+        "respuesta": "demo.comprador2@prueba.impulsate.mx"
+      },
+      {
+        "id": 321,
+        "pregunta": "Nombre del negocio o empresa",
+        "tipo": "texto",
+        "respuesta": "Hotel Hacienda Xcanatún"
+      },
+      {
+        "id": 322,
+        "pregunta": "Nombre del emprendedor o representante",
+        "tipo": "texto",
+        "respuesta": "Compras Hotel Hacienda Xcanatún"
+      },
+      {
+        "id": 323,
+        "pregunta": "Perfil de participación en este encuentro:",
+        "tipo": "opciones",
+        "respuesta": "Comprador"
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.respuestas` traía 14 elementos; se muestran 4.
+
+### DELETE /admin/encuestas/{id}
+
+Borra la encuesta y sus respuestas; la persona puede volver a recibirla (web: "Eliminar respuestas").
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Respuestas de qa.agente@prueba.impulsate.mx eliminadas. Puede volver a recibir la encuesta."
+}
+```
+
+### GET /admin/encuestas/participantes
+
+Aprobados del evento (`evento_id` obligatorio) que pueden recibir la encuesta, con su tipo por ROL y si ya se les
+envió. Es la lista del modal "Enviar a seleccionados". `meta.pendientes` = a cuántos aún no se les manda.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "user_id": 14,
+      "nombre": "Comprador de Prueba",
+      "email": "comprador@prueba.impulsate.mx",
+      "tipo": "comprador",
+      "nombre_negocio": "Comprador de Prueba",
+      "ya_enviada": true
+    },
+    {
+      "user_id": 41,
+      "nombre": "Compras Cocina Económica Doña Mary",
+      "email": "demo.comprador3@prueba.impulsate.mx",
+      "tipo": "comprador",
+      "nombre_negocio": "Compras Cocina Económica Doña Mary",
+      "ya_enviada": true
+    }
+  ],
+  "meta": {
+    "total": 5,
+    "pendientes": 0
+  }
+}
+```
+> Recorte: `data` traía 5 elementos; se muestran 2.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo evento id es obligatorio.",
+  "errors": {
+    "evento_id": [
+      "El campo evento id es obligatorio."
+    ]
+  }
+}
+```
+
+### POST /admin/encuestas/enviar-evento
+
+Envía la encuesta a los aprobados del evento del `segmento` (`todos|proveedores|compradores|proveedores_evento|
+compradores_evento`) con `plantilla_id` (opcional; sin él, la activa). A quien ya la tiene no se le reenvía (por eso
+aquí `0`). Sin plantilla activa → 422 `"No hay plantilla activa. Activa una plantilla primero."`.
+
+Petición:
+```json
+{
+  "evento_id": 7,
+  "segmento": "compradores"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "enviadas": 0
+  },
+  "message": "Encuestas enviadas a 0 participante(s)."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo evento id es obligatorio. (and 1 more error)",
+  "errors": {
+    "evento_id": [
+      "El campo evento id es obligatorio."
+    ],
+    "segmento": [
+      "El campo segmento seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### POST /admin/encuestas/enviar-seleccion
+
+Igual, solo a `user_ids` (deben estar aprobados en el evento; los demás se ignoran). Sin plantilla activa → 422
+`"No hay plantilla activa. Activa una primero."` (el mismo texto que la web).
+
+Petición:
+```json
+{
+  "evento_id": 7,
+  "user_ids": [
+    14
+  ]
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "enviadas": 0
+  },
+  "message": "Encuesta enviada a 0 participante(s) seleccionado(s)."
+}
+```
+
+### POST /admin/encuestas/enviar-prueba
+
+Encuesta de PRUEBA (no cuenta en métricas) a cualquier `email`, con `plantilla_id` opcional. Devuelve el id de la
+encuesta de prueba creada.
+
+Petición:
+```json
+{
+  "email": "qa.agente@prueba.impulsate.mx"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "encuesta_id": 16
+  },
+  "message": "Encuesta de prueba enviada a qa.agente@prueba.impulsate.mx."
+}
+```
+
+### POST /admin/encuestas/enviar-recordatorio-prueba
+
+El correo de RECORDATORIO, de prueba, a un `email`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "encuesta_id": 17
+  },
+  "message": "Correo de recordatorio de prueba enviado a qa.agente@prueba.impulsate.mx."
+}
+```
+
+### POST /admin/encuestas/enviar-recordatorio
+
+Encola un recordatorio por cada encuesta PENDIENTE del evento (`evento_id`) y devuelve el mismo resumen que el modal
+web. Si ya todos contestaron: `enviados: 0`, `personas: []`, `message: "¡Todos han contestado!"`.
+
+Petición:
+```json
+{
+  "evento_id": 7
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "enviados": 1,
+    "ya_contestaron": 4,
+    "personas": [
+      {
+        "nombre": "Comprador de Prueba",
+        "email": "comprador@prueba.impulsate.mx",
+        "tipo": "comprador"
+      }
+    ]
+  },
+  "message": "Recordatorio enviado a 1 persona(s) pendiente(s)."
+}
+```
+
+### 15.2 Plantillas de preguntas de encuesta
+
+Formato de `preguntas` (el mismo que guarda el editor web): lista de `{id, tipo, texto, requerida?, opciones?,
+escala_min?, escala_max?, condicion?}`. `tipo` ∈ `escala|texto|binario|opciones|multiple|nps`; `condicion`
+`{pregunta_id, operador (igual|diferente|mayor|menor), valor}` muestra la pregunta solo si se cumple. Solo una
+plantilla está activa: la que usan los envíos.
+
+### GET /admin/encuestas/plantillas
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Satisfacción e Impacto — Encuentro de Negocios Impúlsate",
+      "descripcion": "Encuesta oficial con flujo condicional Comprador/Proveedor. 19 preguntas: datos generales, sección específica por perfil y logística.",
+      "segmento": "todos",
+      "activa": true,
+      "total_preguntas": 19,
+      "creada_at": "2026-07-28T10:19:54-06:00",
+      "actualizada_at": "2026-07-28T10:19:54-06:00"
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "segmentos": [
+      "todos",
+      "proveedores",
+      "compradores",
+      "proveedores_evento",
+      "compradores_evento"
+    ],
+    "tipos_pregunta": [
+      "escala",
+      "texto",
+      "binario",
+      "opciones",
+      "multiple",
+      "nps"
+    ]
+  }
+}
+```
+
+### GET /admin/encuestas/plantillas/{id}
+
+Con `preguntas`.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 1,
+    "nombre": "Satisfacción e Impacto — Encuentro de Negocios Impúlsate",
+    "descripcion": "Encuesta oficial con flujo condicional Comprador/Proveedor. 19 preguntas: datos generales, sección específica por perfil y logística.",
+    "segmento": "todos",
+    "activa": true,
+    "total_preguntas": 19,
+    "preguntas": [
+      {
+        "id": "correo",
+        "tipo": "texto",
+        "texto": "Correo electrónico",
+        "requerida": true
+      },
+      {
+        "id": "nombre_negocio",
+        "tipo": "texto",
+        "texto": "Nombre del negocio o empresa",
+        "requerida": false
+      },
+      {
+        "id": "nombre_representante",
+        "tipo": "texto",
+        "texto": "Nombre del emprendedor o representante",
+        "requerida": false
+      }
+    ],
+    "creada_at": "2026-07-28T10:19:54-06:00",
+    "actualizada_at": "2026-07-28T10:19:54-06:00"
+  }
+}
+```
+> Recorte: `data.preguntas` traía 19 elementos; se muestran 3.
+
+### POST /admin/encuestas/plantillas
+
+Crea (no se activa sola). 201. `PUT /admin/encuestas/plantillas/{id}` reemplaza todo con el mismo cuerpo (la web
+guarda el formulario completo).
+
+Petición:
+```json
+{
+  "nombre": "Plantilla de prueba (agente) v2",
+  "descripcion": "Creada para documentar la API",
+  "segmento": "compradores",
+  "preguntas": [
+    {
+      "id": "general",
+      "tipo": "escala",
+      "texto": "¿Cómo calificas el encuentro?",
+      "escala_min": 1,
+      "escala_max": 5,
+      "requerida": true
+    },
+    {
+      "id": "volveria",
+      "tipo": "binario",
+      "texto": "¿Volverías a participar?"
+    },
+    {
+      "id": "por_que",
+      "tipo": "texto",
+      "texto": "¿Por qué no?",
+      "requerida": false,
+      "condicion": {
+        "pregunta_id": "volveria",
+        "operador": "igual",
+        "valor": "No"
+      }
+    }
+  ]
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 2,
+    "nombre": "Plantilla de prueba (agente)",
+    "descripcion": "Creada para documentar la API",
+    "segmento": "compradores",
+    "activa": false,
+    "total_preguntas": 3,
+    "preguntas": [
+      {
+        "id": "general",
+        "tipo": "escala",
+        "texto": "¿Cómo calificas el encuentro?",
+        "requerida": true,
+        "escala_min": 1,
+        "escala_max": 5
+      },
+      {
+        "id": "volveria",
+        "tipo": "binario",
+        "texto": "¿Volverías a participar?"
+      },
+      {
+        "id": "por_que",
+        "tipo": "texto",
+        "texto": "¿Por qué no?",
+        "requerida": false,
+        "condicion": {
+          "pregunta_id": "volveria",
+          "operador": "igual",
+          "valor": "No"
+        }
+      }
+    ],
+    "creada_at": "2026-09-23T09:04:19-06:00",
+    "actualizada_at": "2026-09-23T09:04:19-06:00"
+  },
+  "message": "Plantilla guardada correctamente."
+}
+```
+
+`PUT /admin/encuestas/plantillas/{id}`:
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 2,
+    "nombre": "Plantilla de prueba (agente) v2",
+    "descripcion": "Creada para documentar la API",
+    "segmento": "compradores",
+    "activa": false,
+    "total_preguntas": 3,
+    "preguntas": [
+      {
+        "id": "general",
+        "tipo": "escala",
+        "texto": "¿Cómo calificas el encuentro?",
+        "requerida": true,
+        "escala_min": 1,
+        "escala_max": 5
+      }
+    ],
+    "creada_at": "2026-09-23T09:04:19-06:00",
+    "actualizada_at": "2026-09-23T09:04:20-06:00"
+  },
+  "message": "Plantilla guardada correctamente."
+}
+```
+> Recorte: `data.preguntas` traía 3 elementos; se muestran 1.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo nombre es obligatorio. (and 2 more errors)",
+  "errors": {
+    "nombre": [
+      "El campo nombre es obligatorio."
+    ],
+    "segmento": [
+      "El campo segmento seleccionado no es válido."
+    ],
+    "preguntas.0.tipo": [
+      "El campo preguntas.0.tipo seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### POST /admin/encuestas/plantillas/{id}/activar
+
+Desactiva todas y activa esta.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 2,
+    "nombre": "Plantilla de prueba (agente) v2",
+    "descripcion": "Creada para documentar la API",
+    "segmento": "compradores",
+    "activa": true,
+    "total_preguntas": 3,
+    "creada_at": "2026-09-23T09:04:19-06:00",
+    "actualizada_at": "2026-09-23T09:04:23-06:00"
+  },
+  "message": "Plantilla \"Plantilla de prueba (agente) v2\" activada. Se usará en los próximos envíos."
+}
+```
+
+### DELETE /admin/encuestas/plantillas/{id}
+
+La activa no se puede borrar:
+
+`HTTP 422`
+```json
+{
+  "message": "No puedes eliminar la plantilla activa. Activa otra primero.",
+  "errors": {
+    "error": [
+      "No puedes eliminar la plantilla activa. Activa otra primero."
+    ]
+  }
+}
+```
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Plantilla eliminada."
+}
+```
+
+---
+
+### 15.3 Métricas
+
+### GET /admin/metricas
+
+Los datos de `/admin/metricas`, agrupados:
+
+- `visitas`: de `page_visits` (perfiles de proveedores): `total`, `hoy`, `semana` (desde el lunes), `por_dia` (últimos
+  30 días, solo días con visitas), `por_pagina` (top 10 de los últimos 90 días), `por_dispositivo` y
+  `proveedores_top` (top 10 con `logo_url`). `sin_datos: true` si la tabla no existe.
+- `top`: municipios de proveedores y de compradores, categorías de proveedores y palabras más repetidas en las
+  `necesidades` de los compradores (top 10 cada uno).
+- `genero` (usuarios únicos con rol proveedor o comprador) y `rfc` (con/sin RFC).
+
+**Diferencia con la web:** la lista de no identificados va aparte y paginada
+([GET /admin/metricas/no-identificados](#get-adminmetricasno-identificados)); aquí solo su total
+(`genero.no_identificado`).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "visitas": {
+      "sin_datos": false,
+      "total": 14,
+      "hoy": 0,
+      "semana": 14,
+      "por_dia": [
+        {
+          "fecha": "2026-09-22",
+          "total": 14
+        }
+      ],
+      "por_pagina": [
+        {
+          "pagina": "/restauranteros/13",
+          "total": 13
+        },
+        {
+          "pagina": "/restauranteros/1",
+          "total": 1
+        }
+      ],
+      "por_dispositivo": [
+        {
+          "dispositivo": "desktop",
+          "total": 14
+        }
+      ],
+      "proveedores_top": [
+        {
+          "id": 13,
+          "nombre": "Salsas Doña Chela",
+          "logo_url": "http://192.168.10.6/citas/public/storage/logos/demo-proveedor-prueba.png",
+          "total": 13
+        },
+        {
+          "id": 1,
+          "nombre": "La Hacienda de Carlos",
+          "logo_url": "http://192.168.10.6/citas/public/storage/proveedores/fotos/test_carlos_logo.png",
+          "total": 1
+        }
+      ]
+    },
+    "top": {
+      "municipios_proveedores": [
+        {
+          "municipio": "Mérida",
+          "total": 5
+        },
+        {
+          "municipio": "Progreso",
+          "total": 2
+        },
+        {
+          "municipio": "Izamal",
+          "total": 1
+        }
+      ],
+      "municipios_compradores": [
+        {
+          "municipio": "Mérida",
+          "total": 9
+        },
+        {
+          "municipio": "Valladolid",
+          "total": 1
+        },
+        {
+          "municipio": "Kanasín",
+          "total": 1
+        }
+      ],
+      "categorias_proveedores": [
+        {
+          "categoria": "Alimentos y Bebidas",
+          "total": 5
+        },
+        {
+          "categoria": "Textiles",
+          "total": 2
+        },
+        {
+          "categoria": "Artesanías",
+          "total": 2
+        }
+      ],
+      "necesidades_compradores": [
+        {
+          "necesidad": "salsas",
+          "total": 3
+        },
+        {
+          "necesidad": "mayoreo",
+          "total": 2
+        },
+        {
+          "necesidad": "recados",
+          "total": 2
+        }
+      ]
+    },
+    "genero": {
+      "hombre": 2,
+      "mujer": 0,
+      "no_identificado": 31,
+      "total": 33
+    },
+    "rfc": {
+      "proveedores": {
+        "con_rfc": 1,
+        "sin_rfc": 16
+      },
+      "compradores": {
+        "con_rfc": 0,
+        "sin_rfc": 17
+      },
+      "total": 34,
+      "con_rfc": 1,
+      "sin_rfc": 33
+    }
+  }
+}
+```
+> Recorte: `data.top.municipios_proveedores` traía 10 elementos; se muestran 3; `data.top.municipios_compradores` traía 4 elementos; se muestran 3; `data.top.categorias_proveedores` traía 7 elementos; se muestran 3; `data.top.necesidades_compradores` traía 10 elementos; se muestran 3.
+
+### GET /admin/metricas/no-identificados
+
+Usuarios con rol proveedor o comprador sin `genero`, para clasificarlos. `search`, `per_page` (1–100, 50).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 5,
+      "nombre": "Cliente Número 1",
+      "email": "cliente1@example.com",
+      "roles": [
+        "cliente"
+      ]
+    },
+    {
+      "id": 6,
+      "nombre": "Cliente Número 2",
+      "email": "cliente2@example.com",
+      "roles": [
+        "cliente"
+      ]
+    }
+  ],
+  "links": {
+    "first": "http://192.168.10.6/citas/public/api/v1/admin/metricas/no-identificados?per_page=2&page=1",
+    "last": "http://192.168.10.6/citas/public/api/v1/admin/metricas/no-identificados?per_page=2&page=16",
+    "prev": null,
+    "next": "http://192.168.10.6/citas/public/api/v1/admin/metricas/no-identificados?per_page=2&page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "last_page": 16,
+    "per_page": 2,
+    "total": 31
+  }
+}
+```
+
+### PATCH /admin/usuarios/{id}/genero
+
+`genero`: `hombre|mujer` (web: mismo endpoint).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 14,
+    "genero": "mujer"
+  },
+  "message": "Género actualizado."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo genero seleccionado no es válido.",
+  "errors": {
+    "genero": [
+      "El campo genero seleccionado no es válido."
+    ]
+  }
+}
+```
+
+---
+
+### 15.4 Exportaciones (Excel y PDF por URL firmada)
+
+La web descarga los archivos directo (la sesión viaja en la cookie). La app no puede mandar el Bearer al abrir un
+enlace en el navegador o con `expo-sharing`, así que:
+
+1. `POST /admin/exportaciones/{tipo}` (con token) genera el archivo en el disco privado y responde
+   `{url, nombre, expira_at}`.
+2. La app abre `url` (navegador / `FileSystem.downloadAsync` + `Sharing.shareAsync`). Es una **URL firmada que caduca a
+   los 15 minutos** (`expira_at`) y no necesita token. Al descargar se vuelve a comprobar que quien la pidió siga
+   siendo admin; si cambió un solo carácter de la URL, o ya caducó → 403.
+3. Los archivos se borran solos: cada exportación nueva elimina los que tengan más de 30 minutos.
+
+Mismo patrón que INE/CSF (`GET /documentos/{user}/{tipo}`, sección 4).
+
+### GET /admin/exportaciones
+
+Qué se puede exportar y con qué parámetros.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "tipo": "evento",
+      "formato": "xlsx",
+      "parametros": [
+        "evento_id"
+      ],
+      "descripcion": "Evento completo: evento, proveedores, compradores, citas, resumen y una hoja por proveedor. Sin evento_id, el evento activo principal."
+    },
+    {
+      "tipo": "compradores",
+      "formato": "xlsx",
+      "parametros": [],
+      "descripcion": "Todos los compradores."
+    },
+    {
+      "tipo": "proveedores",
+      "formato": "xlsx",
+      "parametros": [],
+      "descripcion": "Todos los proveedores con su perfil de negocio."
+    },
+    {
+      "tipo": "citas",
+      "formato": "xlsx",
+      "parametros": [],
+      "descripcion": "Todas las citas."
+    },
+    {
+      "tipo": "metricas",
+      "formato": "xlsx",
+      "parametros": [],
+      "descripcion": "Métricas del panel (visitas, top, género y RFC)."
+    },
+    {
+      "tipo": "encuestas",
+      "formato": "xlsx",
+      "parametros": [
+        "evento_id"
+      ],
+      "descripcion": "Encuestas enviadas (sin las de prueba)."
+    },
+    {
+      "tipo": "encuestas-reporte",
+      "formato": "xlsx",
+      "parametros": [
+        "plantilla_id",
+        "evento_id",
+        "canirac"
+      ],
+      "descripcion": "Reporte de encuestas (resumen y detalle) de la plantilla; sin plantilla_id, la activa."
+    },
+    {
+      "tipo": "encuestas-pdf",
+      "formato": "pdf",
+      "parametros": [
+        "plantilla_id",
+        "evento_id",
+        "canirac"
+      ],
+      "descripcion": "Reporte PDF de encuestas; sin plantilla_id, la activa."
+    }
+  ],
+  "meta": {
+    "minutos_url": 15
+  }
+}
+```
+
+### POST /admin/exportaciones/{tipo}
+
+`tipo` ∈ `evento | compradores | proveedores | citas | metricas | encuestas | encuestas-reporte | encuestas-pdf`
+(otro → 404). Cuerpo opcional según el tipo: `evento_id` (debe existir; en `evento`, sin él se usa el evento activo
+principal, la web usa el de la sesión), `plantilla_id` (reportes de encuesta; sin él, la activa) y `canirac`
+(`si|no`). Son los mismos archivos y nombres que baja la web. 201.
+
+`HTTP 201`
+```json
+{
+  "data": {
+    "url": "http://192.168.10.6/citas/public/api/v1/exportaciones/650229af-1ae8-4f05-a95b-a752999395ac.xlsx?expires=1790176783&nombre=citas_2026-09-23.xlsx&solicitante=13&signature=7ff26d417725735a64700db697e7757b4cb311bdf1c8dab0c04f48174b2c6aab",
+    "nombre": "citas_2026-09-23.xlsx",
+    "expira_at": "2026-09-23T09:19:43-06:00"
+  },
+  "message": "Archivo generado. El enlace caduca en 15 minutos."
+}
+```
+
+`encuestas-pdf` del evento finalizado demo:
+
+`HTTP 201`
+```json
+{
+  "data": {
+    "url": "http://192.168.10.6/citas/public/api/v1/exportaciones/22e327e3-7cd4-4411-b794-c9f7315729bd.pdf?expires=1790176799&nombre=reporte-encuestas-2026-09-23.pdf&solicitante=13&signature=263f008c30386fe8ae776e8d5fbac7e3ae29313e5d3a5811df7a0953f3ae34e3",
+    "nombre": "reporte-encuestas-2026-09-23.pdf",
+    "expira_at": "2026-09-23T09:19:59-06:00"
+  },
+  "message": "Archivo generado. El enlace caduca en 15 minutos."
+}
+```
+
+`evento`:
+
+Petición:
+```json
+{
+  "evento_id": 5
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "url": "http://192.168.10.6/citas/public/api/v1/exportaciones/d7c430f5-9182-4b04-8cb5-0af7dc665ed7.xlsx?expires=1790176809&nombre=evento_encuentro-de-negocios-impulsate-demo-app_2026-09-23.xlsx&solicitante=13&signature=8d91fc2e520b20de656ff1f6a84cc29d6bac868c09232f49fc2193104582a531",
+    "nombre": "evento_encuentro-de-negocios-impulsate-demo-app_2026-09-23.xlsx",
+    "expira_at": "2026-09-23T09:20:09-06:00"
+  },
+  "message": "Archivo generado. El enlace caduca en 15 minutos."
+}
+```
+
+Reporte de encuestas sin plantilla activa → 422 `"No hay plantilla activa. Activa una primero."`. `evento_id` que no
+existe:
+
+`HTTP 422`
+```json
+{
+  "message": "El campo evento id seleccionado no es válido.",
+  "errors": {
+    "evento_id": [
+      "El campo evento id seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### GET /exportaciones/{archivo} (URL firmada)
+
+La `url` de arriba. Sin token. Responde el archivo como descarga:
+
+`HTTP 200` (8484 bytes)
+```
+Content-Disposition: attachment; filename=citas_2026-09-23.xlsx
+Content-Length: 8484
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+```
+
+El PDF:
+
+`HTTP 200` (931354 bytes)
+```
+Content-Disposition: attachment; filename=reporte-encuestas-2026-09-23.pdf
+Content-Length: 931354
+Content-Type: application/pdf
+```
+
+URL alterada (o caducada, o de alguien que ya no es admin):
+
+`HTTP 403`
+```json
+{
+  "message": "Invalid signature."
+}
+```
+
+(Solicitante sin rol admin: 403 `"No tienes permiso para descargar este archivo."`; archivo ya purgado: 404 `"El
+archivo ya no existe. Genera la exportación de nuevo."`.)
+
+---
+
+### 15.5 Alta y baja de proveedor, Pantalla TV
+
+### POST /admin/proveedores
+
+Alta de una cuenta de proveedor desde el admin (web: formulario "Nuevo proveedor"): crea el usuario con rol
+proveedor, el negocio **activo**, lo inscribe **APROBADO** en el evento, y le crea el servicio "Mesa de Networking"
+(30 min) y el horario lunes a viernes de 9 a 16. Cuerpo: `name`, `email` (único), `password` (mín. 8),
+`nombre_restaurante`, y opcionales `telefono`, `direccion`, `municipio`, `categoria`, `descripcion`, `evento_id`.
+**Diferencia con la web:** el evento es `evento_id` (la web usa el de la sesión); sin él, el evento activo principal;
+un evento no activo → 422 en `evento_id`. Como en la web, el perfil del negocio queda **sin aprobar**
+(`estado: pendiente`). 201.
+
+Petición:
+```json
+{
+  "name": "Proveedor Alta Agente",
+  "email": "agente.alta@prueba.impulsate.mx",
+  "password": "Proveedor2026!",
+  "nombre_restaurante": "Tamales Agente (prueba)",
+  "telefono": "9990001122",
+  "municipio": "Mérida",
+  "categoria": "Alimentos",
+  "evento_id": 5
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 24,
+    "nombre_negocio": "Tamales Agente (prueba)",
+    "categoria": "Alimentos",
+    "municipio": "Mérida",
+    "telefono": "9990001122",
+    "rfc": null,
+    "descripcion": null,
+    "logo_url": null,
+    "estado": "pendiente",
+    "aprobado": false,
+    "rechazado": false,
+    "motivo_rechazo": null,
+    "activo": true,
+    "perfil_completo": false,
+    "solicitado_aprobacion_at": null,
+    "citas_count": 0,
+    "usuario": {
+      "id": 56,
+      "nombre": "Proveedor Alta Agente",
+      "email": "agente.alta@prueba.impulsate.mx"
+    },
+    "creado_at": "2026-09-23T09:05:17-06:00"
+  },
+  "message": "Proveedor creado correctamente."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo nombre es obligatorio. (and 3 more errors)",
+  "errors": {
+    "name": [
+      "El campo nombre es obligatorio."
+    ],
+    "email": [
+      "El campo correo electrónico ya está siendo utilizado."
+    ],
+    "password": [
+      "El campo contraseña es obligatorio."
+    ],
+    "nombre_restaurante": [
+      "El campo nombre restaurante es obligatorio."
+    ]
+  }
+}
+```
+
+### DELETE /admin/proveedores/{id}
+
+Borra el negocio **y su cuenta de usuario** (igual que la web). No se puede deshacer.
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Restaurantero eliminado correctamente."
+}
+```
+
+### GET /admin/eventos/{id}/tv/datos
+
+Exactamente lo que la Pantalla TV pública consulta cada 3 s (`/api/tv/{token}/publico`), para previsualizarla
+desde la app sin el token: citas de HOY del evento `en_curso`, `llamando`, `proximas` (8) y `recientes` (5),
+`timestamp` y `fecha`. El enlace público y su token siguen en [GET /admin/eventos/{id}/tv](#get-admineventosidtv).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "en_curso": [
+      {
+        "id": 57,
+        "hora_inicio": "10:30",
+        "hora_fin": "11:00",
+        "hora_real": "10:31",
+        "mesa": "2",
+        "comprador": "Taquería El Trompo",
+        "proveedor": "Textiles Xokbil",
+        "categoria": "Textiles",
+        "elapsed_sec": 0,
+        "duracion_sec": 1800,
+        "llamada_ts": 1790180880,
+        "estado_tv": "en_curso"
+      }
+    ],
+    "llamando": [
+      {
+        "id": 58,
+        "hora_inicio": "11:00",
+        "hora_fin": "11:30",
+        "hora_real": "11:00",
+        "mesa": "4",
+        "comprador": "Restaurante Chaya Maya",
+        "proveedor": "Artesanías Kanasín",
+        "categoria": "Artesanías",
+        "elapsed_sec": 0,
+        "duracion_sec": 1800,
+        "llamada_ts": 1790182680,
+        "estado_tv": "llamando"
+      }
+    ],
+    "proximas": [
+      {
+        "id": 59,
+        "hora": "11:30",
+        "mesa": "—",
+        "comprador": "Restaurante La Tradición",
+        "proveedor": "Limpieza Peninsular",
+        "categoria": "Limpieza e higiene"
+      },
+      {
+        "id": 60,
+        "hora": "12:00",
+        "mesa": "—",
+        "comprador": "Hotel Hacienda Xcanatún",
+        "proveedor": "Cristalería Progreso",
+        "categoria": "Cristalería, plásticos y utensilios"
+      }
+    ],
+    "recientes": [
+      {
+        "id": 55,
+        "hora": "09:54",
+        "mesa": "1",
+        "comprador": "Hotel Hacienda Xcanatún",
+        "proveedor": "Miel Melipona del Mayab"
+      }
+    ],
+    "timestamp": "09:05:23",
+    "fecha": "miércoles 23 de septiembre, 2026"
+  }
+}
+```
+
+---
+
+### 15.6 Plantillas de correo (solo super-admin)
+
+Las plantillas con `es_sistema: true` son las que usan los correos automáticos (clave fija: `cita_agendada`,
+`proveedor_aprobado`, `encuesta_satisfaccion`…); se editan pero no se borran. El contenido es HTML con variables
+`{{nombre_usuario}}`, etc.
+
+### GET /admin/plantillas-correo
+
+Sin `contenido`.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 16,
+      "clave": "bazar_seleccionado",
+      "nombre": "Bazar — Participación aprobada",
+      "asunto": "¡Felicidades! Fuiste seleccionado para {{nombre_evento}}",
+      "tipo_destinatario": "proveedor",
+      "es_sistema": true,
+      "activo": true,
+      "actualizada_at": "2026-08-10T12:18:38-06:00"
+    },
+    {
+      "id": 17,
+      "clave": "bazar_rechazado",
+      "nombre": "Bazar — Participación no seleccionada",
+      "asunto": "Resultado de tu solicitud para {{nombre_evento}}",
+      "tipo_destinatario": "proveedor",
+      "es_sistema": true,
+      "activo": true,
+      "actualizada_at": "2026-08-10T12:18:38-06:00"
+    }
+  ],
+  "meta": {
+    "total": 18,
+    "tipos_destinatario": [
+      "comprador",
+      "proveedor",
+      "ambos"
+    ]
+  }
+}
+```
+> Recorte: `data` traía 18 elementos; se muestran 2.
+
+### GET /admin/plantillas-correo/nueva
+
+HTML base y variables para una plantilla nueva (web: `/crear`).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "html_base": "<div style=\"background:#f9fafb;padding:40px 20px;font-family:'Segoe UI',Arial,sans-serif;\">\r\n<div style=\"max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);\">\r\n  <div style=\"background:linear-gradient(135deg,#8b1028,#45060f);pad…",
+    "placeholders": [
+      {
+        "clave": "{{nombre_usuario}}",
+        "descripcion": "Nombre del usuario destinatario"
+      },
+      {
+        "clave": "{{nombre_proveedor}}",
+        "descripcion": "Nombre del proveedor / empresa"
+      },
+      {
+        "clave": "{{nombre_evento}}",
+        "descripcion": "Nombre del evento"
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.html_base` se cortó a 300 caracteres; `data.placeholders` traía 5 elementos; se muestran 3.
+
+### GET /admin/plantillas-correo/{id}
+
+Con `contenido` y, en `meta.placeholders`, las variables que admite esa clave.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 1,
+    "clave": "cita_agendada",
+    "nombre": "Cita Agendada",
+    "asunto": "Solicitud de cita registrada — pendiente de confirmación",
+    "tipo_destinatario": "ambos",
+    "es_sistema": true,
+    "activo": true,
+    "contenido": "<div style=\"background:#f9fafb;padding:40px 20px;font-family:'Segoe UI',Arial,sans-serif;\">\n<div style=\"max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);\">\n  <div style=\"background:linear-gradient(135deg,#8b1028,#45060f);paddi…",
+    "actualizada_at": "2026-06-11T09:21:13-06:00"
+  },
+  "meta": {
+    "placeholders": [
+      {
+        "clave": "{{nombre_usuario}}",
+        "descripcion": "Nombre del usuario destinatario"
+      },
+      {
+        "clave": "{{nombre_proveedor}}",
+        "descripcion": "Nombre del proveedor / empresa"
+      },
+      {
+        "clave": "{{fecha_cita}}",
+        "descripcion": "Fecha de la cita (ej: 15 de junio de 2026)"
+      }
+    ]
+  }
+}
+```
+> Recorte: `data.contenido` se cortó a 300 caracteres; `meta.placeholders` traía 4 elementos; se muestran 3.
+
+### GET /admin/plantillas-correo/{id}/vista-previa
+
+El correo tal como se enviaría (layout `mail.plantilla-generica`) con variables de EJEMPLO (`María Pérez`, `Salsas
+Doña Chela`…): `asunto` y `html` completo para un WebView. No envía nada. **Solo API** (la web lo pinta en un iframe
+en el navegador).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "asunto": "Solicitud de cita registrada — pendiente de confirmación",
+    "html": "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n</head>\n<body style=\"margin:0;padding:0;background:#f9fafb;\">\n    <div style=\"background:#f9fafb;pad…"
+  }
+}
+```
+> Recorte: `data.html` se cortó a 300 caracteres.
+
+### POST /admin/plantillas-correo/vista-previa
+
+Lo mismo para un borrador sin guardar (`asunto`, `contenido`).
+
+Petición:
+```json
+{
+  "asunto": "Aviso para {{nombre_usuario}}",
+  "contenido": "<p>Hola <strong>{{nombre_usuario}}</strong>, te esperamos en {{nombre_evento}}.</p>"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "asunto": "Aviso para María Pérez",
+    "html": "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n</head>\n<body style=\"margin:0;padding:0;background:#f9fafb;\">\n    <p>Hola <strong>María Pérez</stron…"
+  }
+}
+```
+> Recorte: `data.html` se cortó a 300 caracteres.
+
+### POST /admin/plantillas-correo
+
+`nombre`, `clave` (única, `[a-z0-9_]`), `asunto`, `contenido`, `tipo_destinatario` (`comprador|proveedor|ambos`).
+Nace activa y no de sistema. 201.
+
+Petición:
+```json
+{
+  "nombre": "Aviso de prueba (agente)",
+  "clave": "agente_aviso_prueba",
+  "asunto": "Aviso de prueba",
+  "contenido": "<p>Hola {{nombre_usuario}}</p>",
+  "tipo_destinatario": "ambos"
+}
+```
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 21,
+    "clave": "agente_aviso_prueba",
+    "nombre": "Aviso de prueba (agente)",
+    "asunto": "Aviso de prueba",
+    "tipo_destinatario": "ambos",
+    "es_sistema": false,
+    "activo": true,
+    "contenido": "<p>Hola {{nombre_usuario}}</p>",
+    "actualizada_at": "2026-09-23T09:05:41-06:00"
+  },
+  "message": "Plantilla creada correctamente."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El formato del campo clave no es válido. (and 1 more error)",
+  "errors": {
+    "clave": [
+      "El formato del campo clave no es válido."
+    ],
+    "tipo_destinatario": [
+      "El campo tipo destinatario seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### PUT /admin/plantillas-correo/{id}
+
+Solo `asunto` y `contenido` (como la web; lo demás se ignora).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 21,
+    "clave": "agente_aviso_prueba",
+    "nombre": "Aviso de prueba (agente)",
+    "asunto": "Aviso de prueba (editado)",
+    "tipo_destinatario": "ambos",
+    "es_sistema": false,
+    "activo": true,
+    "contenido": "<p>Hola {{nombre_usuario}}, esto es una prueba.</p>",
+    "actualizada_at": "2026-09-23T09:05:55-06:00"
+  },
+  "message": "Plantilla actualizada correctamente."
+}
+```
+
+### POST /admin/plantillas-correo/{id}/activo
+
+Activa / desactiva (web: toggle).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 21,
+    "clave": "agente_aviso_prueba",
+    "nombre": "Aviso de prueba (agente)",
+    "asunto": "Aviso de prueba (editado)",
+    "tipo_destinatario": "ambos",
+    "es_sistema": false,
+    "activo": false,
+    "actualizada_at": "2026-09-23T09:06:01-06:00"
+  },
+  "message": "Plantilla desactivada."
+}
+```
+
+### POST /admin/plantillas-correo/{id}/enviar
+
+Envía la plantilla, sin variables, a `destinatarios` (lista de correos). En cola.
+
+Petición:
+```json
+{
+  "destinatarios": [
+    "qa.agente@prueba.impulsate.mx"
+  ]
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "encolados": 1
+  },
+  "message": "Correo enviado a 1 destinatario(s). (Procesando en cola)"
+}
+```
+
+### POST /admin/plantillas-correo/restablecer
+
+Corre `PlantillasCorreoSeeder` (web: botón "Restablecer"). **Ojo:** el seeder usa `firstOrCreate`, así que solo vuelve
+a crear las plantillas de sistema que falten; NO restablece el asunto/contenido de las que existen, aunque el mensaje
+diga lo contrario (comportamiento de la web, reportado).
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "total": 19
+  },
+  "message": "Todas las plantillas restablecidas a sus valores por defecto."
+}
+```
+
+### DELETE /admin/plantillas-correo/{id}
+
+`HTTP 422`
+```json
+{
+  "message": "No se pueden eliminar plantillas del sistema.",
+  "errors": {
+    "error": [
+      "No se pueden eliminar plantillas del sistema."
+    ]
+  }
+}
+```
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Plantilla eliminada."
+}
+```
+
+---
+
+### 15.7 Correo masivo (solo super-admin)
+
+Filtros de destinatarios (los mismos de la web; todos opcionales): `tipo` (`todos|compradores|proveedores`; `todos`
+excluye admin y super-admin), `categoria` (del negocio), `estado_proveedor` (`aprobado|pendiente|rechazado`, solo con
+`tipo=proveedores`), `evento_id` + `estado_evento` (`pendiente|aprobado|rechazado`), `canirac` (`si|no`). Solo cuentas
+con correo verificado.
+
+### GET /admin/correo-masivo/formulario
+
+Plantillas activas (para precargar asunto/contenido), eventos, categorías y los valores válidos de cada filtro.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "plantillas": [
+      {
+        "id": 16,
+        "nombre": "Bazar — Participación aprobada",
+        "asunto": "¡Felicidades! Fuiste seleccionado para {{nombre_evento}}",
+        "contenido": "<div style=\"background:#f9fafb;padding:40px 20px;font-family:'Segoe UI',Arial,sans-serif;\">\n<div style=\"max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0…",
+        "tipo_destinatario": "proveedor"
+      },
+      {
+        "id": 17,
+        "nombre": "Bazar — Participación no seleccionada",
+        "asunto": "Resultado de tu solicitud para {{nombre_evento}}",
+        "contenido": "<div style=\"background:#f9fafb;padding:40px 20px;font-family:'Segoe UI',Arial,sans-serif;\">\n<div style=\"max-width:600px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0…",
+        "tipo_destinatario": "proveedor"
+      }
+    ],
+    "eventos": [
+      {
+        "id": 6,
+        "nombre": "Bazar Hecho en Yucatán (demo app)"
+      },
+      {
+        "id": 5,
+        "nombre": "Encuentro de Negocios Impúlsate (demo app)"
+      }
+    ],
+    "categorias": [
+      "Alimentos y Bebidas",
+      "Tecnología"
+    ],
+    "filtros": {
+      "tipo": [
+        "todos",
+        "compradores",
+        "proveedores"
+      ],
+      "estado_proveedor": [
+        "aprobado",
+        "pendiente",
+        "rechazado"
+      ],
+      "estado_evento": [
+        "pendiente",
+        "aprobado",
+        "rechazado"
+      ],
+      "canirac": [
+        "si",
+        "no"
+      ]
+    }
+  }
+}
+```
+> Recorte: `data.plantillas` traía 17 elementos; se muestran 2; `data.plantillas[].contenido` se cortó a 200 caracteres; `data.eventos` traía 5 elementos; se muestran 2; `data.categorias` traía 22 elementos; se muestran 2.
+
+### POST /admin/correo-masivo/destinatarios
+
+Cuántos recibirían el correo (`meta.total`) y los primeros 20 (web: "Ver destinatarios").
+
+Petición:
+```json
+{
+  "tipo": "proveedores",
+  "evento_id": 5,
+  "estado_evento": "aprobado",
+  "estado_proveedor": "aprobado"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 15,
+      "name": "Contacto Miel Melipona del Mayab",
+      "email": "demo.proveedor1@prueba.impulsate.mx",
+      "rol": "restaurantero",
+      "canirac": false
+    },
+    {
+      "id": 16,
+      "name": "Contacto Café Puuc",
+      "email": "demo.proveedor2@prueba.impulsate.mx",
+      "rol": "restaurantero",
+      "canirac": false
+    }
+  ],
+  "meta": {
+    "total": 9,
+    "mostrados": 9
+  }
+}
+```
+> Recorte: `data` traía 9 elementos; se muestran 2.
+
+`HTTP 422`
+```json
+{
+  "message": "El campo tipo seleccionado no es válido.",
+  "errors": {
+    "tipo": [
+      "El campo tipo seleccionado no es válido."
+    ]
+  }
+}
+```
+
+### POST /admin/correo-masivo/vista-previa
+
+HTML del correo con variables de ejemplo (`asunto`, `contenido`). No envía nada.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "asunto": "Recordatorio del encuentro",
+    "html": "<!DOCTYPE html>\n<html lang=\"es\">\n<head>\n    <meta charset=\"UTF-8\">\n    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n    <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\">\n</head>\n<body style=\"margin:0;padding:0;background:#f9fafb;\">\n    <p>Hola María Pérez, te esperamos.…"
+  }
+}
+```
+> Recorte: `data.html` se cortó a 300 caracteres.
+
+### POST /admin/correo-masivo/prueba
+
+UN correo de prueba a `email_prueba`, con `[PRUEBA]` en el asunto.
+
+Petición:
+```json
+{
+  "email_prueba": "qa.agente@prueba.impulsate.mx",
+  "asunto": "Recordatorio del encuentro",
+  "contenido": "<p>Hola {{nombre_usuario}}</p>"
+}
+```
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Correo de prueba enviado a qa.agente@prueba.impulsate.mx."
+}
+```
+
+### POST /admin/correo-masivo/enviar
+
+Los filtros + `asunto` + `contenido` + **`total_esperado`** (el `meta.total` que vio el usuario en la vista previa).
+Encola un correo por destinatario con `{{nombre_usuario}}` personalizado. **Diferencia con la web:** la web confirma
+con un `confirm()` en el navegador; la API exige `total_esperado` y, si la lista cambió, responde 422 sin enviar nada.
+Sin destinatarios → 422 `"No hay destinatarios con los filtros seleccionados."`.
+
+`HTTP 422`
+```json
+{
+  "message": "La lista cambió: ahora son 9 destinatario(s). Revisa los destinatarios y vuelve a confirmar.",
+  "errors": {
+    "total_esperado": [
+      "La lista cambió: ahora son 9 destinatario(s). Revisa los destinatarios y vuelve a confirmar."
+    ]
+  }
+}
+```
+
+(Captura hecha con los 9 proveedores demo `@prueba.impulsate.mx` del encuentro; los correos se sacaron de la cola.)
+
+Petición:
+```json
+{
+  "tipo": "proveedores",
+  "evento_id": 5,
+  "estado_evento": "aprobado",
+  "estado_proveedor": "aprobado",
+  "asunto": "Recordatorio del encuentro (prueba API)",
+  "contenido": "<p>Hola {{nombre_usuario}}, esto es una prueba local.</p>",
+  "total_esperado": 9
+}
+```
+`HTTP 200`
+```json
+{
+  "data": {
+    "encolados": 9
+  },
+  "message": "Correos en cola para 9 destinatarios."
+}
+```
+
+---
+
+### 15.8 Publicidad (solo super-admin)
+
+El anuncio (popup) de la portada. Solo se muestra uno: el **vigente** (activo y dentro de `fecha_inicio`–`fecha_fin`)
+más reciente (`meta.vigente_id`). `estado` ∈ `Inactiva|Programada|Vigente|Expirada` (el texto de la web).
+
+### GET /admin/publicidad
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 4,
+      "titulo": "Anuncio de prueba (demo app)",
+      "imagen_url": "http://192.168.10.6/citas/public/storage/publicidad/demo-app.png",
+      "enlace": "http://192.168.10.6/citas/public",
+      "abre_en_nueva_pestana": false,
+      "fecha_inicio": "2026-09-22T00:00:00-06:00",
+      "fecha_fin": "2026-10-23T23:59:59-06:00",
+      "activa": true,
+      "estado": "Vigente",
+      "creada_at": "2026-09-23T08:57:47-06:00"
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "vigente_id": 4
+  }
+}
+```
+
+### GET /admin/publicidad/{id}
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 4,
+    "titulo": "Anuncio de prueba (demo app)",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/publicidad/demo-app.png",
+    "enlace": "http://192.168.10.6/citas/public",
+    "abre_en_nueva_pestana": false,
+    "fecha_inicio": "2026-09-22T00:00:00-06:00",
+    "fecha_fin": "2026-10-23T23:59:59-06:00",
+    "activa": true,
+    "estado": "Vigente",
+    "creada_at": "2026-09-23T08:57:47-06:00"
+  }
+}
+```
+
+### POST /admin/publicidad
+
+`multipart/form-data`: `titulo`, `imagen` (jpg/jpeg/png/webp, máx. 4 MB; SVG no), `enlace` (URL, opcional),
+`abre_en_nueva_pestana` (0/1), `fecha_inicio`, `fecha_fin` (posterior), `activa` (0/1). 201.
+
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 5,
+    "titulo": "Anuncio agente (prueba)",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/publicidad/txTpl6uWiBSQYyMgfP81JEjxlyOhGPysppAkokbL.png",
+    "enlace": "http://192.168.10.6/citas/public",
+    "abre_en_nueva_pestana": true,
+    "fecha_inicio": "2026-12-01T00:00:00-06:00",
+    "fecha_fin": "2026-12-31T23:59:00-06:00",
+    "activa": true,
+    "estado": "Programada",
+    "creada_at": "2026-09-23T09:07:28-06:00"
+  },
+  "message": "Anuncio creado correctamente."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo imagen debe ser una imagen. (and 2 more errors)",
+  "errors": {
+    "imagen": [
+      "El campo imagen debe ser una imagen.",
+      "El campo imagen debe ser un archivo con extensión: jpg, jpeg, png, webp."
+    ],
+    "fecha_fin": [
+      "El campo fecha fin debe ser una fecha posterior a fecha inicio."
+    ]
+  }
+}
+```
+
+### POST/PUT/PATCH /admin/publicidad/{id}
+
+Mismas reglas (todos los campos, como la web); con `imagen` nueva se borra la anterior. Para subir imagen usar POST.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 5,
+    "titulo": "Anuncio agente (prueba, editado)",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/publicidad/txTpl6uWiBSQYyMgfP81JEjxlyOhGPysppAkokbL.png",
+    "enlace": "http://192.168.10.6/citas/public",
+    "abre_en_nueva_pestana": true,
+    "fecha_inicio": "2026-12-01T00:00:00-06:00",
+    "fecha_fin": "2027-01-15T23:59:00-06:00",
+    "activa": true,
+    "estado": "Programada",
+    "creada_at": "2026-09-23T09:07:28-06:00"
+  },
+  "message": "Anuncio actualizado correctamente."
+}
+```
+
+### POST /admin/publicidad/{id}/activa
+
+Activa / desactiva.
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 5,
+    "titulo": "Anuncio agente (prueba, editado)",
+    "imagen_url": "http://192.168.10.6/citas/public/storage/publicidad/txTpl6uWiBSQYyMgfP81JEjxlyOhGPysppAkokbL.png",
+    "enlace": "http://192.168.10.6/citas/public",
+    "abre_en_nueva_pestana": true,
+    "fecha_inicio": "2026-12-01T00:00:00-06:00",
+    "fecha_fin": "2027-01-15T23:59:00-06:00",
+    "activa": false,
+    "estado": "Inactiva",
+    "creada_at": "2026-09-23T09:07:28-06:00"
+  },
+  "message": "Anuncio desactivado."
+}
+```
+
+### DELETE /admin/publicidad/{id}
+
+Borra el anuncio y su imagen.
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Anuncio eliminado."
+}
+```
+
+---
+
+### 15.9 Categorías (solo super-admin)
+
+Las categorías de negocio de los proveedores (el selector del perfil y del directorio). El proveedor guarda la
+categoría como TEXTO: renombrar una categoría **no** cambia a los proveedores que ya la tenían (comportamiento de la
+web, reportado).
+
+### GET /admin/categorias
+
+Por `orden`, con `proveedores_activos`.
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Alimentos y Bebidas",
+      "orden": 0,
+      "activo": true,
+      "proveedores_activos": 4
+    },
+    {
+      "id": 2,
+      "nombre": "Tecnología",
+      "orden": 1,
+      "activo": true,
+      "proveedores_activos": 0
+    },
+    {
+      "id": 3,
+      "nombre": "Salud y Bienestar",
+      "orden": 2,
+      "activo": true,
+      "proveedores_activos": 0
+    }
+  ],
+  "meta": {
+    "total": 22
+  }
+}
+```
+> Recorte: `data` traía 22 elementos; se muestran 3.
+
+### POST /admin/categorias
+
+`nombre` (único). Se agrega al final. 201.
+
+`HTTP 201`
+```json
+{
+  "data": {
+    "id": 23,
+    "nombre": "Categoría agente (prueba)",
+    "orden": 22,
+    "activo": true
+  },
+  "message": "Categoría agregada."
+}
+```
+
+`HTTP 422`
+```json
+{
+  "message": "El campo nombre ya está siendo utilizado.",
+  "errors": {
+    "nombre": [
+      "El campo nombre ya está siendo utilizado."
+    ]
+  }
+}
+```
+
+### PUT /admin/categorias/{id}
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 23,
+    "nombre": "Categoría agente (editada)",
+    "orden": 22,
+    "activo": true
+  },
+  "message": "Categoría actualizada."
+}
+```
+
+### POST /admin/categorias/{id}/activo
+
+`HTTP 200`
+```json
+{
+  "data": {
+    "id": 23,
+    "nombre": "Categoría agente (editada)",
+    "orden": 22,
+    "activo": false
+  },
+  "message": "Categoría desactivada."
+}
+```
+
+### DELETE /admin/categorias/{id}
+
+Solo si ningún proveedor la usa:
+
+`HTTP 422`
+```json
+{
+  "message": "No se puede eliminar: hay proveedores con esta categoría.",
+  "errors": {
+    "error": [
+      "No se puede eliminar: hay proveedores con esta categoría."
+    ]
+  }
+}
+```
+
+`HTTP 200`
+```json
+{
+  "data": null,
+  "message": "Categoría eliminada."
+}
+```
+
+### POST /admin/categorias/reordenar
+
+`ids` en el nuevo orden (el primero queda en 0). Devuelve la lista ordenada. **Solo API** en la práctica (la web
+tiene la ruta pero la pantalla no la usa).
+
+`HTTP 200`
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "nombre": "Alimentos y Bebidas",
+      "orden": 0,
+      "activo": true,
+      "proveedores_activos": 4
+    },
+    {
+      "id": 2,
+      "nombre": "Tecnología",
+      "orden": 1,
+      "activo": true,
+      "proveedores_activos": 0
+    },
+    {
+      "id": 3,
+      "nombre": "Salud y Bienestar",
+      "orden": 2,
+      "activo": true,
+      "proveedores_activos": 0
+    }
+  ],
+  "message": "Orden actualizado."
+}
+```
+> Recorte: `data` traía 22 elementos; se muestran 3.
