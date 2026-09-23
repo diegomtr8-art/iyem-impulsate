@@ -1,0 +1,766 @@
+═══════════════════════════════════════════════════════════════════════════
+DOS CAMBIOS SOLICITADOS
+  A) Imagen de evento hasta 10 MB
+  B) La página de proveedores muestra los DOS encuentros, Conecta primero
+═══════════════════════════════════════════════════════════════════════════
+
+RESUMEN
+=======
+  A1. Subir el límite de 4 MB a 10 MB en el backend
+  A2. Actualizar las 4 etiquetas de la interfaz
+  A3. Aviso en el navegador antes de subir (evita el fallo silencioso)
+  A4. ⚠ SUBIR LOS LÍMITES DE PHP EN EL SERVIDOR — sin esto A1 no sirve de nada
+
+  B1. Migración: campo `destacado` en eventos
+  B2. Modelo Evento: destacado manda en el orden
+  B3. Admin: casilla "Evento destacado" en crear y editar
+  B4. Página pública: una sección por evento, el destacado arriba
+  B5. Vue: dos secciones apiladas
+
+
+DIAGNÓSTICO DE LO QUE PASA HOY
+==============================
+La página /proveedores usa `Evento::activo()`, que devuelve UN SOLO evento:
+el más próximo por `fecha_hora_inicio`. Luego filtra los proveedores a ese
+evento con un `whereExists` sobre `evento_usuario`.
+
+Por eso la captura muestra "Proveedores del Evento: … Edición GOmart" y sale
+vacía: GOmart es el más próximo por fecha, y todavía no hay ningún proveedor
+con `estado='aprobado'` en él. Conecta ni siquiera aparece.
+
+⚠ IMPORTANTE — ALCANCE DEL CAMBIO B2
+   `Evento::activo()` no lo usa solo la página de proveedores. También lo usan
+   el dashboard del comprador, el panel del proveedor, `HandleInertiaRequests`,
+   la auto-inscripción al completar perfil y `Restaurantero::autoAprobar()`.
+
+   Al hacer que `destacado` mande en el orden, TODOS esos puntos pasarán a
+   apuntar a Conecta. Eso es coherente con "Conecta es el principal", pero
+   conviene saberlo antes de aplicarlo: si marcas GOmart como destacado por
+   error, cambias el evento por defecto de todo el sistema.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE A — IMAGEN DE EVENTO HASTA 10 MB
+═══════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────
+A1 — app/Http/Controllers/Admin/EventoController.php
+─────────────────────────────────────────────────────────────
+
+BUSCA (línea 50):
+
+            'imagen'                          => ($requireImagen ? 'required' : 'nullable') . '|image|mimes:jpg,jpeg,png,webp|max:4096',
+
+REEMPLAZA POR:
+
+            'imagen'                          => ($requireImagen ? 'required' : 'nullable') . '|image|mimes:jpg,jpeg,png,webp|max:10240',
+
+BUSCA (línea 60):
+
+            'imagen_carrusel'                 => 'nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+
+REEMPLAZA POR:
+
+            'imagen_carrusel'                 => 'nullable|image|mimes:jpg,jpeg,png,webp|max:10240',
+
+⚠ `max:10240` está en KILOBYTES: 10240 KB = 10 MB. No pongas 10.
+
+⚠ NO cambies las otras subidas del proyecto (logo de proveedor, publicidad,
+   fotos de producto). Se pidió solo la imagen de evento, y subir todas
+   multiplica el consumo de disco sin que nadie lo haya pedido.
+
+
+─────────────────────────────────────────────────────────────
+A2 — resources/js/Pages/Admin/Eventos/Index.vue · 4 etiquetas
+─────────────────────────────────────────────────────────────
+
+FORMULARIO DE CREAR
+
+BUSCA (línea 248):
+
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×675px, horizontal 16:9)</span></label>
+
+REEMPLAZA POR:
+
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 10MB — recomendado 1200×675px, horizontal 16:9)</span></label>
+
+BUSCA (línea 266):
+
+                            <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×1500px vertical/cuadrada)</span>
+
+REEMPLAZA POR:
+
+                            <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 10MB — recomendado 1200×1500px vertical/cuadrada)</span>
+
+FORMULARIO DE EDITAR (estas dos no mencionaban el peso: añádelo)
+
+BUSCA (línea 682):
+
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional — deja vacío para conservar la actual, recomendado 1200×675px)</span></label>
+
+REEMPLAZA POR:
+
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, máx. 10MB — deja vacío para conservar la actual, recomendado 1200×675px)</span></label>
+
+BUSCA (línea 699):
+
+                                    Imagen para el carrusel <span class="text-gray-400">(opcional — deja vacío para conservar la actual, recomendado 1200×1500px)</span>
+
+REEMPLAZA POR:
+
+                                    Imagen para el carrusel <span class="text-gray-400">(opcional, máx. 10MB — deja vacío para conservar la actual, recomendado 1200×1500px)</span>
+
+
+─────────────────────────────────────────────────────────────
+A3 — Aviso en el navegador antes de subir
+resources/js/Pages/Admin/Eventos/Index.vue · <script setup>
+─────────────────────────────────────────────────────────────
+
+Sin esto, si el archivo supera el límite de PHP el formulario falla de forma
+confusa (ver A4). Mejor avisar antes de intentarlo.
+
+AÑADE esta constante y este helper cerca del inicio del <script setup>,
+junto a las demás declaraciones:
+
+const MAX_IMAGEN_MB = 10;
+
+// Devuelve true si el archivo cabe; si no, avisa y limpia el input.
+const imagenCabe = (file, e) => {
+    if (!file) return false;
+    if (file.size > MAX_IMAGEN_MB * 1024 * 1024) {
+        alert(`La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo son ${MAX_IMAGEN_MB} MB. Comprímela o usa una más ligera.`);
+        if (e?.target) e.target.value = '';
+        return false;
+    }
+    return true;
+};
+
+Ahora BUSCA los cuatro manejadores de archivo. El primero (línea ~44):
+
+    const f = e.target.files[0];
+    form.imagen = f ?? null;
+
+Cada uno tiene la misma forma. En LOS CUATRO (`onImagenNuevo`,
+`onImagenCarruselNuevo`, `onImagenEditar`, `onImagenCarruselEditar`),
+inserta la comprobación justo después de tomar el archivo:
+
+    const f = e.target.files[0];
+    if (f && !imagenCabe(f, e)) { form.imagen = null; previewNuevo.value = null; return; }
+    form.imagen = f ?? null;
+
+Adapta el nombre del campo y del preview en cada uno:
+
+    onImagenNuevo            → form.imagen           · previewNuevo
+    onImagenCarruselNuevo    → form.imagen_carrusel  · previewCarruselNuevo
+    onImagenEditar           → formEditar.imagen     · previewEditar
+    onImagenCarruselEditar   → formEditar.imagen_carrusel · previewCarruselEditar
+
+
+─────────────────────────────────────────────────────────────
+A4 — ⚠ LÍMITES DE PHP EN EL SERVIDOR — SIN ESTO NADA FUNCIONA
+─────────────────────────────────────────────────────────────
+
+Esto es lo más importante de la Parte A y lo que más se olvida.
+
+`max:10240` es una regla de Laravel, y Laravel solo ve el archivo DESPUÉS de
+que PHP lo haya aceptado. Si `upload_max_filesize` está en 2M u 8M, un archivo
+de 10 MB **nunca llega**: PHP lo descarta antes.
+
+Y peor: si se supera `post_max_size`, PHP descarta el cuerpo COMPLETO de la
+petición. Laravel recibe un POST vacío, no encuentra el token CSRF, y devuelve
+**error 419 "Page Expired"** — un mensaje que no tiene ninguna relación
+aparente con el tamaño de la imagen. Si alguna vez han visto ese error al
+subir imágenes grandes, es exactamente esto.
+
+PASO 1 — Ver los límites actuales en producción:
+
+    ssh -p 65002 u489236361@195.35.38.222
+    cd /home/u489236361/domains/impulsate.iyemyucatan.com/public_html
+    php -r "echo 'upload_max_filesize: '.ini_get('upload_max_filesize').PHP_EOL;
+            echo 'post_max_size: '.ini_get('post_max_size').PHP_EOL;
+            echo 'memory_limit: '.ini_get('memory_limit').PHP_EOL;
+            echo 'max_execution_time: '.ini_get('max_execution_time').PHP_EOL;"
+
+⚠ El PHP de la línea de comandos puede tener límites DISTINTOS del PHP web.
+   Para ver los que de verdad importan, crea temporalmente un archivo con
+   `<?php phpinfo();` dentro de `public/`, ábrelo en el navegador, mira los
+   valores, y **bórralo enseguida** — expone toda la configuración del servidor.
+
+VALORES NECESARIOS:
+
+    upload_max_filesize = 12M      (holgura sobre los 10 MB)
+    post_max_size       = 16M      (debe ser MAYOR que upload_max_filesize:
+                                    incluye el archivo MÁS el resto del formulario)
+    memory_limit        = 256M     (procesar una imagen de 10 MB consume memoria)
+    max_execution_time  = 120
+
+PASO 2 — Subirlos. En Hostinger, dos vías:
+
+  VÍA A (preferida) — panel de hPanel:
+      Avanzado → Configuración de PHP → pestaña "Opciones de PHP"
+      Ajusta ahí los cuatro valores.
+
+  VÍA B — archivo `.user.ini` en la raíz del docroot:
+
+      upload_max_filesize = 12M
+      post_max_size = 16M
+      memory_limit = 256M
+      max_execution_time = 120
+
+      ⚠ Funciona con PHP-FPM y LSAPI, que es lo que usa Hostinger.
+      ⚠ NO uses `php_value` en el .htaccess: esa directiva solo existe bajo
+         mod_php y en PHP-FPM devuelve error 500 en todo el sitio. Es el mismo
+         problema que ya tienes señalado con `php_flag engine off` en
+         storage/app/public/.htaccess.
+      ⚠ `.user.ini` se cachea: tarda hasta 5 minutos en tomar efecto
+         (`user_ini.cache_ttl`). No concluyas que no funciona antes de eso.
+      ⚠ Añade `.user.ini` al .gitignore o commitéalo a conciencia, y comprueba
+         que el `.htaccess` no lo esté sirviendo: el patrón `\.ini$` del
+         blindaje ya lo cubre. Verifícalo con curl.
+
+PASO 3 — Confirmar que subió:
+
+    curl -s -o /dev/null -w "%{http_code}\n" https://impulsate.iyemyucatan.com/.user.ini
+    # debe dar 403 o 404
+
+    Y vuelve a mirar phpinfo (borrándolo después) o sube una imagen de ~9 MB
+    desde el panel de eventos.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE B — LA PÁGINA DE PROVEEDORES MUESTRA LOS DOS ENCUENTROS
+═══════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────
+B1 — Migración: campo `destacado`
+─────────────────────────────────────────────────────────────
+
+CREA database/migrations/2026_09_02_100000_add_destacado_to_eventos_table.php:
+
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Marca cual es el evento principal de cara al publico.
+     *
+     * Antes el "principal" se derivaba de fecha_hora_inicio (el mas proximo),
+     * lo que mezcla "cuando ocurre" con "cual quiero destacar". Con varios
+     * encuentros activos a la vez hace falta decirlo explicitamente.
+     */
+    public function up(): void
+    {
+        if (Schema::hasColumn('eventos', 'destacado')) {
+            return;
+        }
+
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->boolean('destacado')->default(false)->after('activa');
+            $table->index(['activa', 'destacado'], 'eventos_activa_destacado_idx');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('eventos', function (Blueprint $table) {
+            $table->dropIndex('eventos_activa_destacado_idx');
+            $table->dropColumn('destacado');
+        });
+    }
+};
+
+
+─────────────────────────────────────────────────────────────
+B2 — app/Models/Evento.php
+─────────────────────────────────────────────────────────────
+
+B2.1 — BUSCA en `$fillable`:
+
+        'activa',
+        'tv_token',
+
+REEMPLAZA POR:
+
+        'activa',
+        'destacado',
+        'tv_token',
+
+B2.2 — BUSCA en `casts()`:
+
+            'activa'                         => 'boolean',
+
+REEMPLAZA POR:
+
+            'activa'                         => 'boolean',
+            'destacado'                      => 'boolean',
+
+B2.3 — BUSCA el método completo:
+
+    public static function queryActivos()
+    {
+        return static::where('activa', true)
+            ->where(function ($q) {
+                $q->whereNull('fecha_hora_fin')
+                  ->orWhere('fecha_hora_fin', '>=', now());
+            })
+            ->orderByRaw('fecha_hora_inicio IS NULL')
+            ->orderBy('fecha_hora_inicio')
+            ->orderBy('id');
+    }
+
+REEMPLÁZALO POR:
+
+    public static function queryActivos()
+    {
+        return static::where('activa', true)
+            ->where(function ($q) {
+                $q->whereNull('fecha_hora_fin')
+                  ->orWhere('fecha_hora_fin', '>=', now());
+            })
+            // El evento marcado como destacado manda sobre la fecha: es el que
+            // se considera "principal" en todo el flujo publico. Si ninguno
+            // esta destacado, se conserva el criterio anterior (el mas proximo).
+            ->orderByDesc('destacado')
+            ->orderByRaw('fecha_hora_inicio IS NULL')
+            ->orderBy('fecha_hora_inicio')
+            ->orderBy('id');
+    }
+
+⚠ Con esto, `Evento::activo()` devuelve el destacado. Ese es el comportamiento
+   que se pidió, pero afecta a todo el flujo público — relee el aviso del
+   diagnóstico al inicio de este documento.
+
+
+─────────────────────────────────────────────────────────────
+B3 — Admin: casilla "Evento destacado"
+─────────────────────────────────────────────────────────────
+
+B3.1 — app/Http/Controllers/Admin/EventoController.php · validación
+
+BUSCA:
+
+            'tipo_evento'                     => 'required|in:encuentro_negocios,bazar_exposicion',
+
+AÑADE JUSTO DEBAJO:
+
+            'destacado'                       => 'boolean',
+
+B3.2 — Mismo archivo · `eventoFields()`
+
+Localiza el método `eventoFields()` y añade el campo al array que devuelve:
+
+            'destacado' => $request->boolean('destacado'),
+
+B3.3 — Mismo archivo · solo un destacado a la vez
+
+En `store()` y en `update()`, DESPUÉS de guardar el evento (después de
+`Evento::create($fields)` y de `$evento->update($fields)` respectivamente),
+AÑADE:
+
+        // Solo puede haber un evento destacado: al marcar uno, se desmarcan
+        // los demas. Sin esto el orden entre dos destacados seria arbitrario.
+        if ($request->boolean('destacado')) {
+            \App\Models\Evento::where('id', '!=', $evento->id)
+                ->where('destacado', true)
+                ->update(['destacado' => false]);
+        }
+
+⚠ En `store()` la variable es `$evento` (el resultado de `Evento::create`).
+   En `update()` es el evento inyectado por la ruta. Comprueba el nombre real
+   en cada método antes de pegar.
+
+B3.4 — resources/js/Pages/Admin/Eventos/Index.vue
+
+En el objeto `form` (creación, línea ~22) AÑADE:
+
+    destacado: false,
+
+En `formEditar` (línea ~62) AÑADE:
+
+    destacado: false,
+
+Y en la función que rellena `formEditar` al abrir el modal (donde se asignan
+`formEditar.imagen = null` y compañía, línea ~108) AÑADE:
+
+    formEditar.destacado = !!evento.destacado;
+
+En el TEMPLATE, en AMBOS formularios, añade la casilla. Un buen sitio es junto
+al selector de tipo de evento. El bloque a insertar:
+
+                    <div class="sm:col-span-2">
+                        <label class="flex items-start gap-2.5 cursor-pointer">
+                            <input type="checkbox" v-model="form.destacado"
+                                class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-guinda-700 focus:ring-guinda-500" />
+                            <span>
+                                <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Evento destacado</span>
+                                <span class="block text-[11px] text-gray-400 leading-relaxed">
+                                    Aparece primero en la página pública de proveedores y se toma como el evento
+                                    principal del sistema. Solo puede haber uno destacado: al marcar éste, se
+                                    desmarcará el que lo estuviera.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+
+⚠ En el formulario de EDITAR usa `v-model="formEditar.destacado"`.
+
+B3.5 — Opcional pero recomendado: distintivo en el listado
+
+En la tarjeta de cada evento del listado, añade un badge cuando esté
+destacado, para que se vea de un vistazo cuál es el principal:
+
+    <span v-if="evento.destacado"
+        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+               bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400
+               border border-amber-200 dark:border-amber-800">
+        ★ Destacado
+    </span>
+
+
+─────────────────────────────────────────────────────────────
+B4 — app/Http/Controllers/RestauranteroPublicoController.php
+─────────────────────────────────────────────────────────────
+
+⚠ OJO: `Evento::activo()` aparece DOS veces en este archivo.
+   • Línea 14 → dentro de `index()`. **Esta es la que se cambia.**
+   • Línea 180 → dentro de `show()`, la ficha individual del proveedor.
+     **NO la toques.** Ahí sí queremos un único evento (el principal), y
+     tras el cambio B2 pasará a ser el destacado, que es lo correcto.
+
+BUSCA el bloque que va desde `$evento = Evento::activo();` (línea 14) hasta el
+`return Inertia::render(...)` que termina en la línea 119 — es decir, TODO el
+cuerpo del método `index()`.
+
+REEMPLAZA EL MÉTODO index() COMPLETO POR:
+
+    public function index(Request $request)
+    {
+        $filtros = $request->only(['search', 'categoria']);
+
+        // Todos los encuentros de negocios activos, el destacado primero.
+        // Antes se usaba Evento::activo() (uno solo), por eso solo se veia un
+        // evento y la pagina salia vacia si nadie estaba aprobado en el.
+        $eventos = Evento::queryActivos()
+            ->where('tipo_evento', 'encuentro_negocios')
+            ->get();
+
+        $proveedoresPlataforma = Restaurantero::query()
+            ->where('activo', true)
+            ->where('aprobado', true)
+            ->where('perfil_completo', true)
+            ->withCount('citas')
+            ->orderByDesc('created_at')
+            ->paginate(8, ['*'], 'plataforma_page')
+            ->withQueryString();
+
+        // Sin encuentros activos (o solo bazares): mostrar el directorio completo
+        if ($eventos->isEmpty()) {
+            $queryTodos = Restaurantero::query()
+                ->where('activo', true)
+                ->where('aprobado', true)
+                ->where('perfil_completo', true)
+                ->withCount('citas')
+                ->orderByDesc('created_at');
+
+            $this->aplicarFiltros($queryTodos, $request);
+
+            $categoriasTodos = Restaurantero::where('activo', true)
+                ->where('aprobado', true)
+                ->where('perfil_completo', true)
+                ->whereNotNull('categoria')
+                ->distinct()
+                ->orderBy('categoria')
+                ->pluck('categoria');
+
+            return Inertia::render('Restauranteros/Index', [
+                'restauranteros'        => $queryTodos->paginate(12)->withQueryString(),
+                'sin_evento'            => true,
+                'eventos'               => [],
+                'filters'               => $filtros,
+                'categorias'            => $categoriasTodos,
+                'proveedoresPlataforma' => null,
+            ]);
+        }
+
+        // Una seccion por evento, en el orden de queryActivos (destacado primero)
+        $secciones = $eventos->map(function ($evento) use ($request) {
+            $query = Restaurantero::query()
+                ->where('activo', true)
+                ->where('aprobado', true)
+                ->whereHas('user', function ($q) use ($evento) {
+                    $q->whereExists(function ($sub) use ($evento) {
+                        $sub->from('evento_usuario')
+                            ->whereColumn('evento_usuario.user_id', 'users.id')
+                            ->where('evento_usuario.evento_id', $evento->id)
+                            ->where('evento_usuario.tipo', 'proveedor')
+                            ->where('evento_usuario.estado', 'aprobado');
+                    });
+                })
+                ->withCount('citas')
+                ->orderByDesc('created_at');
+
+            $this->aplicarFiltros($query, $request);
+
+            return [
+                'id'            => $evento->id,
+                'nombre'        => $evento->nombre,
+                'descripcion'   => $evento->descripcion,
+                'destacado'     => (bool) $evento->destacado,
+                'imagen_url'    => $evento->imagen_url,
+                'proveedores'   => $query->get(),
+            ];
+        })->values();
+
+        // Categorias de todos los eventos activos juntos, para el filtro
+        $categorias = Restaurantero::where('activo', true)
+            ->where('aprobado', true)
+            ->whereHas('user', function ($q) use ($eventos) {
+                $q->whereExists(function ($sub) use ($eventos) {
+                    $sub->from('evento_usuario')
+                        ->whereColumn('evento_usuario.user_id', 'users.id')
+                        ->whereIn('evento_usuario.evento_id', $eventos->pluck('id'))
+                        ->where('evento_usuario.tipo', 'proveedor')
+                        ->where('evento_usuario.estado', 'aprobado');
+                });
+            })
+            ->whereNotNull('categoria')
+            ->distinct()
+            ->orderBy('categoria')
+            ->pluck('categoria');
+
+        return Inertia::render('Restauranteros/Index', [
+            'restauranteros'        => null,
+            'sin_evento'            => false,
+            'eventos'               => $secciones,
+            'filters'               => $filtros,
+            'categorias'            => $categorias,
+            'proveedoresPlataforma' => $proveedoresPlataforma,
+        ]);
+    }
+
+    /** Filtros de busqueda y categoria, compartidos por todas las consultas. */
+    private function aplicarFiltros($query, Request $request): void
+    {
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('nombre_restaurante', 'like', "%{$s}%")
+                  ->orWhere('direccion', 'like', "%{$s}%")
+                  ->orWhere('descripcion', 'like', "%{$s}%")
+                  ->orWhere('municipio', 'like', "%{$s}%");
+            });
+        }
+
+        if ($request->filled('categoria')) {
+            $query->where('categoria', $request->categoria);
+        }
+    }
+
+⚠ DECISIÓN CONSCIENTE — SIN PAGINACIÓN POR SECCIÓN
+   Con varios eventos, paginar cada sección por separado obliga a un parámetro
+   de página distinto por evento y complica bastante la vista. Como el número
+   de proveedores por evento está acotado (son los aprobados de una
+   convocatoria), se devuelven todos con `->get()`.
+
+   Si algún evento llega a superar ~100 proveedores, habrá que volver a
+   paginar. Déjalo anotado.
+
+⚠ La sección "proveedores de la plataforma" del final NO cambia: sigue
+   paginada como estaba.
+
+
+─────────────────────────────────────────────────────────────
+B5 — resources/js/Pages/Restauranteros/Index.vue
+─────────────────────────────────────────────────────────────
+
+B5.1 — Props
+
+BUSCA:
+
+const props = defineProps({
+    restauranteros: Object,
+    filters: Object,
+    categorias: Array,
+    sin_evento: { type: Boolean, default: false },
+    proveedoresPlataforma: Object,
+});
+
+REEMPLAZA POR:
+
+const props = defineProps({
+    restauranteros: Object,
+    filters: Object,
+    categorias: Array,
+    sin_evento: { type: Boolean, default: false },
+    proveedoresPlataforma: Object,
+    eventos: { type: Array, default: () => [] },
+});
+
+B5.2 — Título
+
+BUSCA:
+
+const tituloPagina = computed(() => {
+    if (props.sin_evento) return 'Proveedores de la plataforma Impulsate';
+    if (eventoActivo.value) return `Proveedores del Evento: ${eventoActivo.value.nombre}`;
+    return 'Todos los Proveedores';
+});
+
+REEMPLAZA POR:
+
+const tituloPagina = computed(() => {
+    if (props.sin_evento) return 'Proveedores de la plataforma Impulsate';
+    if (props.eventos.length > 1) return 'Proveedores por evento';
+    if (props.eventos.length === 1) return `Proveedores del Evento: ${props.eventos[0].nombre}`;
+    return 'Todos los Proveedores';
+});
+
+// Total de proveedores mostrados en todas las secciones de evento
+const totalProveedoresEventos = computed(() =>
+    props.eventos.reduce((n, ev) => n + (ev.proveedores?.length ?? 0), 0)
+);
+
+B5.3 — Template: sustituir la lista única por una sección por evento
+
+Localiza el bloque que hoy renderiza la lista principal: empieza en
+
+    <div v-if="restauranteros.data && restauranteros.data.length > 0"
+
+(hay DOS de estos: uno para móvil en la línea ~133 y otro para escritorio en
+la ~162), y termina con el bloque de "No se encontraron proveedores"
+(línea ~206) y su paginación.
+
+ESTRATEGIA: envuelve todo ese conjunto en un `v-for` sobre `eventos`, y cambia
+la fuente de datos de `restauranteros.data` a `ev.proveedores`.
+
+Estructura resultante (mantén las clases y el marcado interno de las tarjetas
+tal cual están hoy — solo cambia el contenedor y la variable del bucle):
+
+            <!-- Una seccion por evento activo, el destacado primero -->
+            <section v-for="(ev, idx) in eventos" :key="'ev-' + ev.id"
+                :class="idx > 0 ? 'mt-16 pt-10 border-t border-gray-200 dark:border-gray-800' : ''">
+
+                <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h2 class="text-2xl font-black text-gray-900 dark:text-white">{{ ev.nombre }}</h2>
+                            <span v-if="ev.destacado"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+                                       bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400
+                                       border border-amber-200 dark:border-amber-800">
+                                ★ Evento principal
+                            </span>
+                        </div>
+                        <p v-if="ev.descripcion" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                            {{ ev.descripcion }}
+                        </p>
+                    </div>
+                    <span class="text-xs text-gray-400 whitespace-nowrap mt-1">
+                        {{ ev.proveedores.length }}
+                        {{ ev.proveedores.length === 1 ? 'proveedor' : 'proveedores' }}
+                    </span>
+                </div>
+
+                <!-- MOVIL: pega aqui el bloque de tarjetas movil que ya existe,
+                     cambiando  v-for="r in restauranteros.data"
+                     por        v-for="r in ev.proveedores"
+                     y la clave :key="'m-' + r.id" por :key="'m-' + ev.id + '-' + r.id" -->
+
+                <!-- ESCRITORIO: idem con el grid,
+                     v-for="r in ev.proveedores"
+                     :key="ev.id + '-' + r.id" -->
+
+                <!-- VACIO: mensaje por seccion -->
+                <div v-if="!ev.proveedores.length"
+                     class="text-center py-12 border border-dashed border-gray-200 dark:border-gray-800 rounded-2xl">
+                    <p class="text-gray-500 dark:text-gray-400 text-sm">
+                        Todavía no hay proveedores aprobados en este evento.
+                    </p>
+                </div>
+            </section>
+
+            <!-- Solo si NINGUN evento tiene proveedores -->
+            <div v-if="eventos.length && totalProveedoresEventos === 0" class="text-center py-8">
+                <p class="text-gray-500 dark:text-gray-500 text-sm">
+                    Cuando el equipo apruebe proveedores, aparecerán aquí.
+                </p>
+            </div>
+
+⚠ El caso `sin_evento` sigue usando `restauranteros.data` como hoy: ese camino
+   NO cambia. Envuelve la lista vieja en `v-if="sin_evento"` para que siga
+   funcionando cuando no hay encuentros activos.
+
+⚠ ELIMINA la paginación de la lista principal: ya no aplica porque las
+   secciones traen todos sus proveedores. La paginación de
+   `proveedoresPlataforma` del final SÍ se queda.
+
+⚠ La variable `eventoActivo` que venía de `page.props` puede quedar sin uso en
+   el título. Si no se usa en ningún otro sitio del archivo, bórrala.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+PARTE A — imagen
+  □ Los límites de PHP en producción son ≥ 12M / 16M (comprobado, no supuesto)
+  □ Subir una imagen de ~9 MB al crear un evento: funciona
+  □ Subir una de ~11 MB: da error de validación claro, NO un 419
+  □ El aviso del navegador salta antes de intentar subir un archivo grande
+  □ Editar un evento sin tocar la imagen conserva la que tenía
+  □ La imagen del carrusel también acepta 10 MB
+  □ curl a /.user.ini devuelve 403 o 404
+
+PARTE B — dos eventos
+  □ La página muestra DOS secciones: Conecta arriba, GOmart debajo
+  □ Conecta lleva el badge "★ Evento principal"
+  □ Cada sección muestra solo los proveedores aprobados de ESE evento
+  □ Una sección sin proveedores muestra su mensaje, y la otra sigue visible
+  □ El buscador filtra dentro de las dos secciones
+  □ El filtro de categoría también
+  □ Marcar GOmart como destacado invierte el orden
+  □ Al marcar uno, el otro se desmarca solo
+  □ La sección "proveedores de la plataforma" del final sigue igual y paginada
+
+REGRESIÓN — ojo con el alcance de B2
+  □ El dashboard del comprador apunta ahora a Conecta
+  □ El panel del proveedor también
+  □ El sidebar de eventos muestra Conecta como activo
+  □ Agendar una cita sigue funcionando (usa queryActivos, no activo)
+  □ Con un bazar activo a la vez, el bazar NO aparece en /proveedores
+  □ Sin ningún encuentro activo, la página cae al directorio completo
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS TOCADOS
+═══════════════════════════════════════════════════════════════════════════
+
+  app/Http/Controllers/Admin/EventoController.php              (A1, B3.1-B3.3)
+  app/Models/Evento.php                                        (B2)
+  app/Http/Controllers/RestauranteroPublicoController.php      (B4)
+  resources/js/Pages/Admin/Eventos/Index.vue                   (A2, A3, B3.4-B3.5)
+  resources/js/Pages/Restauranteros/Index.vue                  (B5)
+  database/migrations/2026_09_02_100000_add_destacado_to_eventos_table.php (NUEVO)
+
+  En el SERVIDOR (no en el repo):
+  .user.ini  o  panel de hPanel → Configuración de PHP           (A4)
+
+⚠ HAY CAMBIOS DE VUE → npm run build y subir public/build/ completo.
+
+
+COMANDOS EN EL SERVIDOR
+========================
+
+  php artisan down
+  # subir código + public/build/
+  php artisan migrate --force
+  php artisan optimize:clear
+  php artisan up
+
+  # Después, en el panel de admin:
+  #   1. Editar el evento Conecta → marcar "Evento destacado" → guardar
+  #   2. Abrir /proveedores y confirmar el orden

@@ -1,0 +1,579 @@
+═══════════════════════════════════════════════════════════════════════════
+TRES ARREGLOS DE EXPERIENCIA DE USUARIO
+  1) Quitar la barra de "Completitud del perfil"
+  2) Las subidas de documentos y fotos fallan en silencio
+  3) El registro al evento parece no hacer nada
+═══════════════════════════════════════════════════════════════════════════
+
+RESUMEN DE CAMBIOS
+==================
+  C1. Quitar la barra de completitud del perfil
+  C2. Límite de peso visible + validación en el navegador (6 inputs)
+  C3. Mostrar los errores del servidor en el formulario de documentos
+  C4. Indicador de carga con barra de progreso real en todas las subidas
+  C5. Explicar por qué el botón de registro está deshabilitado
+  C6. Mensaje de confirmación tras registrarse
+  C7. ⚠ Límites de PHP en el servidor — la causa de raíz de C2
+
+
+DIAGNÓSTICO
+===========
+
+Los puntos 2 y 3 que reportaste **comparten una misma causa de fondo**: la
+interfaz no dice nada cuando algo sale mal. No es que el sistema falle; es
+que falla callado.
+
+**Punto 2 — "no les deja subir sus documentos ni las fotografías"**
+
+Tres cosas se suman:
+
+  a) Ningún input dice cuánto puede pesar el archivo. El backend acepta
+     5 MB para INE/CSF y 4 MB para fotos, pero eso no aparece en pantalla.
+     Verificado: `Perfil/Show.vue:400` (INE), `:415` (CSF), `:710` (fotos de
+     producto), `:884` (foto de perfil) — ninguno menciona el peso.
+
+  b) No hay validación en el navegador. El usuario elige un archivo de 12 MB
+     y no se entera hasta que el servidor lo rechaza… si es que lo rechaza.
+
+  c) **El formulario de documentos NO muestra los errores del servidor.**
+     `formDocs.errors.ine` y `formDocs.errors.csf` existen pero no se pintan
+     en ningún sitio de `Perfil/Show.vue`. Si Laravel responde "el archivo
+     supera 5 MB", el usuario no lo ve: el botón vuelve de "Guardando…" a
+     "Guardar documentos" y aparentemente no pasó nada.
+
+     Contraste: el modal de `TabEventos.vue:820,832` **sí** los pinta. Por eso
+     desde ahí sí se entiende el error y desde el perfil no.
+
+**Punto 3 — "le dan click pero no les cambia a pendiente"**
+
+Dos causas, y la segunda es la que más gente afecta:
+
+  a) El botón "Confirmar registro" está deshabilitado hasta marcar la casilla
+     "He leído la convocatoria" (`TabEventos.vue:855`). Un botón deshabilitado
+     solo se ve más pálido: al hacer clic no ocurre absolutamente nada y no
+     hay ninguna pista de por qué.
+
+  b) **Cuando el registro SÍ funciona, no se muestra ninguna confirmación.**
+     `CitaPublicaController` devuelve `back()->with('success', ...)`, pero
+     `Pages/User/Dashboard.vue` **no tiene ningún manejo de mensajes flash**
+     (verificado: cero coincidencias de "flash" o "success" en ese archivo).
+     El modal se cierra en silencio. Para el usuario, "no pasó nada".
+
+⚠ RELACIÓN CON EL OTRO PROMPT PENDIENTE
+   `PROMPT_IMAGEN_10MB_Y_DOS_EVENTOS.txt` incluye en su apartado A4 exactamente
+   la comprobación de límites de PHP que aquí es C7. Si ya lo aplicaste, salta
+   C7. Si no, C7 es **lo primero que hay que hacer** de este documento: sin
+   eso, los demás arreglos solo harán que el fallo sea visible, no que
+   desaparezca.
+
+
+─────────────────────────────────────────────────────────────
+C1 — Quitar la barra de completitud del perfil
+resources/js/Pages/Perfil/Show.vue
+─────────────────────────────────────────────────────────────
+
+BUSCA el bloque completo (líneas 189-201):
+
+            <!-- Barra de progreso -->
+            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-5 py-4 mb-6 flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Completitud del perfil</p>
+                    <div class="w-32 sm:w-48 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                        <div class="h-full bg-guinda-700 rounded-full transition-all"
+                            :style="`width:${vistaActiva==='proveedor'?pctProveedor:pctComprador}%`" />
+                    </div>
+                </div>
+                <p class="text-2xl font-black text-guinda-700 dark:text-guinda-400 shrink-0">
+                    {{ vistaActiva==='proveedor' ? pctProveedor : pctComprador }}%
+                </p>
+            </div>
+
+BÓRRALO COMPLETO.
+
+Y en el `<script setup>`, BORRA también los dos computed que quedan sin uso
+(líneas 154 y 159, con sus cuerpos completos):
+
+    const pctComprador = computed(() => { ... });
+    const pctProveedor = computed(() => { ... });
+
+⚠ Verifica antes de borrarlos que no se usen en ningún otro sitio:
+
+    grep -n "pctComprador\|pctProveedor" resources/js/Pages/Perfil/Show.vue
+
+   Tras quitar la barra deben quedar 0 coincidencias.
+
+⚠ NO toques `perfilCamposFaltantes` ni la barra de progreso de
+   `Restaurantero/Panel.vue`: son otra cosa y siguen siendo útiles.
+
+
+─────────────────────────────────────────────────────────────
+C2 — Límite de peso visible y validación en el navegador
+resources/js/Pages/Perfil/Show.vue
+─────────────────────────────────────────────────────────────
+
+C2.1 — Helper compartido. AÑADE en el `<script setup>`, junto a las demás
+declaraciones:
+
+// Limites que acepta el backend, en MB.
+//   documentos (INE/CSF): CompletarPerfilController -> max:5120
+//   fotos (perfil y productos): ProveedorPerfilController -> max:4096
+const MAX_DOC_MB  = 5;
+const MAX_FOTO_MB = 4;
+
+const errorArchivo = ref('');
+
+// Devuelve el archivo si cabe; si no, avisa, limpia el input y devuelve null.
+const validarArchivo = (e, maxMb, etiqueta) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return null;
+
+    if (file.size > maxMb * 1024 * 1024) {
+        errorArchivo.value =
+            `${etiqueta} pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo son ${maxMb} MB. ` +
+            `Comprime la imagen o toma la foto en menor calidad.`;
+        e.target.value = '';
+        return null;
+    }
+
+    errorArchivo.value = '';
+    return file;
+};
+
+⚠ `ref` ya está importado en este archivo. Confírmalo.
+
+C2.2 — INE. BUSCA (línea 399-401):
+
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">{{ user.ine_path ? 'Reemplazar INE' : 'Subir INE' }}</label>
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="e => formDocs.ine = e.target.files[0]"
+                                        class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
+
+REEMPLAZA POR:
+
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                                        {{ user.ine_path ? 'Reemplazar INE' : 'Subir INE' }}
+                                        <span class="font-normal text-gray-400">(PDF, JPG o PNG · máx. {{ MAX_DOC_MB }} MB)</span>
+                                    </label>
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                                        @change="e => formDocs.ine = validarArchivo(e, MAX_DOC_MB, 'El INE')"
+                                        class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
+                                    <p v-if="formDocs.errors.ine" class="mt-1.5 text-xs text-red-600 dark:text-red-400">{{ formDocs.errors.ine }}</p>
+
+C2.3 — CSF. BUSCA (línea 414-416):
+
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">{{ user.csf_path ? 'Reemplazar CSF' : 'Subir CSF' }}</label>
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="e => formDocs.csf = e.target.files[0]"
+                                        class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
+
+REEMPLAZA POR:
+
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                                        {{ user.csf_path ? 'Reemplazar CSF' : 'Subir CSF' }}
+                                        <span class="font-normal text-gray-400">(PDF, JPG o PNG · máx. {{ MAX_DOC_MB }} MB)</span>
+                                    </label>
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                                        @change="e => formDocs.csf = validarArchivo(e, MAX_DOC_MB, 'La CSF')"
+                                        class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
+                                    <p v-if="formDocs.errors.csf" class="mt-1.5 text-xs text-red-600 dark:text-red-400">{{ formDocs.errors.csf }}</p>
+
+C2.4 — Fotos de producto. BUSCA (línea 710):
+
+                                                <input type="file" accept="image/*" @change="e => productosFotos[i] = e.target.files[0] ?? null"
+
+REEMPLAZA POR:
+
+                                                <input type="file" accept="image/*"
+                                                    @change="e => productosFotos[i] = validarArchivo(e, MAX_FOTO_MB, 'La foto del producto')"
+
+Y añade la indicación de peso en su etiqueta (la línea inmediatamente
+anterior que describe el campo): agrégale
+
+    <span class="font-normal text-gray-400">(máx. {{ MAX_FOTO_MB }} MB)</span>
+
+C2.5 — Foto de perfil del proveedor. BUSCA (línea 884):
+
+                                <input type="file" accept="image/*" @change="e => formProveedor.foto = e.target.files[0]"
+
+REEMPLAZA POR:
+
+                                <input type="file" accept="image/*"
+                                    @change="e => formProveedor.foto = validarArchivo(e, MAX_FOTO_MB, 'La foto')"
+
+Y en su etiqueta añade igualmente `(máx. {{ MAX_FOTO_MB }} MB)`.
+
+C2.6 — Aviso visible del error de tamaño. AÑADE en el template, en un sitio
+que se vea siempre (por ejemplo justo debajo del encabezado de la página,
+donde antes estaba la barra de completitud que quitamos en C1):
+
+            <div v-if="errorArchivo"
+                class="mb-6 flex items-start gap-3 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-2xl">
+                <svg class="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                <div class="flex-1 text-sm text-red-700 dark:text-red-400">{{ errorArchivo }}</div>
+                <button @click="errorArchivo = ''" class="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+            </div>
+
+
+─────────────────────────────────────────────────────────────
+C3 — Mostrar el resultado del guardado de documentos
+resources/js/Pages/Perfil/Show.vue
+─────────────────────────────────────────────────────────────
+
+El controlador responde con `back()->with('documentos_success', 'Documentos
+actualizados correctamente.')` pero esa confirmación no se muestra.
+
+BUSCA (línea 115):
+
+const submitDocumentos = () => formDocs.post(route('perfil.documentos.subir'), { forceFormData: true });
+
+REEMPLAZA POR:
+
+const docsGuardados = ref(false);
+
+const submitDocumentos = () => {
+    errorArchivo.value = '';
+    docsGuardados.value = false;
+
+    formDocs.post(route('perfil.documentos.subir'), {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            docsGuardados.value = true;
+            formDocs.ine = null;
+            formDocs.csf = null;
+            setTimeout(() => { docsGuardados.value = false; }, 5000);
+        },
+        onError: (errors) => {
+            // Si el servidor rechaza el archivo (peso, formato), que se vea.
+            errorArchivo.value = errors.ine || errors.csf || errors.csf_fecha
+                || 'No se pudieron guardar los documentos. Revisa el peso y el formato de los archivos.';
+        },
+    });
+};
+
+Y en el template, junto al botón de guardar documentos (línea ~424), AÑADE la
+confirmación:
+
+                            <div class="flex justify-end items-center gap-3">
+                                <span v-if="docsGuardados" class="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                    ✓ Documentos guardados
+                                </span>
+                                <!-- aqui va el boton que ya existe -->
+                            </div>
+
+
+─────────────────────────────────────────────────────────────
+C4 — Indicador de carga con progreso real
+resources/js/Pages/Perfil/Show.vue
+─────────────────────────────────────────────────────────────
+
+Inertia expone `form.progress` durante la subida. Con archivos de varios MB
+y conexiones lentas, un porcentaje real tranquiliza mucho más que un texto
+fijo de "Guardando…".
+
+C4.1 — Botón de documentos. BUSCA (líneas 425-428):
+
+                                <button type="submit" :disabled="formDocs.processing"
+                                    class="px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors">
+                                    {{ formDocs.processing ? 'Guardando...' : 'Guardar documentos' }}
+                                </button>
+
+REEMPLAZA POR:
+
+                                <button type="submit" :disabled="formDocs.processing"
+                                    class="px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors inline-flex items-center gap-2">
+                                    <svg v-if="formDocs.processing" class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/>
+                                    </svg>
+                                    <span>
+                                        {{ formDocs.processing
+                                            ? (formDocs.progress ? `Subiendo ${formDocs.progress.percentage}%` : 'Guardando...')
+                                            : 'Guardar documentos' }}
+                                    </span>
+                                </button>
+
+C4.2 — Barra de progreso. AÑADE justo DEBAJO de ese botón:
+
+                            <div v-if="formDocs.processing && formDocs.progress" class="mt-3">
+                                <div class="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-guinda-700 rounded-full transition-all duration-200"
+                                        :style="`width:${formDocs.progress.percentage}%`" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    No cierres esta ventana hasta que termine.
+                                </p>
+                            </div>
+
+C4.3 — Lo mismo para el formulario del proveedor (fotos de perfil y de
+productos). Los botones de `formProveedor` ya tienen spinner
+(líneas ~512-518), pero no muestran el progreso. En su `<span>` de texto,
+sustituye el literal 'Guardando...' por:
+
+    {{ formProveedor.processing
+        ? (formProveedor.progress ? `Subiendo ${formProveedor.progress.percentage}%` : 'Guardando...')
+        : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}
+
+Y añade debajo de ese botón la misma barra de progreso de C4.2, cambiando
+`formDocs` por `formProveedor`.
+
+C4.4 — Modal de documentos del bazar (`TabEventos.vue:836-839`). Ese botón ya
+dice "Guardando documentos...". Añádele también el porcentaje:
+
+BUSCA:
+
+                        {{ docsForm.processing ? 'Guardando documentos...' : 'Guardar documentos' }}
+
+REEMPLAZA POR:
+
+                        {{ docsForm.processing
+                            ? (docsForm.progress ? `Subiendo ${docsForm.progress.percentage}%` : 'Guardando documentos...')
+                            : 'Guardar documentos' }}
+
+
+─────────────────────────────────────────────────────────────
+C5 — Explicar por qué el botón de registro no responde
+resources/js/Components/TabEventos.vue
+─────────────────────────────────────────────────────────────
+
+BUSCA (líneas 854-859):
+
+                    <button @click="tipoParaRegistro === 'expositor' ? confirmarRegistroBazar() : confirmarRegistro()"
+                        :disabled="!heLeidoConvocatoria || cargandoRegistro || (tipoParaRegistro === 'expositor' && !documentosCompletos)"
+                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors">
+                        <span v-if="cargandoRegistro">Enviando...</span>
+                        <span v-else>Confirmar registro</span>
+                    </button>
+
+REEMPLAZA POR:
+
+                    <button @click="tipoParaRegistro === 'expositor' ? confirmarRegistroBazar() : confirmarRegistro()"
+                        :disabled="!heLeidoConvocatoria || cargandoRegistro || (tipoParaRegistro === 'expositor' && !documentosCompletos)"
+                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors inline-flex items-center justify-center gap-2">
+                        <svg v-if="cargandoRegistro" class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/>
+                        </svg>
+                        <span>{{ cargandoRegistro ? 'Enviando...' : 'Confirmar registro' }}</span>
+                    </button>
+
+Y AÑADE JUSTO DEBAJO del `</div>` que cierra la fila de botones, el motivo por
+el que está bloqueado:
+
+                <p v-if="motivoBloqueo" class="mt-2.5 text-center text-xs text-amber-600 dark:text-amber-400">
+                    {{ motivoBloqueo }}
+                </p>
+
+Y en el `<script setup>`, AÑADE el computed:
+
+// Por que no se puede confirmar todavia. Un boton deshabilitado sin
+// explicacion se percibe como "hago clic y no pasa nada".
+const motivoBloqueo = computed(() => {
+    if (cargandoRegistro.value) return '';
+    if (!heLeidoConvocatoria.value) {
+        return '☝ Marca la casilla "He leído la convocatoria" para continuar.';
+    }
+    if (tipoParaRegistro.value === 'expositor' && !documentosCompletos.value) {
+        return 'Sube tu INE y tu CSF vigente para poder confirmar.';
+    }
+    return '';
+});
+
+
+─────────────────────────────────────────────────────────────
+C6 — Confirmación visible tras registrarse
+resources/js/Components/TabEventos.vue
+─────────────────────────────────────────────────────────────
+
+El registro funciona, pero el modal se cierra sin decir nada y la página no
+muestra el mensaje flash. Añadimos la confirmación en el propio componente,
+que es donde el usuario está mirando.
+
+C6.1 — AÑADE en el `<script setup>`:
+
+const avisoRegistro = ref('');
+
+C6.2 — BUSCA en `confirmarRegistro` (línea ~128):
+
+        onSuccess: () => {
+            modalConvocatoria.value = false;
+        },
+
+REEMPLAZA POR:
+
+        onSuccess: () => {
+            modalConvocatoria.value = false;
+            avisoRegistro.value = 'Tu solicitud quedó registrada y está en revisión. '
+                + 'Te avisaremos por correo cuando el equipo la apruebe.';
+            setTimeout(() => { avisoRegistro.value = ''; }, 10000);
+        },
+
+C6.3 — BUSCA en `confirmarRegistroBazar` (línea ~146):
+
+        onSuccess: () => { modalConvocatoria.value = false; },
+
+REEMPLAZA POR:
+
+        onSuccess: () => {
+            modalConvocatoria.value = false;
+            avisoRegistro.value = 'Recibimos tu solicitud de participación. '
+                + 'Está en revisión y te avisaremos del resultado por correo.';
+            setTimeout(() => { avisoRegistro.value = ''; }, 10000);
+        },
+
+C6.4 — En el template, AÑADE el aviso ARRIBA DEL TODO del componente, antes
+de la lista de eventos, para que se vea al cerrarse el modal:
+
+        <div v-if="avisoRegistro"
+            class="mb-5 flex items-start gap-3 p-4 bg-emerald-50 dark:bg-emerald-950/20
+                   border border-emerald-200 dark:border-emerald-800 rounded-2xl">
+            <svg class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div class="flex-1 text-sm text-emerald-800 dark:text-emerald-300">{{ avisoRegistro }}</div>
+            <button @click="avisoRegistro = ''" class="text-emerald-500 hover:text-emerald-700 text-lg leading-none">&times;</button>
+        </div>
+
+⚠ El estado de la tarjeta ("Pendiente de aprobación") ya se actualiza solo:
+   Inertia recarga las props al volver del POST. Si tras aplicar esto el aviso
+   aparece pero la tarjeta NO cambia, entonces sí hay un problema de props y
+   habría que revisarlo aparte — pero primero comprueba con el aviso puesto,
+   porque puede ser que siempre haya funcionado y nadie lo notara.
+
+
+─────────────────────────────────────────────────────────────
+C7 — ⚠ LÍMITES DE PHP: LA CAUSA DE RAÍZ DE LAS SUBIDAS
+─────────────────────────────────────────────────────────────
+
+Todo lo anterior hace que el fallo sea VISIBLE. Esto es lo que hace que
+DESAPAREZCA.
+
+Laravel solo ve el archivo después de que PHP lo aceptó. Si
+`upload_max_filesize` está por debajo del tamaño del archivo, no llega nunca.
+Y si se supera `post_max_size`, PHP descarta el cuerpo entero de la petición:
+Laravel recibe un POST vacío, no encuentra el token CSRF y responde
+**error 419 "Page Expired"** — que no tiene ninguna pinta de ser un problema
+de peso, y que en un modal puede verse simplemente como que no pasó nada.
+
+Una foto de celular moderno pesa fácilmente entre 4 y 12 MB. Si el límite del
+servidor está en 2M u 8M, esto explica perfectamente lo que te están
+reportando.
+
+PASO 1 — Mira los límites reales del PHP **web** (no el de consola, que puede
+diferir). Crea temporalmente `public/_info.php` con:
+
+    <?php phpinfo();
+
+Ábrelo en el navegador, anota `upload_max_filesize`, `post_max_size` y
+`memory_limit`, y **bórralo enseguida**: expone toda la configuración del
+servidor.
+
+PASO 2 — Valores necesarios:
+
+    upload_max_filesize = 12M
+    post_max_size       = 16M     (mayor que el anterior: incluye el archivo
+                                   MÁS el resto del formulario)
+    memory_limit        = 256M
+    max_execution_time  = 120
+
+PASO 3 — Subirlos en Hostinger:
+
+  VÍA A (preferida) — hPanel → Avanzado → Configuración de PHP → Opciones.
+
+  VÍA B — archivo `.user.ini` en la raíz del docroot con esos cuatro valores.
+
+      ⚠ NO uses `php_value` en el `.htaccess`: solo existe bajo mod_php y en
+         PHP-FPM devuelve error 500 en todo el sitio.
+      ⚠ `.user.ini` tarda hasta 5 minutos en tomar efecto. No concluyas que no
+         funciona antes de eso.
+      ⚠ Comprueba que no se sirva: el patrón `\.ini$` del blindaje ya lo cubre.
+
+            curl -s -o /dev/null -w "%{http_code}\n" https://impulsate.iyemyucatan.com/.user.ini
+            # debe dar 403 o 404
+
+PASO 4 — Revisa el log del servidor buscando rastros del problema:
+
+    tail -200 storage/logs/laravel.log | grep -i "419\|CSRF\|upload\|POST Content-Length"
+
+⚠ SI SUBES LOS LÍMITES DE PHP, plantéate subir también los de Laravel para las
+   fotos: hoy `ProveedorPerfilController` acepta `max:4096` (4 MB), lo que sigue
+   dejando fuera muchas fotos de celular. Subirlo a `max:8192` y actualizar
+   `MAX_FOTO_MB = 8` en C2.1 sería coherente. Decídelo tú: no lo doy por hecho
+   porque multiplica el consumo de disco.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+C1 — barra
+  □ La barra de "Completitud del perfil" ya no aparece
+  □ El resto de la página se ve bien, sin hueco raro
+  □ grep de pctComprador/pctProveedor devuelve 0 coincidencias
+
+C2/C3 — documentos y fotos
+  □ Cada input dice cuánto puede pesar el archivo
+  □ Elegir un archivo de 20 MB muestra el aviso rojo y limpia el input
+  □ Elegir uno válido no muestra ningún aviso
+  □ Si el servidor rechaza el archivo, el mensaje SE VE
+  □ Al guardar correctamente aparece "✓ Documentos guardados"
+  □ Lo mismo en las fotos de producto y en la foto de perfil
+
+C4 — carga
+  □ Al subir un archivo grande el botón muestra el porcentaje
+  □ La barra de progreso avanza
+  □ El botón queda deshabilitado mientras sube
+  □ Con conexión lenta se ve claramente que está trabajando
+
+C5/C6 — registro
+  □ Con la casilla sin marcar, debajo del botón dice qué falta
+  □ Al marcarla, el mensaje desaparece y el botón se activa
+  □ Al confirmar, el botón muestra spinner y "Enviando..."
+  □ Al terminar, aparece el aviso verde de solicitud registrada
+  □ La tarjeta del evento pasa a "Pendiente de aprobación"
+  □ Si el servidor devuelve error, se ve dentro del modal
+
+C7 — servidor
+  □ upload_max_filesize ≥ 12M y post_max_size ≥ 16M confirmados en phpinfo
+  □ Subir una foto de 9 MB funciona
+  □ Ya no aparece el error 419 al subir archivos grandes
+  □ _info.php borrado del servidor
+
+REGRESIÓN
+  □ El modal de documentos del bazar sigue funcionando igual
+  □ Guardar el perfil sin tocar archivos sigue funcionando
+  □ Sin errores en la consola del navegador
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS TOCADOS
+═══════════════════════════════════════════════════════════════════════════
+
+  resources/js/Pages/Perfil/Show.vue          (C1, C2, C3, C4.1-C4.3)
+  resources/js/Components/TabEventos.vue      (C4.4, C5, C6)
+
+  En el SERVIDOR (no en el repo):
+  .user.ini  o  hPanel → Configuración de PHP  (C7)
+
+⚠ TODO ES VUE → npm run build y subir public/build/ completo.
+   No hay migraciones ni cambios de backend en este documento.
+
+
+COMANDOS EN EL SERVIDOR
+========================
+
+  php artisan down
+  # subir public/build/ y los dos .vue compilados
+  php artisan optimize:clear
+  php artisan up
+
+
+═══════════════════════════════════════════════════════════════════════════
+ORDEN SUGERIDO
+═══════════════════════════════════════════════════════════════════════════
+
+  1. C7 primero (los límites de PHP). Es lo único que arregla la causa;
+     todo lo demás hace visible el síntoma.
+  2. C5 y C6: son cinco minutos y resuelven el reporte del registro.
+  3. C2, C3 y C4: la tanda de subidas.
+  4. C1 al final: es puramente cosmético y no urge.

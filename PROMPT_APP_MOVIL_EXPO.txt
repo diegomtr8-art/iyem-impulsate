@@ -1,0 +1,645 @@
+═══════════════════════════════════════════════════════════════════════════
+IMPÚLSATE — APP MÓVIL EN REACT NATIVE (EXPO)
+Del cero a verla en Expo Go, con la identidad real de la marca
+═══════════════════════════════════════════════════════════════════════════
+
+⚠ ESTE DOCUMENTO REEMPLAZA a PROMPT_API_MOVIL_FASE_A.txt.
+   Aquel empezaba por la API; éste empieza por la interfaz, porque lo que
+   quieres es VERLA funcionando en Expo Go cuanto antes. La API sigue estando,
+   en la Parte 2.
+
+
+CÓMO ESTÁ ORGANIZADO Y POR QUÉ
+==============================
+
+  PARTE 1 — La app, con datos simulados        → se ve en Expo Go HOY
+  PARTE 2 — La API en htdocs/citas             → el trabajo de fondo
+  PARTE 3 — Conectar las dos                   → y quitar los datos simulados
+
+El orden importa. Construir la interfaz primero contra datos falsos te deja
+ver, tocar y corregir el diseño en el teléfono desde el primer día, sin
+esperar semanas a que exista la API. Y cuando la API llegue, cambiar el origen
+de los datos es un trabajo de una tarde si la app está bien montada.
+
+⚠ DOS COSAS QUE EXPO GO **NO** PUEDE HACER, y conviene saberlas ya:
+
+   1. **Notificaciones push remotas.** Desde SDK 53, Expo Go ya no las
+      soporta. Necesitas un *development build* (`npx expo run:android`).
+      Todo lo demás de este documento sí funciona en Expo Go.
+
+   2. **Alcanzar tu XAMPP local por `localhost`.** El teléfono no comparte
+      `localhost` con tu computadora. Está resuelto en la Parte 3.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE 1 — LA APP
+═══════════════════════════════════════════════════════════════════════════
+
+⚠ La app NO vive en htdocs/citas. Es un proyecto aparte, con su propia
+   carpeta y su propio repositorio. Sugerencia: `C:\proyectos\impulsate-app`.
+
+
+─────────────────────────────────────────────────────────────
+1.1 — Crear el proyecto
+─────────────────────────────────────────────────────────────
+
+    npx create-expo-app@latest impulsate-app
+    cd impulsate-app
+
+    # Navegación y base
+    npx expo install expo-router react-native-safe-area-context react-native-screens
+    npx expo install expo-linking expo-constants expo-status-bar
+
+    # Lo que hace que se vea bien
+    npx expo install react-native-reanimated react-native-gesture-handler
+    npx expo install expo-linear-gradient expo-blur expo-haptics expo-image
+    npx expo install @expo-google-fonts/figtree expo-font expo-splash-screen
+
+    # Datos y seguridad
+    npx expo install expo-secure-store
+    npm install @tanstack/react-query axios
+    npm install lucide-react-native react-native-svg
+
+    # Para más adelante (cámara de QR, subir documentos)
+    npx expo install expo-image-picker expo-camera expo-document-picker
+
+⚠ Usa `npx expo install`, NO `npm install`, para todo lo que empiece por
+   `expo-` o sea un módulo nativo: instala la versión compatible con tu SDK.
+   Mezclar versiones es la causa número uno de que Expo Go falle al abrir.
+
+Usa **expo-router** (navegación por archivos). Es el estándar actual de Expo
+y evita el montaje manual de react-navigation.
+
+
+─────────────────────────────────────────────────────────────
+1.2 — El sistema de diseño
+Esto es lo que hace que se vea "de verdad" y no a plantilla
+─────────────────────────────────────────────────────────────
+
+CREA `theme/index.ts` con la identidad EXACTA del sitio web. Estos valores
+salen de `tailwind.config.js` y de las plantillas de correo del proyecto:
+no son inventados, son la marca.
+
+export const colors = {
+  // Guinda: la paleta real de Impulsate
+  guinda: {
+    50:'#fef2f4', 100:'#fde6ea', 200:'#fbc4cd', 300:'#f89aa9',
+    400:'#f36178', 500:'#eb2d4e', 600:'#c8113b', 700:'#a80e31',
+    800:'#8b1028', 900:'#710d21', 950:'#45060f',
+  },
+  // Neutros calidos: gris frio junto al guinda se ve barato
+  neutral: {
+    0:'#ffffff', 50:'#fafaf9', 100:'#f5f5f4', 200:'#e7e5e4',
+    300:'#d6d3d1', 400:'#a8a29e', 500:'#78716c', 600:'#57534e',
+    700:'#44403c', 800:'#292524', 900:'#1c1917', 950:'#0c0a09',
+  },
+  exito:   '#059669',
+  aviso:   '#d97706',
+  error:   '#dc2626',
+  info:    '#0284c7',
+};
+
+// El degradado de los encabezados: el mismo de los correos del sistema
+export const gradienteMarca = ['#8b1028', '#45060f'];
+
+export const espacio = { xs:4, sm:8, md:12, lg:16, xl:24, xxl:32, xxxl:48 };
+
+export const radio = { sm:8, md:12, lg:16, xl:20, xxl:28, full:9999 };
+
+export const tipografia = {
+  display: { fontFamily:'Figtree_800ExtraBold', fontSize:32, lineHeight:38, letterSpacing:-0.5 },
+  titulo:  { fontFamily:'Figtree_700Bold',      fontSize:22, lineHeight:28, letterSpacing:-0.3 },
+  seccion: { fontFamily:'Figtree_600SemiBold',  fontSize:17, lineHeight:24 },
+  cuerpo:  { fontFamily:'Figtree_400Regular',   fontSize:15, lineHeight:22 },
+  apoyo:   { fontFamily:'Figtree_400Regular',   fontSize:13, lineHeight:18 },
+  etiqueta:{ fontFamily:'Figtree_600SemiBold',  fontSize:11, lineHeight:14, letterSpacing:0.8, textTransform:'uppercase' },
+};
+
+// Sombras suaves. En Android hace falta elevation ademas de shadow*
+export const sombra = {
+  card: {
+    shadowColor:'#1c1917', shadowOffset:{width:0,height:2},
+    shadowOpacity:0.06, shadowRadius:12, elevation:2,
+  },
+  flotante: {
+    shadowColor:'#1c1917', shadowOffset:{width:0,height:8},
+    shadowOpacity:0.12, shadowRadius:24, elevation:8,
+  },
+};
+
+CARGA LA TIPOGRAFÍA en `app/_layout.tsx`:
+
+import { useFonts, Figtree_400Regular, Figtree_600SemiBold,
+         Figtree_700Bold, Figtree_800ExtraBold } from '@expo-google-fonts/figtree';
+import * as SplashScreen from 'expo-splash-screen';
+
+SplashScreen.preventAutoHideAsync();
+
+// dentro del componente:
+const [fuentesListas] = useFonts({
+  Figtree_400Regular, Figtree_600SemiBold, Figtree_700Bold, Figtree_800ExtraBold,
+});
+useEffect(() => { if (fuentesListas) SplashScreen.hideAsync(); }, [fuentesListas]);
+if (!fuentesListas) return null;
+
+⚠ Figtree es la MISMA fuente del sitio web. Que la app y la web compartan
+   tipografía es la mitad de la sensación de "es la misma marca".
+
+
+─────────────────────────────────────────────────────────────
+1.3 — Las nueve reglas que separan una app bonita de una fea
+─────────────────────────────────────────────────────────────
+
+Pedías que se viera hermosa. Estas son las decisiones concretas que lo logran.
+Aplícalas en TODAS las pantallas, no solo en la primera.
+
+**1. Respeta el notch y la barra de gestos.**
+   Envuelve todo en `SafeAreaView` de `react-native-safe-area-context` (NO el
+   de react-native, que está obsoleto). Contenido pegado al borde superior es
+   la señal más rápida de "esto es una web metida en una app".
+
+**2. Zona táctil mínima de 44×44.**
+   Un icono de 20px necesita `hitSlop={{top:12,bottom:12,left:12,right:12}}`.
+   Botones con `paddingVertical: 14` como piso.
+
+**3. Esqueletos, no ruedas girando.**
+   Mientras carga, muestra cajas grises con la forma del contenido que va a
+   llegar, animadas con un pulso suave. Se percibe hasta un 30% más rápido que
+   un spinner, porque el ojo ya sabe qué esperar.
+
+   Crea `components/Skeleton.tsx` con `Animated.View` y un loop de opacidad
+   entre 0.4 y 0.8.
+
+**4. Entrada escalonada de las listas.**
+   Con reanimated, cada tarjeta entra con un retraso de 60 ms sobre la
+   anterior:
+
+       import Animated, { FadeInDown } from 'react-native-reanimated';
+       <Animated.View entering={FadeInDown.delay(indice * 60).duration(320)}>
+
+   Es sutil y cambia por completo la sensación de calidad.
+
+**5. Vibración en las acciones que importan.**
+
+       import * as Haptics from 'expo-haptics';
+       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);   // al tocar
+       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); // al confirmar
+
+   Úsalo al confirmar un registro, al agendar una cita, al hacer check-in.
+   NO en cada toque: pierde sentido.
+
+**6. Estados vacíos con propósito.**
+   Nunca una pantalla en blanco. Un icono grande y suave, una frase que
+   explique qué pasa, y un botón con la acción siguiente.
+   Mal: "No hay datos". Bien: "Todavía no tienes citas agendadas" + botón
+   "Explorar proveedores".
+
+**7. Botones con tres estados visibles.**
+   Normal, presionado (`Pressable` con `opacity: 0.85` o escala 0.97), y
+   cargando (spinner dentro del botón, texto que cambia, botón deshabilitado).
+   Un botón que no reacciona al tocarlo se siente roto — es justo el problema
+   que ya tienes reportado en la web.
+
+**8. Jerarquía por peso, no por tamaño.**
+   Tres tamaños de texto bastan. La jerarquía la dan el grosor de la fuente y
+   el color: `neutral.900` para lo importante, `neutral.500` para lo
+   secundario, `neutral.400` para lo terciario.
+
+**9. Modo oscuro desde el principio.**
+   El sitio web ya lo tiene, así que los usuarios lo esperarán. Usa
+   `useColorScheme()` y define los colores como pares claro/oscuro en el tema.
+   Añadirlo después obliga a repasar todas las pantallas.
+
+
+─────────────────────────────────────────────────────────────
+1.4 — Estructura de archivos y navegación
+─────────────────────────────────────────────────────────────
+
+app/
+  _layout.tsx                  fuentes, react-query, safe area, tema
+  (auth)/
+    login.tsx
+    _layout.tsx
+  (app)/
+    _layout.tsx                ← pestañas inferiores
+    index.tsx                  Inicio
+    eventos/
+      index.tsx                lista de eventos
+      [id].tsx                 detalle del evento
+    agenda.tsx                 mis citas
+    proveedores/
+      index.tsx
+      [id].tsx
+    perfil.tsx
+components/
+  Boton.tsx  Tarjeta.tsx  Insignia.tsx  Skeleton.tsx
+  EstadoVacio.tsx  EncabezadoDegradado.tsx  TarjetaEvento.tsx
+theme/index.ts
+lib/
+  api.ts  auth.ts  consultas.ts
+datos-simulados/
+  eventos.ts  citas.ts  proveedores.ts
+
+LAS PESTAÑAS INFERIORES. Cuatro, cinco como máximo:
+
+    Inicio · Eventos · Agenda · Perfil
+
+Configúralas en `app/(app)/_layout.tsx`:
+
+  • Iconos de `lucide-react-native` (trazo fino, se ven mejor que los rellenos)
+  • Activo en `colors.guinda[800]`, inactivo en `colors.neutral[400]`
+  • Etiquetas de 11px en `Figtree_600SemiBold`
+  • Fondo con `expo-blur` (`intensity={80}`) si quieres el efecto translúcido
+    de iOS; en Android usa un color sólido, el blur ahí es caro
+
+⚠ NO metas el panel de administración en las pestañas. Torre de control,
+   métricas y exportaciones son trabajo de escritorio: mucho esfuerzo, poco
+   uso. Si algún día hace falta, va como sección aparte, no como pestaña.
+
+
+─────────────────────────────────────────────────────────────
+1.5 — Las cinco pantallas del primer corte
+─────────────────────────────────────────────────────────────
+
+Constrúyelas con los datos de `datos-simulados/`. El objetivo de la Parte 1
+es verlas en el teléfono y ajustar el diseño, no que funcionen de verdad.
+
+**LOGIN**
+  Fondo con degradado de marca (`expo-linear-gradient`, los dos colores de
+  `gradienteMarca`), logo centrado arriba, tarjeta blanca flotante con los
+  campos. Botón grande. Enlace de "¿Olvidaste tu contraseña?" discreto abajo.
+  En Android, `KeyboardAvoidingView` con `behavior="height"`; en iOS, `padding`.
+
+**INICIO**
+  Saludo con el nombre ("Hola, Diego"), y debajo tarjetas de resumen:
+  próxima cita, estado de registro en el evento activo, notificaciones sin
+  leer. Cada tarjeta lleva a su sección. Pull-to-refresh con
+  `RefreshControl` tintado en guinda.
+
+**EVENTOS**
+  La lista que ya existe en el sidebar web, pero como tarjetas grandes:
+  imagen del evento arriba con degradado oscuro encima para que el texto se
+  lea, insignia de estado (Activo / Próximamente / Finalizado), nombre, fecha
+  y el botón que corresponda al estado del usuario — la misma lógica que ya
+  definimos para la web: *Regístrate*, *En revisión*, *Ver proveedores* o
+  *Volver a postularme*.
+
+**DETALLE DE EVENTO**
+  Imagen de cabecera que se encoge al hacer scroll (`Animated.ScrollView` +
+  `useAnimatedScrollHandler`). Debajo: descripción, las cuatro fases del
+  evento como una línea de tiempo horizontal, y el botón de registro fijo
+  abajo. El registro abre una hoja inferior con la convocatoria y la casilla
+  de confirmación.
+
+**AGENDA**
+  Citas agrupadas por día, con encabezados pegajosos (`SectionList` con
+  `stickySectionHeadersEnabled`). Cada cita: hora grande a la izquierda,
+  proveedor y estado a la derecha, borde izquierdo de color según el estado.
+  Estado vacío con botón a Proveedores.
+
+⚠ Cuando estas cinco se vean bien en el teléfono, PARA. No sigas añadiendo
+   pantallas hasta conectar la API: es la parte donde se descubren los
+   problemas reales.
+
+
+─────────────────────────────────────────────────────────────
+1.6 — Verlo en Expo Go
+─────────────────────────────────────────────────────────────
+
+    npx expo start
+
+Escanea el QR con la cámara (iOS) o desde la app Expo Go (Android).
+Tu teléfono y tu computadora deben estar en la MISMA red Wi-Fi.
+
+Si la red los aísla (común en oficinas y redes de invitados):
+
+    npx expo start --tunnel
+
+Más lento, pero funciona desde cualquier red.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE 2 — LA API (esto sí va en htdocs/citas)
+═══════════════════════════════════════════════════════════════════════════
+
+Contexto verificado del proyecto:
+  • `laravel/sanctum` instalado y `HasApiTokens` ya está en `app/Models/User.php:17`
+  • La tabla `personal_access_tokens` ya existe
+  • `routes/api.php` tiene hoy **6 rutas**; el negocio vive en **177 rutas web**
+    que devuelven Inertia, no JSON
+
+
+⚠⚠ 2.1 — EL ERROR QUE HAY QUE EVITAR
+=====================================
+
+La tentación es escribir controladores de API que repitan la lógica de los
+web. **No lo hagas.**
+
+El proyecto YA sufre esto: la reserva de citas está copiada en tres sitios
+con **cuatro fórmulas distintas de duración**:
+
+    CitaPublicaController:136-171       → duración del evento
+    CitaAdminController:110-143         → duración del request
+    RestauranteroCitasController:118    → duración del servicio, sin transacción
+
+Ya divergieron. Una cuarta copia en la API significa que, el día del evento,
+tendrás citas con reglas distintas según desde dónde se agendaron.
+
+**Antes de exponer nada, extrae la lógica a servicios:**
+
+  `app/Services/RegistroEventoService.php`
+      registrarComprador / registrarProveedor / registrarExpositor
+      Mueve aquí lo de `EventoRegistroController`. Que lance una
+      `ReglaDeNegocioException` propia, no `ValidationException` (que es HTTP).
+
+  `app/Services/AgendaCitaService.php`
+      agendar(comprador, proveedor, evento, inicio, duracion?, opciones?)
+      UNA sola regla de duración, el cupo excluyendo canceladas, el colchón
+      de 10 minutos **a ambos lados** (hoy solo se aplica al comprador),
+      `DB::transaction` + `lockForUpdate`.
+      Llámalo desde los tres sitios que hoy tienen su copia.
+
+      ⚠ `confirmarToken` hoy reescribe horarios sin transacción ni
+         comprobación de solapes. Al pasar por el servicio, ese agujero se
+         cierra solo.
+
+Después, los controladores web deben quedar en ~15 líneas por método, y el
+comportamiento del sitio debe ser EXACTAMENTE el mismo. Si algo cambia, es un
+error de la extracción.
+
+
+2.2 — Estructura
+
+  • Todo bajo `/api/v1`. Sin excepciones: cuando la app esté en una tienda,
+    habrá usuarios con versiones viejas durante meses.
+  • NO toques las 6 rutas existentes: `/api/notificaciones` la usa el web con
+    polling cada 30 segundos.
+  • Controladores en `app/Http/Controllers/Api/V1/`.
+  • API Resources en `app/Http/Resources/`. No es burocracia: el proyecto ya
+    tuvo una fuga por serializar de más (`ine_path` y `csf_path` viajaban al
+    frontend sin necesidad). El Resource es el único sitio donde decides qué
+    sale, y se revisa de un vistazo.
+
+    En `UserResource`, NUNCA: `ine_path`, `csf_path`, `password`,
+    `remember_token`, `two_factor_*`. Para documentos, booleanos
+    (`tiene_ine`, `tiene_csf`) y URL firmada temporal si hay que verlos.
+
+  • Forma de las respuestas, siempre igual:
+
+        { "data": {...}, "message": "opcional" }
+        { "data": [...], "meta": { "current_page":1, "last_page":4 } }
+        { "message": "...", "errors": { "campo": ["..."] } }
+
+
+2.3 — Autenticación
+
+`app/Http/Controllers/Api/V1/AuthController.php`:
+
+    POST /api/v1/auth/login          email, password, device_name
+                                     → { token, user, onboarding }
+                                     throttle:5,1
+    POST /api/v1/auth/logout         (auth:sanctum)
+    GET  /api/v1/auth/me             (auth:sanctum)
+    POST /api/v1/auth/logout-todos   cierra sesión en todos los dispositivos
+
+⚠ LAS RUTAS DE API NO DEBEN PASAR por `EnsureAvisoAceptado`,
+   `EnsureRolSeleccionado` ni `EnsureProfileComplete`. Esos middlewares
+   devuelven **redirecciones HTTP**, que en una app nativa no significan nada.
+   Comprueba en `bootstrap/app.php` que estén solo en el grupo `web`.
+
+   En su lugar, el login devuelve el estado como DATO y la app decide:
+
+       "onboarding": {
+         "aviso_aceptado": true, "rol_seleccionado": true,
+         "perfil_completo": false,
+         "siguiente_paso": "completar_perfil",
+         "rol_activo": "comprador"
+       }
+
+   `siguiente_paso` ∈ aceptar_aviso | seleccionar_rol | completar_perfil | ninguno.
+   Que lo decida el servidor evita que la app reimplemente el orden mal.
+
+⚠ Caducidad: `config/sanctum.php` tiene `'expiration' => null` (los tokens no
+   caducan nunca). Para teléfonos que se pierden, pon `60 * 24 * 30`.
+
+
+2.4 — Primer corte vertical
+
+No construyas 60 endpoints de golpe. Haz UNO completo y el resto se vuelve
+mecánico:
+
+    GET  /v1/eventos
+    GET  /v1/eventos/{evento}
+    POST /v1/eventos/{evento}/registro     body: { tipo }
+
+`EventoResource` debe incluir lo que la app necesita para pintar la tarjeta,
+**con las decisiones ya tomadas por el servidor**:
+
+    mi_registro: { comprador: 'pendiente'|null, proveedor: ..., expositor: ... },
+    puede_registrarse: true|false,
+    motivo_bloqueo: "El registro de compradores abre el 25 de agosto"
+
+⚠ Si la app deduce `puede_registrarse` por su cuenta, tendrás dos versiones
+   de las reglas de ventanas — el mismo problema de las cuatro duraciones,
+   pero ahora entre dos lenguajes.
+
+
+2.5 — Seguridad
+
+  • **Policies.** La auditoría lleva tres rondas señalando que el proyecto
+    tiene cero Policies. En la web lo tapan los middlewares de rol; una API
+    sin Policies es mucho peor. Créalas ANTES de exponer endpoints con
+    `{cita}`, `{user}` o `{evento}`.
+  • **CORS.** En `config/cors.php`, NO uses `allowed_origins: ['*']` junto con
+    `supports_credentials: true`. Con tokens Bearer no necesitas credenciales:
+    déjalo en `false` y lista los orígenes.
+  • **Rate limit por token**, no solo por IP.
+  • **Subida de archivos**: una foto de teléfono pesa 4–12 MB. Aplican los
+    límites de PHP que ya tienes pendientes de revisar (`upload_max_filesize`,
+    `post_max_size`). Si la app sube fotos, es requisito.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PARTE 3 — CONECTAR
+═══════════════════════════════════════════════════════════════════════════
+
+3.1 — ⚠ EL PROBLEMA DE `localhost` CON EXPO GO
+
+El teléfono NO comparte `localhost` con tu computadora. `http://localhost/citas`
+desde la app apunta al propio teléfono y falla siempre. Tres salidas:
+
+**OPCIÓN A (la más simple para empezar) — apunta a producción**
+
+    const API_URL = 'https://impulsate.iyemyucatan.com/api/v1';
+
+    Ventaja: HTTPS real, sin configurar nada, funciona desde cualquier red.
+    Desventaja: pruebas contra datos reales. Crea usuarios de prueba.
+
+**OPCIÓN B — tu XAMPP por IP de la red local**
+
+    1. En Windows: `ipconfig` → anota la IPv4 (ej. 192.168.1.50)
+    2. API_URL = 'http://192.168.1.50/citas/api/v1'
+    3. XAMPP debe escuchar en la red, no solo en 127.0.0.1
+    4. Abre el puerto 80 en el Firewall de Windows para Apache
+    5. Teléfono y PC en la MISMA Wi-Fi
+
+    ⚠ Android bloquea HTTP sin cifrar. En Expo Go de desarrollo funciona,
+       pero si luego haces un build necesitarás `usesCleartextTraffic` en
+       `app.json` — o mejor, HTTPS.
+
+**OPCIÓN C — túnel a tu XAMPP**
+
+    npx localtunnel --port 80      (o ngrok)
+
+    Te da una URL HTTPS pública hacia tu máquina. Útil para probar desde
+    fuera de la oficina.
+
+⚠ Pon la URL en `app.json` bajo `extra`, y léela con `expo-constants`. No la
+   escribas a mano en cada archivo: cambiarás de entorno muchas veces.
+
+
+3.2 — El cliente HTTP
+
+`lib/api.ts` — UN solo cliente axios, con interceptores. Nada de `fetch`
+suelto por las pantallas:
+
+import axios from 'axios';
+import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
+
+export const api = axios.create({
+  baseURL: Constants.expoConfig?.extra?.apiUrl,
+  timeout: 15000,
+  headers: { Accept: 'application/json' },
+});
+
+api.interceptors.request.use(async (config) => {
+  const token = await SecureStore.getItemAsync('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (r) => r,
+  async (error) => {
+    if (error.response?.status === 401) {
+      await SecureStore.deleteItemAsync('token');
+      // redirigir al login
+    }
+    return Promise.reject(error);
+  }
+);
+
+⚠ El token va en `expo-secure-store` (llavero del sistema), NUNCA en
+   AsyncStorage, que es texto plano legible en un teléfono con root.
+
+⚠ El header `Accept: application/json` no es opcional: sin él, Laravel puede
+   responder con redirecciones HTML en vez de errores JSON.
+
+
+3.3 — Estado del servidor con React Query
+
+Envuelve la app en `QueryClientProvider` en `app/_layout.tsx`. Después, cada
+pantalla usa `useQuery` y `useMutation`. Te da caché, reintentos,
+pull-to-refresh y estados de carga sin escribirlos a mano.
+
+Sustituye los `datos-simulados/` pantalla por pantalla, no de golpe: así
+siempre tienes algo funcionando.
+
+
+3.4 — La app NO reimplementa reglas de negocio
+
+Si necesita saber si alguien puede registrarse, lo pregunta a la API
+(`puede_registrarse`, `motivo_bloqueo`). En cuanto empieces a copiar lógica a
+React Native, tendrás el problema de las cuatro duraciones entre dos
+lenguajes distintos.
+
+
+═══════════════════════════════════════════════════════════════════════════
+DESPUÉS DEL PRIMER CORTE
+═══════════════════════════════════════════════════════════════════════════
+
+En este orden:
+
+  B — El día del evento (donde una app nativa gana de verdad)
+      Mi agenda del día · check-in con cámara QR · asistencia para el staff
+      Es lo que conecta con tu app de Asistencia actual.
+
+  C — Perfil y documentos
+      Ver y editar perfil · subir INE/CSF con la cámara
+
+  D — Citas y directorio
+      Proveedores con filtros · ficha · agendar · cancelar
+
+  E — Notificaciones push
+      ⚠ Requiere development build (no Expo Go) Y que la cola de Laravel
+         funcione. Hoy hay 14 Mailables encolados y ningún `queue:work` en el
+         scheduler — está en el informe de auditoría. Sin cola, las push
+         tampoco salen.
+
+  F — Administración
+      Mi recomendación sigue siendo dejarla fuera de la app.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+PARTE 1 — la app en Expo Go
+  □ Abre en Expo Go sin errores de versión de módulos
+  □ Las fuentes Figtree cargan (si no, el texto se ve con la fuente del sistema)
+  □ El contenido respeta el notch y la barra inferior
+  □ Las pestañas cambian de color al seleccionarse
+  □ Las listas entran escalonadas, no de golpe
+  □ Los esqueletos aparecen mientras "carga"
+  □ Los botones reaccionan al presionarlos
+  □ Los estados vacíos tienen icono, texto y acción
+  □ Se ve bien en un teléfono pequeño y en uno grande
+  □ El modo oscuro no deja texto ilegible
+
+PARTE 2 — la API
+  □ Registrarse a un evento DESDE LA WEB sigue funcionando igual que antes
+  □ Agendar una cita desde el directorio sigue funcionando igual
+  □ La duración de la cita es la misma por los tres caminos
+  □ POST /api/v1/auth/login devuelve token
+  □ Sin token, la API devuelve 401 en JSON, NO una redirección HTML
+  □ Seis intentos de login seguidos devuelven 429
+  □ Ningún endpoint devuelve `ine_path` ni `csf_path`
+  □ Un usuario no puede leer datos de otro cambiando el id de la URL
+
+PARTE 3 — conexión
+  □ La app alcanza la API desde el teléfono
+  □ El login guarda el token en SecureStore
+  □ Cerrar y reabrir la app mantiene la sesión
+  □ Un 401 devuelve al login automáticamente
+  □ El registro hecho desde la app aparece en el panel de admin
+  □ Sin conexión, la app muestra un mensaje claro y no se queda colgada
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS
+═══════════════════════════════════════════════════════════════════════════
+
+PROYECTO NUEVO — impulsate-app/ (fuera de htdocs)
+  todo lo de la Parte 1
+
+EN htdocs/citas — NUEVOS
+  app/Services/RegistroEventoService.php
+  app/Services/AgendaCitaService.php
+  app/Exceptions/ReglaDeNegocioException.php
+  app/Http/Controllers/Api/V1/AuthController.php
+  app/Http/Controllers/Api/V1/EventoController.php
+  app/Http/Resources/UserResource.php
+  app/Http/Resources/EventoResource.php
+  app/Policies/CitaPolicy.php · EventoPolicy.php · UserPolicy.php
+
+EN htdocs/citas — MODIFICADOS
+  routes/api.php
+  config/sanctum.php · config/cors.php
+  bootstrap/app.php
+  app/Http/Controllers/EventoRegistroController.php      (adelgazar)
+  app/Http/Controllers/CitaPublicaController.php         (usar el servicio)
+  app/Http/Controllers/Admin/CitaAdminController.php     (usar el servicio)
+  app/Http/Controllers/RestauranteroCitasController.php  (usar el servicio)
+
+No hay cambios de frontend web ni migraciones.

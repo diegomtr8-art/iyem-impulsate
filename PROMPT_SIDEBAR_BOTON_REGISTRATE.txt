@@ -1,0 +1,428 @@
+═══════════════════════════════════════════════════════════════════════════
+TIRA DE EVENTOS — BOTÓN "REGÍSTRATE" EN LOS ENCUENTROS DE NEGOCIOS
+Conecta y GOmart deben dejar registrarse desde la tarjeta, igual que ExpoFeria
+═══════════════════════════════════════════════════════════════════════════
+
+RESUMEN DE CAMBIOS
+==================
+  1. HandleInertiaRequests: añadir el estado de registro a `eventosSidebar`
+  2. EventosSidebar.vue: botón que cambia según el estado (2 bloques)
+  3. TabEventos.vue: que el modal se abra en el evento correcto y con el rol correcto
+
+
+DIAGNÓSTICO — POR QUÉ HOY NO FUNCIONA
+=====================================
+
+La tira de eventos (`EventosSidebar.vue`) decide el botón así:
+
+    tipo_evento === 'bazar_exposicion'  →  "Regístrate"
+    cualquier otro                      →  "Ver Proveedores"
+
+Por eso ExpoFeria (bazar) sí ofrece registro y Conecta y GOmart no.
+
+Pero hay DOS problemas más de fondo, y si solo se cambia la etiqueta del botón
+el registro seguirá sin funcionar bien:
+
+**Problema 1 — el enlace no dice a qué evento.**
+El botón del bazar apunta a `route('user.dashboard', { tab: 'eventos', registrar: 1 })`.
+No lleva el id del evento. Con un solo evento activo daba igual; con Conecta y
+GOmart activos a la vez, el modal se abriría siempre en el primero de la lista,
+sin importar en cuál hizo clic el usuario.
+
+**Problema 2 — el auto-abrir del modal solo contempla el bazar.**
+`TabEventos.vue:78-89`:
+
+    onMounted(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('registrar') !== '1') return;
+
+        if (eventoActivo.value?.tipo_evento === 'bazar_exposicion' && !eventoActivo.value.mi_registro?.expositor) {
+            abrirModalRegistro(eventoActivo.value, 'expositor');
+        }
+        ...
+    });
+
+Está escrito solo para `'expositor'`. Para un encuentro de negocios hace falta
+decidir entre `'comprador'` y `'proveedor'`, que son dos rutas distintas.
+
+**Problema 3 — el prop compartido no trae el estado de registro.**
+`HandleInertiaRequests.php:87-97` construye `eventosSidebar` con solo:
+`id, nombre, sector_economico, activa, descripcion, fecha_hora_inicio,
+fecha_hora_fin, tipo_evento, imagen_url`.
+
+Sin el estado de inscripción no se puede saber si mostrar "Regístrate" o
+"Ver Proveedores". Hay que añadirlo.
+
+⚠ NOTA: `registradoEnEvento` (línea 98) ya existe pero NO sirve aquí: solo
+   consulta `Evento::activo()`, un único evento. Déjalo como está; lo usan
+   otras partes.
+
+⚠ DÓNDE SE USA la tira: solo en `Pages/User/Dashboard.vue` y
+   `Pages/Restaurantero/Panel.vue`, ambas autenticadas. No hay que preocuparse
+   por usuarios sin sesión.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 1 — app/Http/Middleware/HandleInertiaRequests.php
+Añadir el estado de registro a cada evento de la tira
+─────────────────────────────────────────────────────────────
+
+BUSCA:
+
+            'eventosSidebar' => fn () => Evento::orderByDesc('activa')
+                ->orderByDesc('fecha_hora_inicio')
+                ->limit(6)
+                ->get()
+                ->map(fn ($e) => array_merge(
+                    $e->only([
+                        'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
+                        'fecha_hora_inicio', 'fecha_hora_fin', 'tipo_evento',
+                    ]),
+                    ['imagen_url' => $e->imagen_url]
+                )),
+
+REEMPLÁZALO POR:
+
+            'eventosSidebar' => function () use ($request) {
+                $eventos = Evento::orderByDesc('activa')
+                    ->orderByDesc('fecha_hora_inicio')
+                    ->limit(6)
+                    ->get();
+
+                // Estado de inscripcion del usuario en esos eventos, en UNA sola
+                // consulta. Sin esto la tira no puede distinguir entre "Registrate"
+                // y "Ver Proveedores".
+                $registros = collect();
+                if ($request->user() && $eventos->isNotEmpty()) {
+                    $registros = DB::table('evento_usuario')
+                        ->whereIn('evento_id', $eventos->pluck('id'))
+                        ->where('user_id', $request->user()->id)
+                        ->get()
+                        ->groupBy('evento_id');
+                }
+
+                return $eventos->map(function ($e) use ($registros) {
+                    $delEvento = $registros->get($e->id, collect())->keyBy('tipo');
+
+                    return array_merge(
+                        $e->only([
+                            'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
+                            'fecha_hora_inicio', 'fecha_hora_fin', 'tipo_evento',
+                        ]),
+                        [
+                            'imagen_url'  => $e->imagen_url,
+                            'mi_registro' => [
+                                'comprador' => optional($delEvento->get('comprador'))->estado,
+                                'proveedor' => optional($delEvento->get('proveedor'))->estado,
+                                'expositor' => optional($delEvento->get('expositor'))->estado,
+                            ],
+                        ]
+                    );
+                });
+            },
+
+⚠ `DB` ya está importado en este archivo (lo usa `registradoEnEvento`).
+   Si tu versión no lo tuviera, añade `use Illuminate\Support\Facades\DB;`.
+
+⚠ Cada valor es el ESTADO en texto (`'pendiente'`, `'aprobado'`, `'rechazado'`)
+   o `null` si no hay inscripción. No es un booleano.
+
+⚠ Es una consulta más por petición, pero es una sola para los 6 eventos, no
+   una por evento. Y `eventosSidebar` es un closure: Inertia solo lo evalúa
+   cuando la página realmente pide ese prop.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 2 — resources/js/Components/EventosSidebar.vue
+─────────────────────────────────────────────────────────────
+
+2.1 — Helpers en el <script setup>
+
+AÑADE después de `const collapsed = ref(false);`:
+
+const esBazar = (evento) => evento.tipo_evento === 'bazar_exposicion';
+
+// Rol con el que se registraria el usuario en un encuentro de negocios.
+// Se deriva del panel en el que esta: el dashboard es la vista de comprador
+// y el panel de proveedor la de proveedor. Para quien tiene ambos roles,
+// manda active_role.
+const rolRegistro = computed(() => {
+    const u = page.props.auth?.user;
+    if (!u) return 'comprador';
+    if (u.active_role === 'proveedor' && u.is_restaurantero) return 'proveedor';
+    if (u.is_restaurantero && !u.is_cliente) return 'proveedor';
+    return 'comprador';
+});
+
+// Estado del usuario en ESTE evento, segun su tipo y su rol.
+const estadoEn = (evento) => {
+    const r = evento.mi_registro ?? {};
+    return esBazar(evento) ? r.expositor : r[rolRegistro.value];
+};
+
+// Que hacer en la tarjeta de cada evento
+const accion = (evento) => {
+    const estado = estadoEn(evento);
+
+    if (estado === 'aprobado') {
+        return esBazar(evento)
+            ? { tipo: 'estado', texto: '✓ Participación aprobada', clase: 'aprobado' }
+            : { tipo: 'link', texto: 'Ver Proveedores', href: route('proveedores.index') };
+    }
+    if (estado === 'pendiente') {
+        return { tipo: 'estado', texto: 'Solicitud en revisión', clase: 'pendiente' };
+    }
+
+    // Sin registro o rechazado: se puede (re)postular
+    return {
+        tipo: 'link',
+        texto: estado === 'rechazado' ? 'Volver a postularme' : 'Regístrate',
+        href: route('user.dashboard', { tab: 'eventos', registrar: 1, evento_id: evento.id }),
+    };
+};
+
+⚠ `computed` ya está importado en la línea 2. Confirma que sí.
+
+2.2 — Tarjeta grande (escritorio) · líneas 110-126
+
+BUSCA el bloque completo:
+
+                            <!-- Acciones -->
+                            <!-- Encuentro de negocios: ir a proveedores -->
+                            <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
+                                :href="route('proveedores.index')"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                       text-white transition-colors shadow-sm">
+                                Ver Proveedores
+                            </Link>
+                            <!-- Bazar: ir a solicitar participación -->
+                            <Link v-else
+                                :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                       text-white transition-colors shadow-sm">
+                                Regístrate
+                            </Link>
+
+REEMPLÁZALO POR:
+
+                            <!-- Acciones: el boton depende del estado del usuario
+                                 en ESTE evento, no solo del tipo de evento. -->
+                            <Link v-if="accion(evento).tipo === 'link'"
+                                :href="accion(evento).href"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl
+                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
+                                       text-white transition-colors shadow-sm">
+                                {{ accion(evento).texto }}
+                            </Link>
+                            <div v-else
+                                class="block text-center text-sm font-semibold py-2.5 rounded-xl border"
+                                :class="accion(evento).clase === 'aprobado'
+                                    ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'">
+                                {{ accion(evento).texto }}
+                            </div>
+
+2.3 — Tarjeta móvil · líneas 204-217
+
+BUSCA el bloque completo:
+
+                    <!-- Encuentro de negocios -->
+                    <Link v-if="evento.activa && evento.tipo_evento !== 'bazar_exposicion'"
+                        :href="route('proveedores.index')"
+                        class="block text-center text-xs font-bold py-1.5 rounded-lg
+                               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+                        Ver Proveedores
+                    </Link>
+                    <!-- Bazar -->
+                    <Link v-else-if="evento.activa && evento.tipo_evento === 'bazar_exposicion'"
+                        :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
+                        class="block text-center text-xs font-bold py-1.5 rounded-lg
+                               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+                        Regístrate
+                    </Link>
+
+REEMPLÁZALO POR:
+
+                    <template v-if="evento.activa">
+                        <Link v-if="accion(evento).tipo === 'link'"
+                            :href="accion(evento).href"
+                            class="block text-center text-xs font-bold py-1.5 rounded-lg
+                                   bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+                            {{ accion(evento).texto }}
+                        </Link>
+                        <div v-else
+                            class="block text-center text-xs font-semibold py-1.5 rounded-lg border"
+                            :class="accion(evento).clase === 'aprobado'
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'">
+                            {{ accion(evento).texto }}
+                        </div>
+                    </template>
+
+⚠ Se conserva la condición `evento.activa` de la versión móvil: en eventos no
+   activos la tarjeta móvil no muestra botón, y así sigue.
+
+
+─────────────────────────────────────────────────────────────
+CAMBIO 3 — resources/js/Components/TabEventos.vue
+Abrir el modal en el evento correcto y con el rol correcto
+─────────────────────────────────────────────────────────────
+
+BUSCA el bloque completo:
+
+// Abrir automáticamente el modal de registro al bazar cuando se llega desde
+// el botón "Regístrate" del sidebar (?tab=eventos&registrar=1)
+onMounted(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('registrar') !== '1') return;
+
+    if (eventoActivo.value?.tipo_evento === 'bazar_exposicion' && !eventoActivo.value.mi_registro?.expositor) {
+        abrirModalRegistro(eventoActivo.value, 'expositor');
+    }
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('registrar');
+    window.history.replaceState({}, '', url);
+});
+
+REEMPLÁZALO POR:
+
+// Abrir automaticamente el modal de registro cuando se llega desde el boton
+// "Registrate" de la tira de eventos (?tab=eventos&registrar=1&evento_id=N).
+//
+// Antes solo contemplaba el bazar y usaba el primer evento activo. Con varios
+// encuentros simultaneos hay que respetar en cual hizo clic el usuario.
+onMounted(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('registrar') !== '1') return;
+
+    const limpiarUrl = () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('registrar');
+        url.searchParams.delete('evento_id');
+        window.history.replaceState({}, '', url);
+    };
+
+    const idPedido = parseInt(params.get('evento_id'), 10);
+    const evento = Number.isInteger(idPedido)
+        ? eventosActivos.value.find(e => e.id === idPedido)
+        : eventoActivo.value;
+
+    if (!evento) { limpiarUrl(); return; }
+
+    if (evento.tipo_evento === 'bazar_exposicion') {
+        if (!evento.mi_registro?.expositor) {
+            abrirModalRegistro(evento, 'expositor');
+        }
+    } else {
+        // Encuentro de negocios: el rol depende de que panel esta viendo el
+        // usuario. Si ya tiene inscripcion de ese tipo, no se reabre el modal.
+        const tipo = (authUser.value?.active_role === 'proveedor' && esProveedor.value)
+            || (esProveedor.value && !esComprador.value)
+            ? 'proveedor'
+            : 'comprador';
+
+        if (!evento.mi_registro?.[tipo]) {
+            abrirModalRegistro(evento, tipo);
+        }
+    }
+
+    limpiarUrl();
+});
+
+⚠ `eventosActivos`, `eventoActivo`, `authUser`, `esProveedor` y `esComprador`
+   ya existen en este archivo (líneas 19-26). No hay que declarar nada nuevo.
+
+⚠ `mi_registro` aquí es el objeto COMPLETO que envía `CitaPublicaController`
+   (con `estado`, `motivo_rechazo`…), no el string simplificado del sidebar.
+   Por eso basta con comprobar si existe.
+
+
+═══════════════════════════════════════════════════════════════════════════
+COMPORTAMIENTO RESULTANTE
+═══════════════════════════════════════════════════════════════════════════
+
+  ExpoFeria del Comercio (bazar)
+      sin registro        →  "Regístrate"  → abre el modal de expositor
+      pendiente           →  "Solicitud en revisión" (ámbar, sin enlace)
+      aprobado            →  "✓ Participación aprobada" (verde)
+      rechazado           →  "Volver a postularme"
+
+  Impúlsate Conecta y GOmart (encuentro de negocios)
+      sin registro        →  "Regístrate"  → abre el modal de ese evento,
+                                             con el rol del panel actual
+      pendiente           →  "Solicitud en revisión"
+      aprobado            →  "Ver Proveedores"  ← el comportamiento de hoy,
+                                                  pero solo cuando tiene sentido
+      rechazado           →  "Volver a postularme"
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS
+═══════════════════════════════════════════════════════════════════════════
+
+FLUJO PRINCIPAL
+  □ Como comprador SIN registro en Conecta: la tarjeta dice "Regístrate"
+  □ Al pulsarlo se abre el modal de convocatoria DE CONECTA, no de GOmart
+  □ El modal pide marcar "He leído la convocatoria" antes de habilitar el botón
+  □ Tras confirmar, la tarjeta pasa a "Solicitud en revisión"
+  □ Cuando el admin aprueba, la tarjeta pasa a "Ver Proveedores"
+
+DISTINGUIR ENTRE LOS DOS ENCUENTROS
+  □ Con Conecta y GOmart activos, pulsar "Regístrate" en GOmart abre GOmart
+  □ Registrarse en uno NO cambia el botón del otro
+  □ La URL queda limpia después (sin ?registrar ni ?evento_id)
+
+ROLES
+  □ Desde /mi-panel (comprador) el modal registra como COMPRADOR
+  □ Desde /proveedor/panel el modal registra como PROVEEDOR
+  □ Un usuario con ambos roles ve el rol correspondiente al panel donde está
+
+BAZAR — no debe cambiar nada
+  □ ExpoFeria sigue funcionando exactamente igual que hoy
+  □ Sigue pidiendo INE y CSF antes de habilitar el registro
+  □ Un expositor ya aprobado ve "✓ Participación aprobada"
+
+REGRESIÓN
+  □ La tira se ve bien en escritorio y en móvil
+  □ Los eventos no activos siguen sin botón en la versión móvil
+  □ Un evento rechazado ofrece "Volver a postularme" y el registro funciona
+  □ Sin errores en la consola del navegador
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS TOCADOS
+═══════════════════════════════════════════════════════════════════════════
+
+  app/Http/Middleware/HandleInertiaRequests.php        (CAMBIO 1)
+  resources/js/Components/EventosSidebar.vue           (CAMBIO 2)
+  resources/js/Components/TabEventos.vue               (CAMBIO 3)
+
+⚠ HAY CAMBIOS DE VUE → npm run build y subir public/build/ completo.
+
+
+COMANDOS EN EL SERVIDOR
+========================
+
+  php artisan down
+  # subir código + public/build/
+  php artisan optimize:clear
+  php artisan up
+
+No hay migraciones en este cambio.
+
+
+═══════════════════════════════════════════════════════════════════════════
+NOTA SOBRE EL OTRO PROMPT PENDIENTE
+═══════════════════════════════════════════════════════════════════════════
+
+Si vas a aplicar también PROMPT_IMAGEN_10MB_Y_DOS_EVENTOS.txt, hazlo ANTES
+que este. Aquel introduce el campo `destacado` y cambia el orden de
+`Evento::queryActivos()`, lo que afecta a `eventoActivo` en TabEventos.
+
+No hay conflicto de archivos entre los dos prompts salvo en
+`resources/js/Components/TabEventos.vue`, que solo se toca aquí. Pero
+aplicarlos en ese orden evita tener que razonar dos veces sobre cuál evento
+es el principal.

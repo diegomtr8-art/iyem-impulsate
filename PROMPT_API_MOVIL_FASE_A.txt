@@ -1,0 +1,499 @@
+═══════════════════════════════════════════════════════════════════════════
+APP MÓVIL — FASE A: LA API
+Lo que hay que construir EN htdocs/citas para que una app Expo pueda existir
+═══════════════════════════════════════════════════════════════════════════
+
+LEE ESTO ANTES DE EMPEZAR
+=========================
+
+Pediste "la página igual como aplicación" en Expo, con todo el sitio. Eso no
+cabe en un prompt, y conviene saber por qué antes de invertir tiempo:
+
+  • El sitio tiene **177 rutas web** y **71 páginas Vue**.
+  • Ninguna sirve para una app nativa: son respuestas Inertia (HTML + props),
+    no JSON. `routes/api.php` tiene hoy **6 rutas**.
+  • Una app Expo necesita: (1) una API REST completa, (2) autenticación por
+    token, y (3) toda la interfaz escrita otra vez en React Native.
+  • El resultado son **dos frontends** que hay que mantener en paralelo para
+    siempre. Cada cambio de negocio se hace dos veces.
+
+Traducido a trabajo real, "todo el sitio" son meses, no semanas. Y la parte
+de administración (torre de control, métricas con gráficas, exportaciones a
+Excel, gestión de solicitudes) es donde más cuesta y menos aporta: los
+administradores trabajan en computadora.
+
+**MI RECOMENDACIÓN, y la razón de que este documento sea "Fase A":**
+
+Construye primero la API. Es el cuello de botella real, vive en htdocs/citas
+(que es lo que pediste), y sirve para cualquier camino que tomes después:
+app Expo, PWA, o incluso un panel externo.
+
+Y cuando llegues a la app, empieza por el **día del evento** (check-in,
+agenda, asistencia). Es donde una app nativa gana de verdad —cámara para QR,
+funciona sin señal, notificaciones— y es justo lo que complementa la app de
+Asistencia que ya hiciste. Los paneles de registro y perfil funcionan bien
+en el navegador del teléfono y pueden esperar.
+
+Este documento cubre:
+  A1. Preparar Sanctum para tokens
+  A2. Extraer la lógica de negocio a servicios (IMPRESCINDIBLE, ver abajo)
+  A3. Estructura de la API y respuestas
+  A4. Autenticación: login, logout, sesión
+  A5. Primer corte vertical: eventos y registro
+  A6. Seguridad de la API
+  A7. Qué falta después y en qué orden
+
+
+⚠⚠ EL ERROR QUE HAY QUE EVITAR A TODA COSTA ⚠⚠
+================================================
+
+La tentación es escribir controladores de API que repitan la lógica de los
+controladores web. **No lo hagas.**
+
+El proyecto YA sufre esto. La auditoría encontró que la reserva de citas está
+copiada en tres sitios con **cuatro fórmulas distintas de duración**:
+
+    CitaPublicaController:136-171       → duración del evento
+    CitaAdminController:110-143         → duración del request
+    RestauranteroCitasController:118    → duración del servicio, sin transacción
+
+Ya divergieron. Si añades una cuarta copia en la API, el día del evento vas a
+tener citas con reglas distintas según desde dónde se agendaron.
+
+**Por eso A2 no es opcional.** Extraer la lógica a servicios ANTES de exponer
+la API es lo que hace que web y app no se separen. Es más trabajo al inicio y
+menos problemas para siempre.
+
+
+─────────────────────────────────────────────────────────────
+A1 — Preparar Sanctum para autenticación por token
+─────────────────────────────────────────────────────────────
+
+Buena noticia: ya está casi todo.
+
+  ✓ `laravel/sanctum` instalado (composer.json)
+  ✓ `HasApiTokens` ya está en `app/Models/User.php:17`
+  ✓ La tabla `personal_access_tokens` ya existe (migración 2026_05_18_164742)
+
+Solo falta entender una cosa importante y dejarla clara en el código:
+
+**Sanctum tiene dos modos y aquí conviven los dos.**
+  • El sitio web usa **cookies de sesión** (modo stateful).
+  • La app Expo usará **tokens Bearer** (modo token).
+
+`config/sanctum.php:40` tiene `'guard' => ['web']`. Eso está bien: Sanctum
+intenta primero la sesión y, si no hay, cae al token del header. No hay que
+cambiarlo.
+
+⚠ LO QUE SÍ HAY QUE VIGILAR: las rutas de `routes/api.php` **no deben** pasar
+   por los middlewares de onboarding (`EnsureAvisoAceptado`,
+   `EnsureRolSeleccionado`, `EnsureProfileComplete`). Esos middlewares
+   devuelven **redirecciones HTTP**, que en una app nativa no significan nada:
+   el cliente recibe un 302 hacia HTML y no sabe qué hacer.
+
+   Comprueba en `bootstrap/app.php` que esos tres middlewares estén en el grupo
+   `web` y NO en el grupo `api`. Si estuvieran en ambos, sácalos de `api`.
+
+   En su lugar, la API devuelve el estado del onboarding como DATO (ver A4) y
+   la app decide qué pantalla mostrar.
+
+
+─────────────────────────────────────────────────────────────
+A2 — Extraer la lógica de negocio a servicios
+El paso que evita que web y app se separen
+─────────────────────────────────────────────────────────────
+
+Crea `app/Services/` con tres servicios. Cada uno recibe datos simples y
+devuelve un resultado; no sabe nada de HTTP, de Inertia ni de JSON.
+
+A2.1 — `app/Services/RegistroEventoService.php`
+
+Mueve aquí la lógica de `EventoRegistroController`. Tres métodos públicos:
+
+    registrarComprador(User $user, Evento $evento): array
+    registrarProveedor(User $user, Evento $evento): array
+    registrarExpositor(User $user, Evento $evento): array
+
+Cada uno debe:
+  • Validar en el mismo orden que hoy (rol, ventanas de apertura Y cierre,
+    documentos en el caso del bazar).
+  • Lanzar una excepción de dominio con un mensaje claro cuando algo falle,
+    en vez de `ValidationException` (que es una clase de HTTP).
+  • Insertar o reactivar la fila de `evento_usuario` en estado `pendiente`.
+  • Notificar a todos los admins y enviar el acuse.
+  • Devolver el estado resultante.
+
+Crea `app/Exceptions/ReglaDeNegocioException.php` (extiende `\RuntimeException`)
+para los fallos de regla. El controlador web la traduce a
+`ValidationException`; el de API, a un JSON 422.
+
+DESPUÉS, reescribe `EventoRegistroController` para que sus tres métodos solo
+llamen al servicio y traduzcan el resultado. Debe quedar en unas 15 líneas por
+método, no 80.
+
+⚠ Al terminar, el comportamiento del sitio web debe ser EXACTAMENTE el mismo.
+   Si algo cambia, es un error de la extracción, no una mejora.
+
+A2.2 — `app/Services/AgendaCitaService.php`
+
+Este es el importante. Mueve aquí el bloque atómico de reserva.
+
+    agendar(User $comprador, Restaurantero $proveedor, Evento $evento,
+            Carbon $inicio, ?int $duracionMinutos = null,
+            array $opciones = []): Cita
+
+Debe contener, en un solo sitio:
+  • Resolución de la duración con UNA sola regla (decide cuál es la correcta:
+    lo lógico es `evento->tiempo_entre_citas_minutos` y que el resto sea
+    excepción explícita vía `$opciones`).
+  • Validación del cupo `max_citas_por_comprador`, excluyendo canceladas.
+  • Validación de la ventana del evento.
+  • El colchón de 10 minutos, aplicado a AMBOS lados (hoy solo se aplica al
+    comprador — está en la auditoría).
+  • `DB::transaction` + `lockForUpdate` sobre el proveedor.
+  • La comprobación de solape.
+
+Y luego haz que llamen a este servicio los TRES sitios que hoy tienen su
+propia copia:
+
+    CitaPublicaController::store
+    Admin\CitaAdminController::store
+    RestauranteroCitasController::reagendar y ::confirmarToken
+
+⚠ `confirmarToken` hoy reescribe `inicio`/`fin` **sin transacción y sin
+   comprobar solapes**. Al pasar por el servicio, ese agujero se cierra solo.
+
+A2.3 — `app/Services/PerfilProveedorService.php`
+
+Mueve aquí `calcularPerfilCompleto()` y la auto-aprobación de
+`app/Models/Restaurantero.php`. Hoy viven en hooks del modelo (`saving` y
+`saved`), lo que hace que se disparen en sitios inesperados y es difícil de
+probar.
+
+⚠ Este es el más delicado de los tres: los hooks se disparan hoy en cada
+   guardado, desde muchos sitios. Hazlo al final, y solo si los otros dos
+   salieron bien. Si tienes dudas, déjalo como está: no bloquea la API.
+
+
+─────────────────────────────────────────────────────────────
+A3 — Estructura de la API
+─────────────────────────────────────────────────────────────
+
+A3.1 — Versionado. Todo bajo `/api/v1`. Sin excepciones.
+
+Cuando la app esté publicada en una tienda, habrá usuarios con versiones
+viejas instaladas durante meses. Sin versionado, cualquier cambio de la API
+les rompe la app y no puedes hacer nada.
+
+En `routes/api.php`, envuelve todo lo nuevo:
+
+    Route::prefix('v1')->name('api.v1.')->group(function () {
+        // ... rutas nuevas aqui
+    });
+
+⚠ NO toques las 6 rutas que ya existen: `/api/notificaciones` la usa el
+   frontend web con polling cada 30 segundos. Déjalas donde están y crea sus
+   equivalentes bajo `v1` cuando las necesite la app.
+
+A3.2 — Forma de las respuestas. Siempre la misma:
+
+    // Éxito
+    { "data": { ... },  "message": "opcional" }
+
+    // Lista paginada
+    { "data": [ ... ], "meta": { "current_page":1, "last_page":4, "total":47 } }
+
+    // Error de validación (422)
+    { "message": "Los datos no son válidos.",
+      "errors": { "campo": ["mensaje"] } }
+
+    // Error de regla de negocio (422)
+    { "message": "El período de registro de compradores ya cerró." }
+
+A3.3 — API Resources. Crea `app/Http/Resources/` con una clase por entidad:
+`EventoResource`, `CitaResource`, `ProveedorResource`, `UserResource`,
+`NotificacionResource`.
+
+⚠ ESTO NO ES BUROCRACIA. El proyecto ya tuvo una fuga por serializar de más:
+   la pantalla de Solicitudes mandaba `ine_path` y `csf_path` al frontend sin
+   necesidad. Un Resource es el único sitio donde decides qué sale, y se
+   revisa de un vistazo.
+
+   Regla: en `UserResource` NUNCA expongas `ine_path`, `csf_path`,
+   `password`, `remember_token` ni `two_factor_*`. Para documentos usa
+   booleanos (`tiene_ine`, `tiene_csf`) y una URL firmada si hace falta verlos.
+
+A3.4 — Controladores. Crea `app/Http/Controllers/Api/V1/` y pon ahí los
+controladores de la API. No reutilices los web: sus respuestas son Inertia.
+Lo que se reutiliza es el SERVICIO (A2), no el controlador.
+
+
+─────────────────────────────────────────────────────────────
+A4 — Autenticación
+─────────────────────────────────────────────────────────────
+
+A4.1 — `app/Http/Controllers/Api/V1/AuthController.php` con cuatro métodos:
+
+    POST /api/v1/auth/login
+        entrada: email, password, device_name
+        valida credenciales con Auth::validate o Hash::check
+        rechaza si el usuario no tiene email_verified_at
+        crea token: $user->createToken($request->device_name)->plainTextToken
+        responde: { data: { token, user: UserResource, onboarding: {...} } }
+
+    POST /api/v1/auth/logout          (auth:sanctum)
+        $request->user()->currentAccessToken()->delete();
+
+    GET  /api/v1/auth/me              (auth:sanctum)
+        devuelve UserResource + onboarding actualizado
+
+    POST /api/v1/auth/logout-todos    (auth:sanctum)
+        $request->user()->tokens()->delete();   // "cerrar sesión en todos los dispositivos"
+
+A4.2 — El objeto `onboarding`. Es la pieza que sustituye a los middlewares
+de redirección. La app lo lee y decide qué pantalla mostrar:
+
+    "onboarding": {
+        "aviso_aceptado":   true,
+        "rol_seleccionado": true,
+        "perfil_completo":  false,
+        "siguiente_paso":   "completar_perfil",
+        "roles":            ["cliente"],
+        "rol_activo":       "comprador"
+    }
+
+`siguiente_paso` es uno de: `aceptar_aviso`, `seleccionar_rol`,
+`completar_perfil`, `ninguno`. Que el servidor decida el orden evita que la
+app lo reimplemente mal.
+
+A4.3 — Rate limit. `POST /auth/login` con `throttle:5,1` por IP y email, igual
+que el login web (`FortifyServiceProvider.php:38-53`). Sin esto, la API es un
+oráculo de contraseñas sin límite.
+
+A4.4 — ⚠ ALCANCE DE LOS TOKENS. `createToken($nombre)` crea un token con
+permiso TOTAL. Si la app solo necesita leer y agendar, dale habilidades:
+
+    $user->createToken($device, ['citas:crear', 'perfil:leer'])
+
+Y comprueba con `$request->user()->tokenCan('citas:crear')`. Empieza simple si
+quieres, pero no dejes tokens omnipotentes viviendo en teléfonos que se
+pierden.
+
+A4.5 — Caducidad. En `config/sanctum.php`, `'expiration'` está en `null`
+(los tokens no caducan nunca). Para una app en teléfonos ajenos, pon algo como
+`60 * 24 * 30` (30 días) y maneja la renovación en la app.
+
+
+─────────────────────────────────────────────────────────────
+A5 — Primer corte vertical: eventos y registro
+─────────────────────────────────────────────────────────────
+
+No construyas los 60 endpoints de golpe. Haz UNO completo de punta a punta,
+valida el patrón, y el resto se vuelve mecánico.
+
+Rutas a crear bajo `v1`:
+
+    GET  /eventos                      lista de eventos (activos y pasados)
+    GET  /eventos/{evento}             detalle + mi_registro del usuario
+    POST /eventos/{evento}/registro    body: { tipo: comprador|proveedor|expositor }
+
+El POST llama a `RegistroEventoService` (A2.1). Nada de lógica en el
+controlador.
+
+`EventoResource` debe incluir lo que la app necesita para pintar la tarjeta:
+
+    id, nombre, descripcion, tipo_evento, activa, imagen_url,
+    fecha_hora_inicio, fecha_hora_fin,
+    ventanas: { proveedores: {inicio, fin, abierta}, compradores: {...} },
+    mi_registro: { comprador: 'pendiente'|null, proveedor: ..., expositor: ... },
+    puede_registrarse: true|false,
+    motivo_bloqueo: "El registro de compradores abre el 25 de agosto"
+
+⚠ `puede_registrarse` y `motivo_bloqueo` los calcula el SERVIDOR. Si la app
+   los deduce por su cuenta, tendrás dos versiones de las reglas de ventanas
+   y volverás al problema de las cuatro duraciones.
+
+CUANDO ESTE CORTE FUNCIONE de punta a punta desde Postman o Insomnia, el
+patrón queda establecido y puedes repetirlo para el resto.
+
+
+─────────────────────────────────────────────────────────────
+A6 — Seguridad de la API
+─────────────────────────────────────────────────────────────
+
+Una API es una puerta nueva al mismo sistema. Estos puntos no son opcionales.
+
+A6.1 — CORS. Revisa `config/cors.php`. Para Expo en desarrollo hace falta
+permitir el origen del túnel. **No pongas `'allowed_origins' => ['*']` con
+`'supports_credentials' => true`**: es una combinación peligrosa. Con tokens
+Bearer no necesitas credenciales, así que deja `supports_credentials` en
+`false` y lista los orígenes explícitamente.
+
+A6.2 — Policies. La auditoría lleva tres rondas señalando que el proyecto
+tiene **cero Policies**. En el sitio web lo tapan los middlewares de rol y los
+`if` inline. Una API sin Policies es mucho peor: cada endpoint queda a merced
+de que alguien recordara el `if`.
+
+**Antes de exponer endpoints que reciban `{cita}`, `{user}` o `{evento}`,
+crea las Policies.** Es el momento natural: estás tocando esa capa de todos
+modos.
+
+A6.3 — Rate limit por token. En `bootstrap/app.php` o en un
+`RouteServiceProvider`, define un limitador para la API:
+
+    RateLimiter::for('api', fn (Request $r) =>
+        Limit::perMinute(60)->by($r->user()?->id ?: $r->ip()));
+
+A6.4 — Subida de archivos desde la app. Las fotos de teléfono pesan entre 4 y
+12 MB. Aplican los mismos límites de PHP que ya tienes pendientes de revisar
+(`upload_max_filesize`, `post_max_size`). Si la app sube fotos, esos límites
+son un requisito, no un detalle.
+
+A6.5 — Nunca expongas rutas de archivos. Los `ine_path` y `csf_path` viven en
+disco privado y se sirven por `documentos.ver` con autorización. En la API,
+usa URLs firmadas temporales (`URL::temporarySignedRoute`), nunca la ruta del
+filesystem.
+
+
+─────────────────────────────────────────────────────────────
+A7 — Qué falta después, y en qué orden
+─────────────────────────────────────────────────────────────
+
+Cuando A1-A6 estén hechos, estos son los siguientes cortes verticales, en el
+orden que yo seguiría:
+
+  FASE B — El día del evento (donde una app nativa gana de verdad)
+      GET  /v1/mi-agenda                  citas del día del usuario
+      POST /v1/citas/{cita}/check-in      marcar asistencia
+      GET  /v1/eventos/{e}/asistencia     lista para el staff
+      Aquí es donde conectas con tu app de Asistencia actual.
+
+  FASE C — Perfil y documentos
+      GET/PUT /v1/perfil
+      POST    /v1/perfil/documentos
+      GET     /v1/perfil/documentos/{tipo}   (URL firmada)
+
+  FASE D — Citas y directorio
+      GET  /v1/proveedores            listado con filtros
+      GET  /v1/proveedores/{id}       ficha + horarios disponibles
+      POST /v1/citas                  agendar (usa AgendaCitaService)
+      DELETE /v1/citas/{cita}         cancelar
+
+  FASE E — Notificaciones push
+      Registro de token de dispositivo Expo
+      Envío desde los Jobs que ya existen
+
+  FASE F — Administración
+      ⚠ Mi recomendación sigue siendo NO hacerla en la app. La torre de
+        control, las métricas con gráficas y las exportaciones a Excel son
+        trabajo de escritorio. Si aun así la quieres, déjala para el final:
+        es la mitad del esfuerzo y la décima parte del uso.
+
+⚠ ANTES DE LA FASE E: las notificaciones push necesitan que la cola funcione.
+   Hoy hay 14 Mailables encolados y ningún `queue:work` en el scheduler
+   (está en el informe de auditoría). Si la cola no corre, las push tampoco
+   saldrán.
+
+
+═══════════════════════════════════════════════════════════════════════════
+PRUEBAS DE LA FASE A
+═══════════════════════════════════════════════════════════════════════════
+
+EXTRACCIÓN A SERVICIOS (lo más importante)
+  □ Registrarse a un evento DESDE LA WEB sigue funcionando igual que antes
+  □ Agendar una cita desde el directorio sigue funcionando igual
+  □ El admin sigue pudiendo crear citas
+  □ Reagendar y confirmar por token siguen funcionando
+  □ Ahora reagendar SÍ valida solapes (antes no)
+  □ La duración de la cita es la misma en los tres caminos
+
+AUTENTICACIÓN
+  □ POST /api/v1/auth/login con credenciales buenas devuelve token
+  □ Con credenciales malas devuelve 422, no 500
+  □ Seis intentos seguidos devuelven 429
+  □ GET /api/v1/auth/me con el token devuelve el usuario
+  □ Sin token devuelve 401 en JSON, NO una redirección a HTML
+  □ El objeto onboarding refleja el estado real del usuario
+  □ Logout invalida el token
+
+CORTE VERTICAL
+  □ GET /v1/eventos devuelve los eventos con su mi_registro
+  □ POST /v1/eventos/{id}/registro deja el registro en pendiente
+  □ Registrarse fuera de ventana devuelve 422 con el motivo
+  □ Registrarse dos veces devuelve un mensaje claro, no un error
+  □ El registro hecho desde la API se ve en el panel de admin
+
+SEGURIDAD
+  □ Ningún endpoint devuelve ine_path ni csf_path
+  □ Un usuario no puede leer datos de otro cambiando el id en la URL
+  □ Las rutas de API no pasan por los middlewares de onboarding
+  □ CORS no permite cualquier origen con credenciales
+
+REGRESIÓN GENERAL
+  □ El sitio web completo sigue funcionando: registro, citas, bazar, admin
+  □ /api/notificaciones (la vieja) sigue respondiendo al polling del web
+  □ Sin errores nuevos en storage/logs/laravel.log
+
+
+═══════════════════════════════════════════════════════════════════════════
+ARCHIVOS QUE SE CREAN O TOCAN
+═══════════════════════════════════════════════════════════════════════════
+
+NUEVOS
+  app/Services/RegistroEventoService.php
+  app/Services/AgendaCitaService.php
+  app/Services/PerfilProveedorService.php          (opcional, el más delicado)
+  app/Exceptions/ReglaDeNegocioException.php
+  app/Http/Controllers/Api/V1/AuthController.php
+  app/Http/Controllers/Api/V1/EventoController.php
+  app/Http/Resources/UserResource.php
+  app/Http/Resources/EventoResource.php
+  app/Policies/  (CitaPolicy, EventoPolicy, UserPolicy)
+
+MODIFICADOS
+  routes/api.php
+  config/sanctum.php            (expiration)
+  config/cors.php
+  bootstrap/app.php             (rate limiter de api)
+  app/Http/Controllers/EventoRegistroController.php     (adelgazar)
+  app/Http/Controllers/CitaPublicaController.php        (usar el servicio)
+  app/Http/Controllers/Admin/CitaAdminController.php    (usar el servicio)
+  app/Http/Controllers/RestauranteroCitasController.php (usar el servicio)
+
+No hay cambios de frontend ni migraciones en esta fase.
+
+
+COMANDOS
+========
+
+  php artisan make:policy CitaPolicy --model=Cita
+  php artisan make:resource EventoResource
+  php artisan route:list --path=api        # verificar lo que quedó expuesto
+
+  # En el servidor, tras desplegar:
+  php artisan optimize:clear
+
+
+═══════════════════════════════════════════════════════════════════════════
+LA APP EXPO — NOTA APARTE
+═══════════════════════════════════════════════════════════════════════════
+
+La app NO vive en htdocs/citas. Es un proyecto independiente, en su propia
+carpeta y su propio repositorio.
+
+Cuando la Fase A esté lista, el arranque es:
+
+    npx create-expo-app impulsate-app
+    cd impulsate-app
+    npx expo install expo-secure-store expo-notifications expo-camera
+    npm install @tanstack/react-query axios
+
+Tres decisiones que conviene tomar desde el primer día:
+
+  1. El token va en `expo-secure-store`, nunca en AsyncStorage.
+  2. Un único cliente axios con la URL base y el interceptor que añade el
+     header `Authorization: Bearer`. Nada de fetch suelto por las pantallas.
+  3. La app NO reimplementa reglas de negocio. Si necesita saber si alguien
+     puede registrarse, lo pregunta a la API (`puede_registrarse`). En cuanto
+     empieces a copiar lógica a React Native, tendrás el mismo problema de las
+     cuatro duraciones, pero entre dos lenguajes.
