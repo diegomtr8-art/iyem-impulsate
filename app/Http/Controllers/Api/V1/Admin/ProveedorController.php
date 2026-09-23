@@ -8,6 +8,7 @@ use App\Http\Resources\Admin\AdminProveedorResource;
 use App\Http\Resources\DocumentosUsuarioResource;
 use App\Http\Resources\PerfilProveedorResource;
 use App\Models\Restaurantero;
+use App\Services\Admin\AdminEventosService;
 use App\Services\Admin\AdminProveedoresService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -21,7 +22,10 @@ use Illuminate\Validation\Rule;
  */
 class ProveedorController extends Controller
 {
-    public function __construct(private AdminProveedoresService $proveedores) {}
+    public function __construct(
+        private AdminProveedoresService $proveedores,
+        private AdminEventosService $eventos,
+    ) {}
 
     public function index(Request $request)
     {
@@ -140,6 +144,34 @@ class ProveedorController extends Controller
         $this->proveedores->rechazar($restaurantero, $d['motivo']);
 
         return $this->respuesta($restaurantero, 'Perfil rechazado y proveedor notificado.');
+    }
+
+    /**
+     * Alta de proveedor (cuenta + negocio + servicio y horario base), igual que
+     * la web. El evento es `evento_id` (la web usa el de la sesion); sin
+     * evento_id, el evento activo principal. Queda inscrito y APROBADO en el.
+     */
+    public function store(Request $request)
+    {
+        Gate::authorize('administrar', Restaurantero::class);
+        $datos = $request->validate(array_merge(AdminProveedoresService::REGLAS_ALTA, [
+            'evento_id' => ['nullable', 'integer'],
+        ]));
+
+        $r = $this->proveedores->crear($datos, $this->eventos->contexto($datos['evento_id'] ?? null));
+
+        return (new AdminProveedorResource($r->fresh('user')->loadCount('citas')))
+            ->additional(['message' => 'Proveedor creado correctamente.'])
+            ->response()->setStatusCode(201);
+    }
+
+    /** Baja: borra el negocio Y su cuenta de usuario (igual que la web). */
+    public function destroy(Restaurantero $restaurantero)
+    {
+        Gate::authorize('administrar', $restaurantero);
+        $this->proveedores->eliminar($restaurantero);
+
+        return response()->json(['data' => null, 'message' => 'Restaurantero eliminado correctamente.']);
     }
 
     private function respuesta(Restaurantero $restaurantero, string $mensaje)

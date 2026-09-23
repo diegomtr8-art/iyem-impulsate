@@ -89,6 +89,14 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api-admin-correos', fn (Request $request) =>
             Limit::perMinute(30)->by('admcorreo:' . ($request->user()?->id ?? $request->ip()))
         );
+        // Fase 4B: generar un Excel/PDF es caro (evento completo = una hoja por
+        // proveedor) y el correo masivo real sale a cientos de personas.
+        RateLimiter::for('api-admin-exportaciones', fn (Request $request) =>
+            Limit::perMinute(10)->by('admexp:' . ($request->user()?->id ?? $request->ip()))
+        );
+        RateLimiter::for('api-admin-correo-masivo', fn (Request $request) =>
+            Limit::perMinute(3)->by('admmasivo:' . ($request->user()?->id ?? $request->ip()))
+        );
 
         // /api/v1/admin/* exige el rol admin (web: middleware 'admin' =
         // EnsureIsAdmin) y /api/v1/admin/usuarios-gestion/* ademas super-admin

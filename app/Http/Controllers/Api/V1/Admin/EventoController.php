@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Admin\AdminEventoResource;
 use App\Models\Evento;
 use App\Services\Admin\AdminEventosService;
+use App\Services\Admin\PantallaTvService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -125,6 +126,17 @@ class EventoController extends Controller
             'data'    => $this->datosTv($evento, $evento->rotarTokenTv()),
             'message' => 'Token de la pantalla TV rotado. Las pantallas abiertas dejaran de funcionar.',
         ]);
+    }
+
+    /**
+     * Lo mismo que la Pantalla TV publica consulta cada 3 s
+     * (/api/tv/{token}/publico), para previsualizarla desde la app sin el token.
+     */
+    public function tvDatos(Evento $evento, PantallaTvService $tv)
+    {
+        Gate::authorize('administrar', $evento);
+
+        return response()->json(['data' => $tv->datos($evento)]);
     }
 
     private function datosTv(Evento $evento, string $token): array

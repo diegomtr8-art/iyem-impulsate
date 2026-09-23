@@ -47,6 +47,12 @@ Route::prefix('v1')->group(function () {
         ->middleware(['signed', 'throttle:api-archivos'])
         ->name('api.v1.documentos.ver');
 
+    // Excel / PDF del admin por URL firmada temporal (la emite POST /admin/exportaciones/{tipo}).
+    Route::get('/exportaciones/{archivo}', [AdminApi\ExportacionController::class, 'descargar'])
+        ->where('archivo', '[0-9a-f\-]{36}\.(xlsx|pdf)')
+        ->middleware(['signed', 'throttle:api-archivos'])
+        ->name('api.v1.exportaciones.descargar');
+
     Route::middleware(['auth:sanctum', 'throttle:api-v1'])->group(function () {
         Route::get('/auth/me',            [\App\Http\Controllers\Api\V1\AuthController::class, 'me']);
         Route::post('/auth/logout',       [\App\Http\Controllers\Api\V1\AuthController::class, 'logout']);
@@ -268,6 +274,91 @@ Route::prefix('v1')->group(function () {
             // Calendario
             Route::get('/calendario',             [AdminApi\CalendarioController::class, 'index']);
             Route::get('/calendario/proveedores', [AdminApi\CalendarioController::class, 'proveedores']);
+
+            /* ── Fase 4B ─────────────────────────────────────────────── */
+
+            // Alta y baja de proveedor (web: POST/DELETE /admin/restauranteros)
+            Route::post('/proveedores',                     [AdminApi\ProveedorController::class, 'store']);
+            Route::delete('/proveedores/{restaurantero}',   [AdminApi\ProveedorController::class, 'destroy'])->whereNumber('restaurantero');
+
+            // Vista previa de la Pantalla TV (mismos datos que /api/tv/{token}/publico)
+            Route::get('/eventos/{evento}/tv/datos', [AdminApi\EventoController::class, 'tvDatos'])->whereNumber('evento');
+
+            // Encuestas de satisfaccion
+            Route::prefix('encuestas')->group(function () use ($correo) {
+                Route::get('/',              [AdminApi\EncuestaController::class, 'index']);
+                Route::get('/resumen',       [AdminApi\EncuestaController::class, 'resumen']);
+                Route::get('/graficas',      [AdminApi\EncuestaController::class, 'graficas']);
+                Route::get('/participantes', [AdminApi\EncuestaController::class, 'participantes']);
+                Route::middleware($correo)->group(function () {
+                    Route::post('/enviar-evento',              [AdminApi\EncuestaController::class, 'enviarEvento']);
+                    Route::post('/enviar-seleccion',           [AdminApi\EncuestaController::class, 'enviarSeleccion']);
+                    Route::post('/enviar-prueba',              [AdminApi\EncuestaController::class, 'enviarPrueba']);
+                    Route::post('/enviar-recordatorio',        [AdminApi\EncuestaController::class, 'enviarRecordatorio']);
+                    Route::post('/enviar-recordatorio-prueba', [AdminApi\EncuestaController::class, 'enviarRecordatorioPrueba']);
+                });
+
+                Route::get('/plantillas',                        [AdminApi\EncuestaPlantillaController::class, 'index']);
+                Route::post('/plantillas',                       [AdminApi\EncuestaPlantillaController::class, 'store']);
+                Route::get('/plantillas/{plantilla}',            [AdminApi\EncuestaPlantillaController::class, 'show'])->whereNumber('plantilla');
+                Route::put('/plantillas/{plantilla}',            [AdminApi\EncuestaPlantillaController::class, 'update'])->whereNumber('plantilla');
+                Route::post('/plantillas/{plantilla}/activar',   [AdminApi\EncuestaPlantillaController::class, 'activar'])->whereNumber('plantilla');
+                Route::delete('/plantillas/{plantilla}',         [AdminApi\EncuestaPlantillaController::class, 'destroy'])->whereNumber('plantilla');
+
+                Route::get('/{encuesta}',    [AdminApi\EncuestaController::class, 'show'])->whereNumber('encuesta');
+                Route::delete('/{encuesta}', [AdminApi\EncuestaController::class, 'destroy'])->whereNumber('encuesta');
+            });
+
+            // Metricas
+            Route::get('/metricas',                    [AdminApi\MetricasController::class, 'index']);
+            Route::get('/metricas/no-identificados',   [AdminApi\MetricasController::class, 'noIdentificados']);
+            Route::patch('/usuarios/{user}/genero',    [AdminApi\MetricasController::class, 'genero'])->whereNumber('user');
+
+            // Exportaciones (Excel y PDF de encuestas) por URL firmada
+            Route::get('/exportaciones', [AdminApi\ExportacionController::class, 'index']);
+            Route::post('/exportaciones/{tipo}', [AdminApi\ExportacionController::class, 'generar'])
+                ->whereIn('tipo', \App\Services\Admin\ExportacionesAdminService::TIPOS)
+                ->middleware('throttle:api-admin-exportaciones');
+
+            // Modulos SOLO super-admin (web: middleware 'super-admin')
+            Route::middleware('can:super-admin')->group(function () use ($correo) {
+                Route::prefix('plantillas-correo')->group(function () use ($correo) {
+                    Route::get('/',              [AdminApi\PlantillaCorreoController::class, 'index']);
+                    Route::post('/',             [AdminApi\PlantillaCorreoController::class, 'store']);
+                    Route::get('/nueva',         [AdminApi\PlantillaCorreoController::class, 'nueva']);
+                    Route::post('/vista-previa', [AdminApi\PlantillaCorreoController::class, 'vistaPreviaBorrador']);
+                    Route::post('/restablecer',  [AdminApi\PlantillaCorreoController::class, 'restablecer']);
+                    Route::get('/{plantilla}',                [AdminApi\PlantillaCorreoController::class, 'show'])->whereNumber('plantilla');
+                    Route::put('/{plantilla}',                [AdminApi\PlantillaCorreoController::class, 'update'])->whereNumber('plantilla');
+                    Route::delete('/{plantilla}',             [AdminApi\PlantillaCorreoController::class, 'destroy'])->whereNumber('plantilla');
+                    Route::post('/{plantilla}/activo',        [AdminApi\PlantillaCorreoController::class, 'activo'])->whereNumber('plantilla');
+                    Route::get('/{plantilla}/vista-previa',   [AdminApi\PlantillaCorreoController::class, 'vistaPrevia'])->whereNumber('plantilla');
+                    Route::post('/{plantilla}/enviar',        [AdminApi\PlantillaCorreoController::class, 'enviar'])->whereNumber('plantilla')->middleware($correo);
+                });
+
+                Route::prefix('correo-masivo')->group(function () use ($correo) {
+                    Route::get('/formulario',     [AdminApi\CorreoMasivoController::class, 'formulario']);
+                    Route::post('/destinatarios', [AdminApi\CorreoMasivoController::class, 'destinatarios']);
+                    Route::post('/vista-previa',  [AdminApi\CorreoMasivoController::class, 'vistaPrevia']);
+                    Route::post('/prueba',        [AdminApi\CorreoMasivoController::class, 'prueba'])->middleware($correo);
+                    Route::post('/enviar',        [AdminApi\CorreoMasivoController::class, 'enviar'])->middleware('throttle:api-admin-correo-masivo');
+                });
+
+                Route::get('/publicidad',                  [AdminApi\PublicidadController::class, 'index']);
+                Route::post('/publicidad',                 [AdminApi\PublicidadController::class, 'store']);
+                Route::get('/publicidad/{publicidad}',     [AdminApi\PublicidadController::class, 'show'])->whereNumber('publicidad');
+                // POST ademas de PUT/PATCH: PHP no lee multipart (la imagen) en un PUT.
+                Route::match(['put', 'patch', 'post'], '/publicidad/{publicidad}', [AdminApi\PublicidadController::class, 'update'])->whereNumber('publicidad');
+                Route::post('/publicidad/{publicidad}/activa', [AdminApi\PublicidadController::class, 'activa'])->whereNumber('publicidad');
+                Route::delete('/publicidad/{publicidad}',  [AdminApi\PublicidadController::class, 'destroy'])->whereNumber('publicidad');
+
+                Route::get('/categorias',                     [AdminApi\CategoriaController::class, 'index']);
+                Route::post('/categorias',                    [AdminApi\CategoriaController::class, 'store']);
+                Route::post('/categorias/reordenar',          [AdminApi\CategoriaController::class, 'reordenar']);
+                Route::put('/categorias/{categoria}',         [AdminApi\CategoriaController::class, 'update'])->whereNumber('categoria');
+                Route::post('/categorias/{categoria}/activo', [AdminApi\CategoriaController::class, 'activo'])->whereNumber('categoria');
+                Route::delete('/categorias/{categoria}',      [AdminApi\CategoriaController::class, 'destroy'])->whereNumber('categoria');
+            });
         });
     });
 });
