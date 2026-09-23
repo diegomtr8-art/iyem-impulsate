@@ -10,6 +10,8 @@ use App\Models\EncuestaSatisfaccion;
 use App\Models\Evento;
 use App\Models\Horario;
 use App\Models\Notificacion;
+use App\Models\PlantillaCorreo;
+use App\Models\Publicidad;
 use App\Models\Restaurantero;
 use App\Models\Servicio;
 use App\Models\User;
@@ -122,6 +124,12 @@ class DemoMovilCommand extends Command
             $this->proveedoresPorAprobar();
             $this->expositoresBazar($bazar);
             $this->torreDeHoy($proveedores, array_merge($recibidas, [$otroComprador]));
+
+            // Fase 4B (admin): encuestas respondidas para las graficas, un
+            // anuncio vigente y las plantillas de correo del sistema.
+            $this->encuestasRespondidas($finalizado, [$recibidas[0], $recibidas[1]], [$principal->user, $proveedores[0]->user]);
+            $this->publicidadDemo();
+            $this->plantillasCorreo();
         });
 
         $this->resumen();
@@ -593,6 +601,10 @@ class DemoMovilCommand extends Command
                 . ' / ' . Restaurantero::where('aprobado', false)->where('rechazado', false)->count()],
             ['Expositores del bazar demo (por estado)', DB::table('evento_usuario')->where('evento_id', Evento::where('nombre', 'Bazar Hecho en Yucatán (demo app)')->value('id'))
                 ->where('tipo', 'expositor')->selectRaw('estado, count(*) n')->groupBy('estado')->pluck('n', 'estado')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
+            ['Encuestas del evento finalizado (respondidas / enviadas)', EncuestaSatisfaccion::where('evento_id', Evento::where('nombre', 'Encuentro de Negocios Julio (demo app)')->value('id'))
+                ->whereNotNull('completada_at')->count() . ' / ' . EncuestaSatisfaccion::where('evento_id', Evento::where('nombre', 'Encuentro de Negocios Julio (demo app)')->value('id'))->count()],
+            ['Publicidad vigente', Publicidad::vigente()->value('titulo') ?? '—'],
+            ['Plantillas de correo (activas)', PlantillaCorreo::count() . ' (' . PlantillaCorreo::where('activo', true)->count() . ')'],
             ['Citas de HOY en la torre (por estado_tv)', Cita::whereDate('inicio', today())->whereNotIn('estado', ['cancelada', 'rechazada'])
                 ->selectRaw("COALESCE(estado_tv, 'pendiente') e, count(*) n")->groupBy('e')->pluck('n', 'e')->map(fn ($n, $e) => "$e:$n")->implode(', ')],
         ]);
@@ -834,5 +846,119 @@ class DemoMovilCommand extends Command
                 'hora_real_fin'    => $estadoTv === 'finalizada' ? $inicio->copy()->addMinutes(24) : null,
             ])->save();
         }
+    }
+
+    /* ───────────── Fase 4B: material para el panel admin ───────────── */
+
+    /**
+     * Encuestas RESPONDIDAS del evento finalizado (2 compradores y 2
+     * proveedores) con la plantilla activa, contestadas con
+     * EncuestaRespuestaService (respeta tipos y condiciones), para que
+     * /admin/encuestas/resumen y /graficas tengan datos. Cada corrida borra
+     * sus respuestas y las vuelve a contestar.
+     */
+    private function encuestasRespondidas(Evento $finalizado, array $compradores, array $proveedores): void
+    {
+        $plantilla = EncuestaPlantilla::where('activa', true)->first() ?? EncuestaPlantilla::create([
+            'nombre'    => 'Encuesta de satisfacción (demo app)',
+            'segmento'  => 'todos',
+            'activa'    => true,
+            'preguntas' => [
+                ['id' => 'general', 'tipo' => 'escala', 'texto' => '¿Cómo calificas el encuentro?', 'escala_min' => 1, 'escala_max' => 5],
+                ['id' => 'recomienda', 'tipo' => 'binario', 'texto' => '¿Recomendarías el encuentro?'],
+                ['id' => 'nps', 'tipo' => 'nps', 'texto' => '¿Qué tan probable es que vuelvas a participar?'],
+                ['id' => 'comentarios', 'tipo' => 'texto', 'texto' => 'Comentarios', 'requerida' => false],
+            ],
+        ]);
+
+        $servicio = app(\App\Services\EncuestaRespuestaService::class);
+        $personas = array_merge(
+            array_map(fn ($u) => [$u, 'comprador'], $compradores),
+            array_map(fn ($u) => [$u, 'proveedor'], $proveedores),
+        );
+
+        foreach ($personas as $n => [$user, $tipo]) {
+            $this->inscribir($finalizado, $user, $tipo);
+
+            $encuesta = EncuestaSatisfaccion::firstOrNew(['evento_id' => $finalizado->id, 'user_id' => $user->id, 'tipo' => $tipo]);
+            if ($encuesta->exists) {
+                $encuesta->respuestas()->delete();
+            }
+            $encuesta->fill([
+                'segmento'              => $tipo === 'proveedor' ? 'proveedores_evento' : 'compradores_evento',
+                'completada_at'         => null,
+                'es_prueba'             => false,
+                'encuesta_plantilla_id' => $plantilla->id,
+            ]);
+            $encuesta->token ??= Str::random(40);
+            $encuesta->save();
+
+            $servicio->responder($encuesta->fresh('plantilla'), $this->respuestasDemo($plantilla->preguntas, $user, $tipo, $n, $servicio));
+            $encuesta->update(['completada_at' => $finalizado->fecha_hora_fin?->copy()->addDays($n + 1) ?? now()]);
+        }
+    }
+
+    /** Una respuesta valida por pregunta visible, variando segun $n. */
+    private function respuestasDemo(array $preguntas, User $user, string $tipo, int $n, $servicio): array
+    {
+        $textos = ['Muy buena organización.', 'Faltó más tiempo por cita.', 'Excelente oportunidad para vender.', 'Me gustaría más compradores de hoteles.'];
+        $entrada = [];
+
+        foreach ($preguntas as $p) {
+            if (!$servicio->esVisible($p, $entrada)) {
+                continue;
+            }
+            $ops = array_values($p['opciones'] ?? []);
+            $clave = mb_strtolower($p['id'] . ' ' . $p['texto']);
+
+            $entrada[$p['id']] = match ($p['tipo']) {
+                'escala'   => max((int) ($p['escala_min'] ?? 1), (int) ($p['escala_max'] ?? 5) - ($n % 3)),
+                'nps'      => 10 - ($n % 4),
+                'binario'  => $n === 3 ? 'No' : 'Sí',
+                'multiple' => $ops ? array_slice($ops, $n % count($ops), 2) : [],
+                'opciones' => $ops
+                    ? (collect($ops)->first(fn ($o) => mb_strtolower($o) === $tipo) ?? $ops[$n % count($ops)])
+                    : 'Opción ' . ($n + 1),
+                default    => match (true) {
+                    str_contains($clave, 'correo')  => $user->email,
+                    str_contains($clave, 'negocio') => $user->restaurantero?->nombre_restaurante ?? $user->nombre_empresa ?? $user->name,
+                    str_contains($clave, 'nombre')  => $user->name,
+                    default                         => $textos[$n % count($textos)],
+                },
+            };
+        }
+
+        return $entrada;
+    }
+
+    /** Un anuncio VIGENTE (ayer a +30 dias) con imagen generada. */
+    private function publicidadDemo(): void
+    {
+        $ruta = 'publicidad/demo-app.png';
+        if (!Storage::disk('public')->exists($ruta)) {
+            $img = imagecreatetruecolor(800, 450);
+            imagefill($img, 0, 0, imagecolorallocate($img, 0x8b, 0x10, 0x28));
+            imagefilledrectangle($img, 40, 150, 760, 300, imagecolorallocate($img, 0xe0, 0xa9, 0x3e));
+            imagestring($img, 5, 300, 215, 'Impulsate - demo app', imagecolorallocate($img, 0xff, 0xff, 0xff));
+            ob_start();
+            imagepng($img);
+            Storage::disk('public')->put($ruta, ob_get_clean());
+            imagedestroy($img);
+        }
+
+        Publicidad::updateOrCreate(['titulo' => 'Anuncio de prueba (demo app)'], [
+            'imagen'                => $ruta,
+            'enlace'                => url('/'),
+            'abre_en_nueva_pestana' => false,
+            'fecha_inicio'          => now()->subDay()->startOfDay(),
+            'fecha_fin'             => now()->addDays(30)->endOfDay(),
+            'activa'                => true,
+        ]);
+    }
+
+    /** Plantillas de correo del sistema (firstOrCreate: no pisa las editadas). */
+    private function plantillasCorreo(): void
+    {
+        (new \Database\Seeders\PlantillasCorreoSeeder())->setCommand($this)->run();
     }
 }
