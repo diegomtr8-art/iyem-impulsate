@@ -112,8 +112,87 @@ const OPCIONES_CERTS = [
 ];
 
 const submitComprador = () => formComprador.post(route('perfil.comprador.actualizar'));
-const submitDocumentos = () => formDocs.post(route('perfil.documentos.subir'), { forceFormData: true });
-const submitProveedor  = () => formProveedor.post(route('restaurantero.completar-perfil.store'), { forceFormData: true });
+// Limites que acepta el backend, en MB.
+//   documentos (INE/CSF): CompletarPerfilController -> max:5120
+//   fotos (perfil y productos): ProveedorPerfilController -> max:8192
+const MAX_DOC_MB  = 5;
+const MAX_FOTO_MB = 8;
+
+const errorArchivo  = ref('');
+const docsGuardados = ref(false);
+
+// Formatos que acepta el backend para imagenes (mimes:jpg,jpeg,png,webp).
+// accept="image/*" dejaba elegir HEIC del iPhone, GIF o AVIF: el navegador los
+// aceptaba, el servidor los rechazaba con 422 y el formulario no mostraba nada.
+const EXT_FOTO = ['jpg', 'jpeg', 'png', 'webp'];
+
+// Devuelve el archivo si cabe y tiene formato valido; si no, avisa, limpia el
+// input y devuelve null.
+const validarArchivo = (e, maxMb, etiqueta, extensiones = null) => {
+    const file = e.target.files?.[0] ?? null;
+    if (!file) return null;
+
+    if (extensiones) {
+        const ext = (file.name.split('.').pop() ?? '').toLowerCase();
+        if (!extensiones.includes(ext)) {
+            errorArchivo.value =
+                `${etiqueta} está en formato .${ext}, que no se acepta. `
+                + `Usa ${extensiones.join(', ').toUpperCase()}. `
+                + `Si la tomaste con un iPhone, cámbiala a JPG antes de subirla.`;
+            e.target.value = '';
+            return null;
+        }
+    }
+
+    if (file.size > maxMb * 1024 * 1024) {
+        errorArchivo.value =
+            `${etiqueta} pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el máximo son ${maxMb} MB. `
+            + `Comprime la imagen o toma la foto en menor calidad.`;
+        e.target.value = '';
+        return null;
+    }
+
+    errorArchivo.value = '';
+    return file;
+};
+
+const submitDocumentos = () => {
+    errorArchivo.value  = '';
+    docsGuardados.value = false;
+
+    formDocs.post(route('perfil.documentos.subir'), {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            docsGuardados.value = true;
+            formDocs.ine = null;
+            formDocs.csf = null;
+            setTimeout(() => { docsGuardados.value = false; }, 5000);
+        },
+        onError: (errors) => {
+            // Si el servidor rechaza el archivo (peso, formato), que se vea.
+            errorArchivo.value = errors.ine || errors.csf || errors.csf_fecha
+                || 'No se pudieron guardar los documentos. Revisa el peso y el formato de los archivos.';
+        },
+    });
+};
+const errorProveedor = ref('');
+
+// Sin onError un 422 era invisible: se pulsaba Guardar y no pasaba nada. Los
+// fallos mas frecuentes son de las fotos (formato o peso), asi que se muestran.
+const submitProveedor = () => {
+    errorProveedor.value = '';
+    formProveedor.post(route('restaurantero.completar-perfil.store'), {
+        forceFormData: true,
+        preserveScroll: true,
+        onError: (errors) => {
+            const claveFoto = Object.keys(errors).find(k => k.startsWith('producto_foto_') || k === 'foto');
+            errorProveedor.value = claveFoto
+                ? errors[claveFoto]
+                : (Object.values(errors)[0] || 'No se pudo guardar el perfil. Revisa los campos marcados.');
+        },
+    });
+};
 
 const cambiarSeccion = (key) => { seccionActiva.value = key; };
 const cambiarVista   = (v)   => { vistaActiva.value = v; seccionActiva.value = secciones.value[0].key; };
@@ -151,17 +230,6 @@ const toggleCert = (arr, val) => {
     else arr.push(val);
 };
 
-const pctComprador = computed(() => {
-    const u = props.user;
-    const campos = [u.telefono, u.municipio, u.nombre_empresa, u.camara_asociacion, u.necesidades];
-    return Math.round((campos.filter(Boolean).length / campos.length) * 100);
-});
-const pctProveedor = computed(() => {
-    if (!props.restaurantero) return 0;
-    const r = props.restaurantero;
-    const campos = [r.nombre_restaurante, r.descripcion, r.municipio, r.tipo_oferta, r.mercado_meta];
-    return Math.round((campos.filter(Boolean).length / campos.length) * 100);
-});
 </script>
 
 <template>
@@ -186,18 +254,14 @@ const pctProveedor = computed(() => {
 
         <div class="max-w-5xl mx-auto px-4 py-6">
 
-            <!-- Barra de progreso -->
-            <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl px-5 py-4 mb-6 flex items-center justify-between gap-3">
-                <div class="min-w-0">
-                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Completitud del perfil</p>
-                    <div class="w-32 sm:w-48 h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-                        <div class="h-full bg-guinda-700 rounded-full transition-all"
-                            :style="`width:${vistaActiva==='proveedor'?pctProveedor:pctComprador}%`" />
-                    </div>
-                </div>
-                <p class="text-2xl font-black text-guinda-700 dark:text-guinda-400 shrink-0">
-                    {{ vistaActiva==='proveedor' ? pctProveedor : pctComprador }}%
-                </p>
+            <!-- Aviso de archivo rechazado en el navegador -->
+            <div v-if="errorArchivo"
+                class="mb-6 flex items-start gap-3 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-2xl">
+                <svg class="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+                <div class="flex-1 text-sm text-red-700 dark:text-red-400">{{ errorArchivo }}</div>
+                <button type="button" @click="errorArchivo = ''" class="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
             </div>
 
             <div class="flex flex-col lg:flex-row gap-4 lg:gap-6 lg:items-start">
@@ -396,9 +460,14 @@ const pctProveedor = computed(() => {
                                     <span v-else class="shrink-0 text-xs text-amber-600 font-semibold">Pendiente</span>
                                 </div>
                                 <div class="mb-5">
-                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">{{ user.ine_path ? 'Reemplazar INE' : 'Subir INE' }}</label>
-                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="e => formDocs.ine = e.target.files[0]"
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                                        {{ user.ine_path ? 'Reemplazar INE' : 'Subir INE' }}
+                                        <span class="font-normal text-gray-400">(PDF, JPG o PNG · máx. {{ MAX_DOC_MB }} MB)</span>
+                                    </label>
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                                        @change="e => formDocs.ine = validarArchivo(e, MAX_DOC_MB, 'El INE')"
                                         class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
+                                    <p v-if="formDocs.errors.ine" class="mt-1.5 text-xs text-red-600 dark:text-red-400">{{ formDocs.errors.ine }}</p>
                                 </div>
 
                                 <!-- CSF -->
@@ -411,9 +480,14 @@ const pctProveedor = computed(() => {
                                     <span v-else class="shrink-0 text-xs text-amber-600 font-semibold">Pendiente</span>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">{{ user.csf_path ? 'Reemplazar CSF' : 'Subir CSF' }}</label>
-                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" @change="e => formDocs.csf = e.target.files[0]"
+                                    <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                                        {{ user.csf_path ? 'Reemplazar CSF' : 'Subir CSF' }}
+                                        <span class="font-normal text-gray-400">(PDF, JPG o PNG · máx. {{ MAX_DOC_MB }} MB)</span>
+                                    </label>
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png"
+                                        @change="e => formDocs.csf = validarArchivo(e, MAX_DOC_MB, 'La CSF')"
                                         class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
+                                    <p v-if="formDocs.errors.csf" class="mt-1.5 text-xs text-red-600 dark:text-red-400">{{ formDocs.errors.csf }}</p>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Fecha de emisión de la CSF <span class="text-red-500">*</span></label>
@@ -421,11 +495,31 @@ const pctProveedor = computed(() => {
                                         class="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-900 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-guinda-500"/>
                                 </div>
                             </div>
-                            <div class="flex justify-end">
+                            <div class="flex justify-end items-center gap-3">
+                                <span v-if="docsGuardados" class="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                    ✓ Documentos guardados
+                                </span>
                                 <button type="submit" :disabled="formDocs.processing"
-                                    class="px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors">
-                                    {{ formDocs.processing ? 'Guardando...' : 'Guardar documentos' }}
+                                    class="px-5 py-2.5 bg-guinda-800 hover:bg-guinda-700 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-colors inline-flex items-center gap-2">
+                                    <svg v-if="formDocs.processing" class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/>
+                                    </svg>
+                                    <span>
+                                        {{ formDocs.processing
+                                            ? (formDocs.progress ? `Subiendo ${formDocs.progress.percentage}%` : 'Guardando...')
+                                            : 'Guardar documentos' }}
+                                    </span>
                                 </button>
+                            </div>
+                            <div v-if="formDocs.processing && formDocs.progress" class="mt-3">
+                                <div class="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-guinda-700 rounded-full transition-all duration-200"
+                                        :style="`width:${formDocs.progress.percentage}%`" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    No cierres esta ventana hasta que termine.
+                                </p>
                             </div>
                         </form>
                     </template>
@@ -508,6 +602,11 @@ const pctProveedor = computed(() => {
                                     <span class="text-sm text-gray-700 dark:text-gray-300">Domicilio fiscal en Yucatán</span>
                                 </div>
                             </div>
+                            <p v-if="errorProveedor"
+                                class="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20
+                                       border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                                {{ errorProveedor }}
+                            </p>
                             <div class="flex justify-end">
                                 <button type="submit" :disabled="formProveedor.processing"
                                     class="px-5 py-2.5 disabled:opacity-70 text-white font-bold rounded-xl text-sm transition-colors inline-flex items-center gap-2"
@@ -519,8 +618,19 @@ const pctProveedor = computed(() => {
                                     <svg v-else-if="formProveedor.recentlySuccessful" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
                                     </svg>
-                                    <span>{{ formProveedor.processing ? 'Guardando...' : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
+                                    <span>{{ formProveedor.processing
+                                        ? (formProveedor.progress ? `Subiendo ${formProveedor.progress.percentage}%` : 'Guardando...')
+                                        : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
                                 </button>
+                            </div>
+                            <div v-if="formProveedor.processing && formProveedor.progress" class="mt-3">
+                                <div class="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-guinda-700 rounded-full transition-all duration-200"
+                                        :style="`width:${formProveedor.progress.percentage}%`" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    No cierres esta ventana hasta que termine.
+                                </p>
                             </div>
                         </form>
                     </template>
@@ -693,7 +803,7 @@ const pctProveedor = computed(() => {
                                 <div>
                                     <label class="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3">
                                         Productos / servicios destacados
-                                        <span class="text-xs text-gray-400 font-normal ml-1">(máx. 5)</span>
+                                        <span class="text-xs text-gray-400 font-normal ml-1">(máx. 5 · foto de máx. {{ MAX_FOTO_MB }} MB)</span>
                                     </label>
                                     <div class="space-y-3">
                                         <div v-for="(prod,i) in formProveedor.productos" :key="i"
@@ -707,7 +817,8 @@ const pctProveedor = computed(() => {
                                                 placeholder="Descripción breve del producto o servicio"
                                                 class="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-800 dark:text-gray-200 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:border-guinda-500 placeholder-gray-400"></textarea>
                                             <div class="flex items-center gap-2 flex-wrap">
-                                                <input type="file" accept="image/*" @change="e => productosFotos[i] = e.target.files[0] ?? null"
+                                                <input type="file" accept=".jpg,.jpeg,.png,.webp"
+                                                    @change="e => productosFotos[i] = validarArchivo(e, MAX_FOTO_MB, 'La foto del producto', EXT_FOTO)"
                                                     class="flex-1 min-w-0 text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
                                                 <span v-if="prod.foto_path && !productosFotos[i]"
                                                     class="shrink-0 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✓ Subida</span>
@@ -722,6 +833,11 @@ const pctProveedor = computed(() => {
                                     </div>
                                 </div>
                             </div>
+                            <p v-if="errorProveedor"
+                                class="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20
+                                       border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                                {{ errorProveedor }}
+                            </p>
                             <div class="flex justify-end">
                                 <button type="submit" :disabled="formProveedor.processing"
                                     class="px-5 py-2.5 disabled:opacity-70 text-white font-bold rounded-xl text-sm transition-colors inline-flex items-center gap-2"
@@ -733,8 +849,19 @@ const pctProveedor = computed(() => {
                                     <svg v-else-if="formProveedor.recentlySuccessful" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
                                     </svg>
-                                    <span>{{ formProveedor.processing ? 'Guardando...' : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
+                                    <span>{{ formProveedor.processing
+                                        ? (formProveedor.progress ? `Subiendo ${formProveedor.progress.percentage}%` : 'Guardando...')
+                                        : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
                                 </button>
+                            </div>
+                            <div v-if="formProveedor.processing && formProveedor.progress" class="mt-3">
+                                <div class="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-guinda-700 rounded-full transition-all duration-200"
+                                        :style="`width:${formProveedor.progress.percentage}%`" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    No cierres esta ventana hasta que termine.
+                                </p>
                             </div>
                         </form>
                     </template>
@@ -827,6 +954,11 @@ const pctProveedor = computed(() => {
                                 </div>
                                 </Transition>
                             </div>
+                            <p v-if="errorProveedor"
+                                class="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20
+                                       border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                                {{ errorProveedor }}
+                            </p>
                             <div class="flex justify-end">
                                 <button type="submit" :disabled="formProveedor.processing"
                                     class="px-5 py-2.5 disabled:opacity-70 text-white font-bold rounded-xl text-sm transition-colors inline-flex items-center gap-2"
@@ -838,8 +970,19 @@ const pctProveedor = computed(() => {
                                     <svg v-else-if="formProveedor.recentlySuccessful" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
                                     </svg>
-                                    <span>{{ formProveedor.processing ? 'Guardando...' : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
+                                    <span>{{ formProveedor.processing
+                                        ? (formProveedor.progress ? `Subiendo ${formProveedor.progress.percentage}%` : 'Guardando...')
+                                        : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
                                 </button>
+                            </div>
+                            <div v-if="formProveedor.processing && formProveedor.progress" class="mt-3">
+                                <div class="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-guinda-700 rounded-full transition-all duration-200"
+                                        :style="`width:${formProveedor.progress.percentage}%`" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    No cierres esta ventana hasta que termine.
+                                </p>
                             </div>
                         </form>
                     </template>
@@ -880,10 +1023,19 @@ const pctProveedor = computed(() => {
                             </div>
                             <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6">
                                 <h3 class="text-sm font-bold text-gray-700 dark:text-gray-300 pb-3 border-b border-gray-100 dark:border-gray-800 mb-4">Imagen del negocio</h3>
-                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Logo / foto principal</label>
-                                <input type="file" accept="image/*" @change="e => formProveedor.foto = e.target.files[0]"
+                                <label class="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
+                                    Logo / foto principal
+                                    <span class="font-normal text-gray-400">(máx. {{ MAX_FOTO_MB }} MB)</span>
+                                </label>
+                                <input type="file" accept=".jpg,.jpeg,.png,.webp"
+                                    @change="e => formProveedor.foto = validarArchivo(e, MAX_FOTO_MB, 'La foto', EXT_FOTO)"
                                     class="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-guinda-50 file:text-guinda-700 hover:file:bg-guinda-100"/>
                             </div>
+                            <p v-if="errorProveedor"
+                                class="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/20
+                                       border border-red-200 dark:border-red-800 rounded-xl px-3 py-2">
+                                {{ errorProveedor }}
+                            </p>
                             <div class="flex justify-end">
                                 <button type="submit" :disabled="formProveedor.processing"
                                     class="px-5 py-2.5 disabled:opacity-70 text-white font-bold rounded-xl text-sm transition-colors inline-flex items-center gap-2"
@@ -895,8 +1047,19 @@ const pctProveedor = computed(() => {
                                     <svg v-else-if="formProveedor.recentlySuccessful" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
                                     </svg>
-                                    <span>{{ formProveedor.processing ? 'Guardando...' : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
+                                    <span>{{ formProveedor.processing
+                                        ? (formProveedor.progress ? `Subiendo ${formProveedor.progress.percentage}%` : 'Guardando...')
+                                        : (formProveedor.recentlySuccessful ? 'Guardado' : 'Guardar cambios') }}</span>
                                 </button>
+                            </div>
+                            <div v-if="formProveedor.processing && formProveedor.progress" class="mt-3">
+                                <div class="h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-guinda-700 rounded-full transition-all duration-200"
+                                        :style="`width:${formProveedor.progress.percentage}%`" />
+                                </div>
+                                <p class="text-[11px] text-gray-400 mt-1">
+                                    No cierres esta ventana hasta que termine.
+                                </p>
                             </div>
                         </form>
                     </template>

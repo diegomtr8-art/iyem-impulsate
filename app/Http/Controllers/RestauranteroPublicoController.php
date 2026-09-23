@@ -4,142 +4,92 @@ namespace App\Http\Controllers;
 
 use App\Models\Evento;
 use App\Models\Restaurantero;
+use App\Services\DirectorioProveedoresService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class RestauranteroPublicoController extends Controller
 {
+    public function __construct(private DirectorioProveedoresService $directorio) {}
+
     public function index(Request $request)
     {
-        $evento = Evento::activo();
+        $filtros = $request->only(['search', 'categoria']);
 
-        $proveedoresPlataforma = Restaurantero::query()
-            ->where('activo', true)
-            ->where('aprobado', true)
-            ->where('perfil_completo', true)
+        // Todos los encuentros de negocios activos, el destacado primero.
+        // Antes se usaba Evento::activo() (uno solo), por eso solo se veia un
+        // evento y la pagina salia vacia si nadie estaba aprobado en el.
+        $eventos = $this->directorio->encuentrosActivos();
+
+        $proveedoresPlataforma = $this->directorio->dePlataforma()
             ->withCount('citas')
             ->orderByDesc('created_at')
             ->paginate(8, ['*'], 'plataforma_page')
             ->withQueryString();
 
-        // Para bazares, mostrar todos los proveedores de la plataforma
-        // (no hay "proveedores del evento" en un bazar)
-        if (!$evento || $evento->tipo_evento === 'bazar_exposicion') {
-            // Sin evento: mostrar todos los proveedores como contenido principal
-            $queryTodos = Restaurantero::query()
-                ->where('activo', true)
-                ->where('aprobado', true)
-                ->where('perfil_completo', true)
+        // Sin encuentros activos (o solo bazares): mostrar el directorio completo
+        if ($eventos->isEmpty()) {
+            $queryTodos = $this->directorio->dePlataforma()
                 ->withCount('citas')
                 ->orderByDesc('created_at');
 
-            if ($request->filled('search')) {
-                $s = $request->search;
-                $queryTodos->where(function ($q) use ($s) {
-                    $q->where('nombre_restaurante', 'like', "%{$s}%")
-                      ->orWhere('direccion', 'like', "%{$s}%")
-                      ->orWhere('descripcion', 'like', "%{$s}%")
-                      ->orWhere('municipio', 'like', "%{$s}%");
-                });
-            }
+            $this->aplicarFiltros($queryTodos, $request);
 
-            if ($request->filled('categoria')) {
-                $queryTodos->where('categoria', $request->categoria);
-            }
-
-            $categoriasTodos = Restaurantero::where('activo', true)
-                ->where('aprobado', true)
-                ->where('perfil_completo', true)
-                ->whereNotNull('categoria')
-                ->distinct()
-                ->orderBy('categoria')
-                ->pluck('categoria');
+            $categoriasTodos = $this->directorio->categorias($this->directorio->dePlataforma());
 
             return Inertia::render('Restauranteros/Index', [
                 'restauranteros'        => $queryTodos->paginate(12)->withQueryString(),
                 'sin_evento'            => true,
-                'filters'               => $request->only(['search', 'categoria']),
+                'eventos'               => [],
+                'filters'               => $filtros,
                 'categorias'            => $categoriasTodos,
                 'proveedoresPlataforma' => null,
             ]);
         }
 
-        $query = Restaurantero::query()
-            ->where('activo', true)
-            ->where('aprobado', true)
-            ->whereHas('user', function ($q) use ($evento) {
-                $q->whereExists(function ($sub) use ($evento) {
-                    $sub->from('evento_usuario')
-                        ->whereColumn('evento_usuario.user_id', 'users.id')
-                        ->where('evento_usuario.evento_id', $evento->id)
-                        ->where('evento_usuario.tipo', 'proveedor')
-                        ->where('evento_usuario.estado', 'aprobado');
-                });
-            })
-            ->withCount('citas')
-            ->orderByDesc('created_at');
+        // Una seccion por evento, en el orden de queryActivos (destacado primero)
+        $secciones = $eventos->map(function ($evento) use ($request) {
+            $query = $this->directorio->delEvento($evento)
+                ->withCount('citas')
+                ->orderByDesc('created_at');
 
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('nombre_restaurante', 'like', "%{$search}%")
-                  ->orWhere('direccion', 'like', "%{$search}%")
-                  ->orWhere('descripcion', 'like', "%{$search}%");
-            });
-        }
+            $this->aplicarFiltros($query, $request);
 
-        if ($request->filled('categoria')) {
-            $query->where('categoria', $request->categoria);
-        }
+            return [
+                'id'          => $evento->id,
+                'nombre'      => $evento->nombre,
+                'descripcion' => $evento->descripcion,
+                'destacado'   => (bool) $evento->destacado,
+                'imagen_url'  => $evento->imagen_url,
+                'proveedores' => $query->get(),
+            ];
+        })->values();
 
-        $categorias = Restaurantero::where('activo', true)
-            ->where('aprobado', true)
-            ->whereHas('user', function ($q) use ($evento) {
-                $q->whereExists(function ($sub) use ($evento) {
-                    $sub->from('evento_usuario')
-                        ->whereColumn('evento_usuario.user_id', 'users.id')
-                        ->where('evento_usuario.evento_id', $evento->id)
-                        ->where('evento_usuario.tipo', 'proveedor')
-                        ->where('evento_usuario.estado', 'aprobado');
-                });
-            })
-            ->whereNotNull('categoria')
-            ->distinct()
-            ->orderBy('categoria')
-            ->pluck('categoria');
-
-        $restauranteros = $query->paginate(12)->withQueryString();
+        // Categorias de todos los eventos activos juntos, para el filtro
+        $categorias = $this->directorio->categorias($this->directorio->delEvento($eventos->pluck('id')));
 
         return Inertia::render('Restauranteros/Index', [
-            'restauranteros'        => $restauranteros,
+            'restauranteros'        => null,
             'sin_evento'            => false,
-            'filters'               => $request->only(['search', 'categoria']),
+            'eventos'               => $secciones,
+            'filters'               => $filtros,
             'categorias'            => $categorias,
             'proveedoresPlataforma' => $proveedoresPlataforma,
         ]);
     }
 
+    /** Filtros de busqueda y categoria, compartidos por todas las consultas (y por la API). */
+    private function aplicarFiltros($query, Request $request): void
+    {
+        $this->directorio->aplicarFiltros($query, $request->input('search'), $request->input('categoria'));
+    }
+
     public function show(Restaurantero $restaurantero, Request $request)
     {
-        $esDueno = auth()->check() && auth()->id() === $restaurantero->user_id;
-        $esAdmin = auth()->check() && auth()->user()->hasRole('admin');
-        abort_if(!$restaurantero->activo && !$esDueno && !$esAdmin, 404);
+        abort_unless($this->directorio->puedeVer(auth()->user(), $restaurantero), 404);
 
         // Track page visit
-        $ua = $request->userAgent() ?? '';
-        $device = match(true) {
-            str_contains(strtolower($ua), 'mobile') || str_contains(strtolower($ua), 'android') => 'mobile',
-            str_contains(strtolower($ua), 'tablet') || str_contains(strtolower($ua), 'ipad')   => 'tablet',
-            default => 'desktop',
-        };
-        \DB::table('page_visits')->insert([
-            'restaurantero_id' => $restaurantero->id,
-            'url'              => '/restauranteros/' . $restaurantero->id,
-            'device_type'      => $device,
-            'ip'               => $request->ip(),
-            'created_at'       => now(),
-            'updated_at'       => now(),
-        ]);
+        $this->directorio->registrarVisita($restaurantero, $request);
 
         $restaurantero->load(['horarios', 'servicios' => function ($q) {
             $q->where('activo', true);

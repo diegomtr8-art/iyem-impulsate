@@ -42,7 +42,10 @@ const calendarOptions = ref({
     headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek' },
     slotMinTime: '09:00:00', slotMaxTime: '16:00:00',
     hiddenDays: [0, 6], slotDuration: '00:30:00', height: 380,
-    events: '/restaurantero/panel/eventos', eventColor: '#8b1028',
+    // El prefijo de la ruta es /proveedor, no /restaurantero (el 'restaurantero.'
+    // del name() es solo el alias). La URL a pelo daba 404 y FullCalendar lanzaba
+    // "Request failed" en consola cada vez que se pintaba el calendario.
+    events: route('restaurantero.panel.eventos'), eventColor: '#8b1028',
     nowIndicator: true,
     businessHours: { daysOfWeek: [1,2,3,4,5], startTime: '09:00', endTime: '16:00' },
 });

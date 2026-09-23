@@ -25,6 +25,7 @@ class Evento extends Model
         'fecha_inicio',
         'fecha_corte',
         'activa',
+        'destacado',
         'tv_token',
         'tipo_evento',
         'fecha_aceptacion_solicitudes',
@@ -57,6 +58,7 @@ class Evento extends Model
     {
         return [
             'activa'                         => 'boolean',
+            'destacado'                      => 'boolean',
             'con_criterios_evaluacion'       => 'boolean',
             'fecha_inicio'                   => 'date',
             'fecha_corte'                    => 'date',
@@ -139,6 +141,10 @@ class Evento extends Model
                 $q->whereNull('fecha_hora_fin')
                   ->orWhere('fecha_hora_fin', '>=', now());
             })
+            // El evento marcado como destacado manda sobre la fecha: es el que
+            // se considera "principal" en todo el flujo publico. Si ninguno
+            // esta destacado, se conserva el criterio anterior (el mas proximo).
+            ->orderByDesc('destacado')
             ->orderByRaw('fecha_hora_inicio IS NULL')
             ->orderBy('fecha_hora_inicio')
             ->orderBy('id');

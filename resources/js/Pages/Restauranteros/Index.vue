@@ -10,11 +10,11 @@ const props = defineProps({
     categorias: Array,
     sin_evento: { type: Boolean, default: false },
     proveedoresPlataforma: Object,
+    eventos: { type: Array, default: () => [] },
 });
 
 const page = usePage();
 const auth = computed(() => page.props.auth);
-const eventoActivo = computed(() => page.props.eventoActivo);
 
 // Redirige al panel correcto según el rol activo del usuario
 const panelRoute = computed(() => {
@@ -28,9 +28,15 @@ const panelRoute = computed(() => {
 });
 const tituloPagina = computed(() => {
     if (props.sin_evento) return 'Proveedores de la plataforma Impulsate';
-    if (eventoActivo.value) return `Proveedores del Evento: ${eventoActivo.value.nombre}`;
+    if (props.eventos.length > 1) return 'Proveedores por evento';
+    if (props.eventos.length === 1) return `Proveedores del Evento: ${props.eventos[0].nombre}`;
     return 'Todos los Proveedores';
 });
+
+// Total de proveedores mostrados en todas las secciones de evento
+const totalProveedoresEventos = computed(() =>
+    props.eventos.reduce((n, ev) => n + (ev.proveedores?.length ?? 0), 0)
+);
 
 const search = ref(props.filters?.search || '');
 const categoriaActiva = ref(props.filters?.categoria || '');
@@ -129,108 +135,223 @@ const cambiarCategoria = (event) => {
                 </select>
             </div>
 
-            <!-- Lista móvil compacta (< 640px) -->
-            <div v-if="restauranteros.data && restauranteros.data.length > 0"
-                class="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm mb-6">
-                <Link v-for="r in restauranteros.data" :key="'m-' + r.id"
-                    :href="route('proveedores.show', r.id)"
-                    class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                    <div class="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden border-2 border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                        <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
-                            class="w-full h-full object-cover" />
-                        <span v-else class="text-xl text-gray-400">🏪</span>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
-                            {{ r.nombre_restaurante }}
-                        </p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                            {{ r.municipio || r.direccion || r.descripcion }}
-                        </p>
-                        <span v-if="r.categoria"
-                            class="inline-block mt-1 text-[10px] font-semibold bg-guinda-50 text-guinda-700 dark:bg-guinda-900/30 dark:text-guinda-400 px-2 py-0.5 rounded-full">
-                            {{ r.categoria }}
+            <!-- Directorio completo: solo cuando no hay encuentros activos -->
+            <template v-if="sin_evento">
+                <!-- Lista móvil compacta (< 640px) -->
+                <div v-if="restauranteros.data && restauranteros.data.length > 0"
+                    class="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm mb-6">
+                    <Link v-for="r in restauranteros.data" :key="'m-' + r.id"
+                        :href="route('proveedores.show', r.id)"
+                        class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        <div class="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden border-2 border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                            <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
+                                class="w-full h-full object-cover" />
+                            <span v-else class="text-xl text-gray-400">🏪</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
+                                {{ r.nombre_restaurante }}
+                            </p>
+                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                {{ r.municipio || r.direccion || r.descripcion }}
+                            </p>
+                            <span v-if="r.categoria"
+                                class="inline-block mt-1 text-[10px] font-semibold bg-guinda-50 text-guinda-700 dark:bg-guinda-900/30 dark:text-guinda-400 px-2 py-0.5 rounded-full">
+                                {{ r.categoria }}
+                            </span>
+                        </div>
+                        <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                        </svg>
+                    </Link>
+                </div>
+
+                <!-- Grid -->
+                <div v-if="restauranteros.data && restauranteros.data.length > 0" class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    <Link v-for="r in restauranteros.data" :key="r.id"
+                        :href="route('proveedores.show', r.id)"
+                        class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">
+                        <!-- Foto -->
+                        <div class="h-40 bg-gradient-to-br from-gray-100 dark:from-gray-800 to-gray-200 dark:to-gray-900 flex items-center justify-center overflow-hidden">
+                            <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
+                                class="w-full h-full object-cover" />
+                            <svg v-else class="w-14 h-14 text-gray-300 dark:text-gray-700 group-hover:text-guinda-300/40 dark:group-hover:text-guinda-900/60 transition-colors" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+                            </svg>
+                        </div>
+
+                        <div class="p-5">
+                            <h3 class="font-bold text-gray-900 dark:text-white text-base mb-2 truncate">{{ r.nombre_restaurante }}</h3>
+
+                            <div v-if="r.municipio" class="flex items-center gap-1.5 text-gray-500 dark:text-gray-500 text-xs mb-3">
+                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                <span class="truncate">{{ r.municipio }}, Yucatán</span>
+                            </div>
+                            <div v-else-if="r.direccion" class="flex items-center gap-1.5 text-gray-500 dark:text-gray-500 text-xs mb-3">
+                                <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                </svg>
+                                <span class="truncate">{{ r.direccion }}</span>
+                            </div>
+
+                            <div class="flex items-center justify-between mt-3">
+                                <span class="text-xs text-gray-400 dark:text-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{{ r.citas_count || 0 }} citas</span>
+                                <span class="text-guinda-700 dark:text-guinda-500 text-xs font-semibold group-hover:text-guinda-600 dark:group-hover:text-guinda-400 transition-colors">Ver perfil →</span>
+                            </div>
+                        </div>
+                    </Link>
+                </div>
+
+                <!-- Empty state -->
+                <div v-else class="text-center py-24">
+                    <svg class="w-16 h-16 mx-auto text-gray-300 dark:text-gray-700 mb-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+                    </svg>
+                    <p class="text-gray-500 dark:text-gray-500 text-lg font-medium">No se encontraron proveedores</p>
+                    <p v-if="search" class="text-gray-400 dark:text-gray-600 text-sm mt-1">Intenta con otro término de búsqueda</p>
+                </div>
+
+                <!-- Paginación -->
+                <div v-if="restauranteros.links && restauranteros.last_page > 1" class="flex items-center justify-center gap-1 mt-12">
+                    <template v-for="(link, idx) in restauranteros.links" :key="link.label">
+                        <Link v-if="link.url" :href="link.url"
+                            :class="[
+                                'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                                link.active
+                                    ? 'bg-guinda-800 text-white font-semibold'
+                                    : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
+                            ]"
+                        >
+                            <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                            <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            <span v-else v-html="link.label" />
+                        </Link>
+                        <span v-else
+                            :class="['px-3 py-1.5 rounded-lg text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed']"
+                        >
+                            <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                            <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            <span v-else v-html="link.label" />
+                        </span>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Una seccion por evento activo, el destacado primero -->
+            <template v-else>
+                <section v-for="(ev, idx) in eventos" :key="'ev-' + ev.id"
+                    :class="idx > 0 ? 'mt-16 pt-10 border-t border-gray-200 dark:border-gray-800' : ''">
+
+                    <div class="mb-6 flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <h2 class="text-2xl font-black text-gray-900 dark:text-white">{{ ev.nombre }}</h2>
+                                <span v-if="ev.destacado"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+                                           bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400
+                                           border border-amber-200 dark:border-amber-800">
+                                    ★ Evento principal
+                                </span>
+                            </div>
+                            <p v-if="ev.descripcion" class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                                {{ ev.descripcion }}
+                            </p>
+                        </div>
+                        <span class="text-xs text-gray-400 whitespace-nowrap mt-1">
+                            {{ ev.proveedores.length }}
+                            {{ ev.proveedores.length === 1 ? 'proveedor' : 'proveedores' }}
                         </span>
                     </div>
-                    <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                    </svg>
-                </Link>
-            </div>
 
-            <!-- Grid -->
-            <div v-if="restauranteros.data && restauranteros.data.length > 0" class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <Link v-for="r in restauranteros.data" :key="r.id"
-                    :href="route('proveedores.show', r.id)"
-                    class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">
-                    <!-- Foto -->
-                    <div class="h-40 bg-gradient-to-br from-gray-100 dark:from-gray-800 to-gray-200 dark:to-gray-900 flex items-center justify-center overflow-hidden">
-                        <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
-                            class="w-full h-full object-cover" />
-                        <svg v-else class="w-14 h-14 text-gray-300 dark:text-gray-700 group-hover:text-guinda-300/40 dark:group-hover:text-guinda-900/60 transition-colors" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
-                        </svg>
+                    <!-- Lista móvil compacta (< 640px) -->
+                    <div v-if="ev.proveedores.length"
+                        class="block sm:hidden divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900 rounded-2xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-sm mb-6">
+                        <Link v-for="r in ev.proveedores" :key="'m-' + ev.id + '-' + r.id"
+                            :href="route('proveedores.show', r.id)"
+                            class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                            <div class="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden border-2 border-gray-100 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                                <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
+                                    class="w-full h-full object-cover" />
+                                <span v-else class="text-xl text-gray-400">🏪</span>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-gray-900 dark:text-white truncate leading-tight">
+                                    {{ r.nombre_restaurante }}
+                                </p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                                    {{ r.municipio || r.direccion || r.descripcion }}
+                                </p>
+                                <span v-if="r.categoria"
+                                    class="inline-block mt-1 text-[10px] font-semibold bg-guinda-50 text-guinda-700 dark:bg-guinda-900/30 dark:text-guinda-400 px-2 py-0.5 rounded-full">
+                                    {{ r.categoria }}
+                                </span>
+                            </div>
+                            <svg class="w-4 h-4 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </Link>
                     </div>
 
-                    <div class="p-5">
-                        <h3 class="font-bold text-gray-900 dark:text-white text-base mb-2 truncate">{{ r.nombre_restaurante }}</h3>
+                    <!-- Grid -->
+                    <div v-if="ev.proveedores.length" class="hidden sm:grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                        <Link v-for="r in ev.proveedores" :key="ev.id + '-' + r.id"
+                            :href="route('proveedores.show', r.id)"
+                            class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden hover:border-guinda-300 dark:hover:border-guinda-500/30 hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-none transition-all duration-200 group">
+                            <!-- Foto -->
+                            <div class="h-40 bg-gradient-to-br from-gray-100 dark:from-gray-800 to-gray-200 dark:to-gray-900 flex items-center justify-center overflow-hidden">
+                                <img v-if="r.logo_path" :src="'/storage/' + r.logo_path" :alt="r.nombre_restaurante"
+                                    class="w-full h-full object-cover" />
+                                <svg v-else class="w-14 h-14 text-gray-300 dark:text-gray-700 group-hover:text-guinda-300/40 dark:group-hover:text-guinda-900/60 transition-colors" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
+                                </svg>
+                            </div>
 
-                        <div v-if="r.municipio" class="flex items-center gap-1.5 text-gray-500 dark:text-gray-500 text-xs mb-3">
-                            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span class="truncate">{{ r.municipio }}, Yucatán</span>
-                        </div>
-                        <div v-else-if="r.direccion" class="flex items-center gap-1.5 text-gray-500 dark:text-gray-500 text-xs mb-3">
-                            <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                            </svg>
-                            <span class="truncate">{{ r.direccion }}</span>
-                        </div>
+                            <div class="p-5">
+                                <h3 class="font-bold text-gray-900 dark:text-white text-base mb-2 truncate">{{ r.nombre_restaurante }}</h3>
 
-                        <div class="flex items-center justify-between mt-3">
-                            <span class="text-xs text-gray-400 dark:text-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{{ r.citas_count || 0 }} citas</span>
-                            <span class="text-guinda-700 dark:text-guinda-500 text-xs font-semibold group-hover:text-guinda-600 dark:group-hover:text-guinda-400 transition-colors">Ver perfil →</span>
-                        </div>
+                                <div v-if="r.municipio" class="flex items-center gap-1.5 text-gray-500 dark:text-gray-500 text-xs mb-3">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span class="truncate">{{ r.municipio }}, Yucatán</span>
+                                </div>
+                                <div v-else-if="r.direccion" class="flex items-center gap-1.5 text-gray-500 dark:text-gray-500 text-xs mb-3">
+                                    <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                    </svg>
+                                    <span class="truncate">{{ r.direccion }}</span>
+                                </div>
+
+                                <div class="flex items-center justify-between mt-3">
+                                    <span class="text-xs text-gray-400 dark:text-gray-600 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">{{ r.citas_count || 0 }} citas</span>
+                                    <span class="text-guinda-700 dark:text-guinda-500 text-xs font-semibold group-hover:text-guinda-600 dark:group-hover:text-guinda-400 transition-colors">Ver perfil →</span>
+                                </div>
+                            </div>
+                        </Link>
                     </div>
-                </Link>
-            </div>
 
-            <!-- Empty state -->
-            <div v-else class="text-center py-24">
-                <svg class="w-16 h-16 mx-auto text-gray-300 dark:text-gray-700 mb-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 01.75-.75h3a.75.75 0 01.75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.001 3.001 0 003.75-.615A2.993 2.993 0 009.75 9.75c.896 0 1.7-.393 2.25-1.016a2.993 2.993 0 002.25 1.016c.896 0 1.7-.393 2.25-1.016a3.001 3.001 0 003.75.614m-16.5 0a3.004 3.004 0 01-.621-4.72L4.318 3.44A1.5 1.5 0 015.378 3h13.243a1.5 1.5 0 011.06.44l1.19 1.189a3 3 0 01-.621 4.72m-13.5 8.65h3.75a.75.75 0 00.75-.75V13.5a.75.75 0 00-.75-.75H6.75a.75.75 0 00-.75.75v3.75c0 .415.336.75.75.75z" />
-                </svg>
-                <p class="text-gray-500 dark:text-gray-500 text-lg font-medium">No se encontraron proveedores</p>
-                <p v-if="search" class="text-gray-400 dark:text-gray-600 text-sm mt-1">Intenta con otro término de búsqueda</p>
-            </div>
+                    <!-- Seccion sin proveedores aprobados todavia -->
+                    <div v-if="!ev.proveedores.length"
+                         class="text-center py-12 border border-dashed border-gray-200 dark:border-gray-800 rounded-2xl">
+                        <p class="text-gray-500 dark:text-gray-400 text-sm">
+                            Todavía no hay proveedores aprobados en este evento.
+                        </p>
+                    </div>
+                </section>
 
-            <!-- Paginación -->
-            <div v-if="restauranteros.links && restauranteros.last_page > 1" class="flex items-center justify-center gap-1 mt-12">
-                <template v-for="(link, idx) in restauranteros.links" :key="link.label">
-                    <Link v-if="link.url" :href="link.url"
-                        :class="[
-                            'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                            link.active
-                                ? 'bg-guinda-800 text-white font-semibold'
-                                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white'
-                        ]"
-                    >
-                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                        <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-                        <span v-else v-html="link.label" />
-                    </Link>
-                    <span v-else
-                        :class="['px-3 py-1.5 rounded-lg text-sm text-gray-400 dark:text-gray-600 cursor-not-allowed']"
-                    >
-                        <svg v-if="idx === 0" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" /></svg>
-                        <svg v-else-if="idx === restauranteros.links.length - 1" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" /></svg>
-                        <span v-else v-html="link.label" />
-                    </span>
-                </template>
-            </div>
+                <!-- Solo si NINGUN evento tiene proveedores -->
+                <div v-if="eventos.length && totalProveedoresEventos === 0" class="text-center py-8">
+                    <p class="text-gray-500 dark:text-gray-500 text-sm">
+                        Cuando el equipo apruebe proveedores, aparecerán aquí.
+                    </p>
+                </div>
+            </template>
 
             <!-- Explora los proveedores de la plataforma -->
             <div v-if="proveedoresPlataforma?.data?.length" class="mt-16 pt-10 border-t border-gray-200 dark:border-gray-800">

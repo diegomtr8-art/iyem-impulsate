@@ -84,17 +84,43 @@ class HandleInertiaRequests extends Middleware
                 'fecha_hora_inicio_compradores', 'fecha_hora_fin_compradores',
                 'tiempo_entre_citas_minutos',
             ]),
-            'eventosSidebar' => fn () => Evento::orderByDesc('activa')
-                ->orderByDesc('fecha_hora_inicio')
-                ->limit(6)
-                ->get()
-                ->map(fn ($e) => array_merge(
-                    $e->only([
-                        'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
-                        'fecha_hora_inicio', 'fecha_hora_fin', 'tipo_evento',
-                    ]),
-                    ['imagen_url' => $e->imagen_url]
-                )),
+            'eventosSidebar' => function () use ($request) {
+                $eventos = Evento::orderByDesc('activa')
+                    ->orderByDesc('fecha_hora_inicio')
+                    ->limit(6)
+                    ->get();
+
+                // Estado de inscripcion del usuario en esos eventos, en UNA sola
+                // consulta. Sin esto la tira no puede distinguir entre "Registrate"
+                // y "Ver Proveedores".
+                $registros = collect();
+                if ($request->user() && $eventos->isNotEmpty()) {
+                    $registros = DB::table('evento_usuario')
+                        ->whereIn('evento_id', $eventos->pluck('id'))
+                        ->where('user_id', $request->user()->id)
+                        ->get()
+                        ->groupBy('evento_id');
+                }
+
+                return $eventos->map(function ($e) use ($registros) {
+                    $delEvento = $registros->get($e->id, collect())->keyBy('tipo');
+
+                    return array_merge(
+                        $e->only([
+                            'id', 'nombre', 'sector_economico', 'activa', 'descripcion',
+                            'fecha_hora_inicio', 'fecha_hora_fin', 'tipo_evento',
+                        ]),
+                        [
+                            'imagen_url'  => $e->imagen_url,
+                            'mi_registro' => [
+                                'comprador' => optional($delEvento->get('comprador'))->estado,
+                                'proveedor' => optional($delEvento->get('proveedor'))->estado,
+                                'expositor' => optional($delEvento->get('expositor'))->estado,
+                            ],
+                        ]
+                    );
+                });
+            },
             'registradoEnEvento' => function () use ($request) {
                 $evento = Evento::activo();
                 if (!$evento || !$request->user()) {

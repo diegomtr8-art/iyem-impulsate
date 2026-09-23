@@ -9,6 +9,52 @@ const props = defineProps({
 const page = usePage();
 const collapsed = ref(false);
 
+const esBazar = (evento) => evento.tipo_evento === 'bazar_exposicion';
+
+// Rol con el que se registraria el usuario en un encuentro de negocios.
+// Se deriva del panel en el que esta: el dashboard es la vista de comprador
+// y el panel de proveedor la de proveedor. Para quien tiene ambos roles,
+// manda active_role.
+const rolRegistro = computed(() => {
+    const u = page.props.auth?.user;
+    if (!u) return 'comprador';
+    if (u.active_role === 'proveedor' && u.is_restaurantero) return 'proveedor';
+    if (u.is_restaurantero && !u.is_cliente) return 'proveedor';
+    return 'comprador';
+});
+
+// Estado del usuario en ESTE evento, segun su tipo y su rol.
+const estadoEn = (evento) => {
+    const r = evento.mi_registro ?? {};
+    return esBazar(evento) ? r.expositor : r[rolRegistro.value];
+};
+
+// Que hacer en la tarjeta de cada evento
+const accion = (evento) => {
+    const estado = estadoEn(evento);
+
+    if (estado === 'aprobado') {
+        return esBazar(evento)
+            ? { tipo: 'estado', texto: '✓ Participación aprobada', clase: 'aprobado' }
+            : { tipo: 'link', texto: 'Ver Proveedores', href: route('proveedores.index') };
+    }
+    if (estado === 'pendiente') {
+        return { tipo: 'estado', texto: 'Solicitud en revisión', clase: 'pendiente' };
+    }
+
+    // Sin registro o rechazado: se puede (re)postular
+    return {
+        tipo: 'link',
+        texto: estado === 'rechazado' ? 'Volver a postularme' : 'Regístrate',
+        href: route('user.dashboard', { tab: 'eventos', registrar: 1, evento_id: evento.id }),
+    };
+};
+
+// En los encuentros de negocios el directorio de proveedores se ofrece SIEMPRE,
+// al lado del boton de registro. La excepcion es el estado aprobado: ahi
+// "Ver Proveedores" ya es la accion principal y repetirlo sobraria.
+const verProveedores = (evento) => !esBazar(evento) && estadoEn(evento) !== 'aprobado';
+
 const badgeClase = (evento) => {
     if (evento.activa) return 'bg-emerald-500/90 text-white';
     const inicio = evento.fecha_hora_inicio ? new Date(evento.fecha_hora_inicio) : null;
@@ -107,22 +153,31 @@ const formatFecha = (fecha) => {
                                 {{ evento.descripcion }}
                             </p>
 
-                            <!-- Acciones -->
-                            <!-- Encuentro de negocios: ir a proveedores -->
-                            <Link v-if="evento.tipo_evento !== 'bazar_exposicion'"
-                                :href="route('proveedores.index')"
+                            <!-- Acciones: el boton depende del estado del usuario
+                                 en ESTE evento, no solo del tipo de evento. -->
+                            <Link v-if="accion(evento).tipo === 'link'"
+                                :href="accion(evento).href"
                                 class="block text-center text-sm font-bold py-2.5 rounded-xl
                                        bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
                                        text-white transition-colors shadow-sm">
-                                Ver Proveedores
+                                {{ accion(evento).texto }}
                             </Link>
-                            <!-- Bazar: ir a solicitar participación -->
-                            <Link v-else
-                                :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
-                                class="block text-center text-sm font-bold py-2.5 rounded-xl
-                                       bg-guinda-800 hover:bg-guinda-700 active:bg-guinda-900
-                                       text-white transition-colors shadow-sm">
-                                Regístrate
+                            <div v-else
+                                class="block text-center text-sm font-semibold py-2.5 rounded-xl border"
+                                :class="accion(evento).clase === 'aprobado'
+                                    ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                    : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'">
+                                {{ accion(evento).texto }}
+                            </div>
+                            <!-- Directorio de proveedores, siempre disponible en
+                                 los encuentros de negocios. -->
+                            <Link v-if="verProveedores(evento)"
+                                :href="route('proveedores.index')"
+                                class="block text-center text-sm font-bold py-2.5 rounded-xl border
+                                       border-guinda-700 text-guinda-800 hover:bg-guinda-50
+                                       dark:border-guinda-600 dark:text-guinda-300 dark:hover:bg-guinda-900/30
+                                       transition-colors">
+                                Ver Proveedores
                             </Link>
                         </div>
                     </div>
@@ -201,20 +256,29 @@ const formatFecha = (fecha) => {
                         class="text-xs text-guinda-600 dark:text-guinda-400 font-medium">
                         {{ formatFecha(evento.fecha_hora_inicio) }}
                     </p>
-                    <!-- Encuentro de negocios -->
-                    <Link v-if="evento.activa && evento.tipo_evento !== 'bazar_exposicion'"
-                        :href="route('proveedores.index')"
-                        class="block text-center text-xs font-bold py-1.5 rounded-lg
-                               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
-                        Ver Proveedores
-                    </Link>
-                    <!-- Bazar -->
-                    <Link v-else-if="evento.activa && evento.tipo_evento === 'bazar_exposicion'"
-                        :href="route('user.dashboard', { tab: 'eventos', registrar: 1 })"
-                        class="block text-center text-xs font-bold py-1.5 rounded-lg
-                               bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
-                        Regístrate
-                    </Link>
+                    <template v-if="evento.activa">
+                        <Link v-if="accion(evento).tipo === 'link'"
+                            :href="accion(evento).href"
+                            class="block text-center text-xs font-bold py-1.5 rounded-lg
+                                   bg-guinda-800 hover:bg-guinda-700 text-white transition-colors">
+                            {{ accion(evento).texto }}
+                        </Link>
+                        <div v-else
+                            class="block text-center text-xs font-semibold py-1.5 rounded-lg border"
+                            :class="accion(evento).clase === 'aprobado'
+                                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
+                                : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'">
+                            {{ accion(evento).texto }}
+                        </div>
+                        <Link v-if="verProveedores(evento)"
+                            :href="route('proveedores.index')"
+                            class="block text-center text-xs font-bold py-1.5 rounded-lg border
+                                   border-guinda-700 text-guinda-800 hover:bg-guinda-50
+                                   dark:border-guinda-600 dark:text-guinda-300 dark:hover:bg-guinda-900/30
+                                   transition-colors">
+                            Ver Proveedores
+                        </Link>
+                    </template>
                 </div>
             </div>
         </div>

@@ -14,6 +14,21 @@ const previewEditar = ref(null);
 const previewCarruselNuevo = ref(null);
 const previewCarruselEditar = ref(null);
 
+const MAX_IMAGEN_MB = 10;
+
+// Devuelve true si el archivo cabe; si no, avisa y limpia el input.
+// Sin esto, un archivo por encima del limite de PHP falla de forma confusa
+// (si desborda post_max_size, Laravel responde 419 y no un error de validacion).
+const imagenCabe = (file, e) => {
+    if (!file) return false;
+    if (file.size > MAX_IMAGEN_MB * 1024 * 1024) {
+        alert(`La imagen pesa ${(file.size / 1024 / 1024).toFixed(1)} MB y el maximo son ${MAX_IMAGEN_MB} MB. Comprimela o usa una mas ligera.`);
+        if (e?.target) e.target.value = '';
+        return false;
+    }
+    return true;
+};
+
 const form = useForm({
     nombre: '',
     sector_economico: '',
@@ -30,6 +45,7 @@ const form = useForm({
     max_citas_por_comprador: 3,
     tiempo_entre_citas_minutos: 30,
     tipo_evento: 'encuentro_negocios',
+    destacado: false,
     max_espacios: null,
     con_criterios_evaluacion: false,
     fecha_aceptacion_solicitudes: '',
@@ -42,12 +58,14 @@ const totalPorcentaje = computed(() =>
 
 const onImagenNuevo = (e) => {
     const f = e.target.files[0];
+    if (f && !imagenCabe(f, e)) { form.imagen = null; previewNuevo.value = null; return; }
     form.imagen = f ?? null;
     previewNuevo.value = f ? URL.createObjectURL(f) : null;
 };
 
 const onImagenCarruselNuevo = (e) => {
     const f = e.target.files[0];
+    if (f && !imagenCabe(f, e)) { form.imagen_carrusel = null; previewCarruselNuevo.value = null; return; }
     form.imagen_carrusel = f ?? null;
     previewCarruselNuevo.value = f ? URL.createObjectURL(f) : null;
 };
@@ -71,6 +89,7 @@ const formEditar = useForm({
     max_citas_por_comprador: 3,
     tiempo_entre_citas_minutos: 30,
     tipo_evento: 'encuentro_negocios',
+    destacado: false,
     max_espacios: null,
     con_criterios_evaluacion: false,
     fecha_aceptacion_solicitudes: '',
@@ -83,12 +102,14 @@ const totalPorcentajeEditar = computed(() =>
 
 const onImagenEditar = (e) => {
     const f = e.target.files[0];
+    if (f && !imagenCabe(f, e)) { formEditar.imagen = null; previewEditar.value = null; return; }
     formEditar.imagen = f ?? null;
     previewEditar.value = f ? URL.createObjectURL(f) : null;
 };
 
 const onImagenCarruselEditar = (e) => {
     const f = e.target.files[0];
+    if (f && !imagenCabe(f, e)) { formEditar.imagen_carrusel = null; previewCarruselEditar.value = null; return; }
     formEditar.imagen_carrusel = f ?? null;
     previewCarruselEditar.value = f ? URL.createObjectURL(f) : null;
 };
@@ -121,6 +142,7 @@ const abrirEditar = (evento) => {
     previewCarruselEditar.value              = evento.imagen_carrusel_url ?? null;
     formEditar.tipo_evento                   = evento.tipo_evento || 'encuentro_negocios';
     formEditar.max_espacios                  = evento.max_espacios ?? null;
+    formEditar.destacado                     = !!evento.destacado;
     formEditar.con_criterios_evaluacion      = !!evento.con_criterios_evaluacion;
     formEditar.criterios                     = (evento.criterios || []).map(c => ({ id: c.id, nombre: c.nombre, porcentaje: Number(c.porcentaje) }));
     formEditar.clearErrors();
@@ -245,7 +267,7 @@ const secuenciaValidaEditar = computed(() =>
                             class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                     </div>
                     <div class="sm:col-span-2">
-                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×675px, horizontal 16:9)</span></label>
+                        <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 10MB — recomendado 1200×675px, horizontal 16:9)</span></label>
                         <input type="file" accept="image/*" @change="onImagenNuevo"
                             class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                         <div v-if="previewNuevo" class="mt-2">
@@ -263,7 +285,7 @@ const secuenciaValidaEditar = computed(() =>
                     <div class="sm:col-span-2">
                         <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                             Imagen para el carrusel de la página principal
-                            <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 4MB — recomendado 1200×1500px vertical/cuadrada)</span>
+                            <span class="text-gray-400">(opcional, JPG/PNG/WebP, máx. 10MB — recomendado 1200×1500px vertical/cuadrada)</span>
                         </label>
                         <input type="file" accept="image/*" @change="onImagenCarruselNuevo"
                             class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
@@ -389,6 +411,18 @@ const secuenciaValidaEditar = computed(() =>
                             <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Sin citas</span>
                         </button>
                     </div>
+                    <label class="mt-4 flex items-start gap-2.5 cursor-pointer">
+                        <input type="checkbox" v-model="form.destacado"
+                            class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-guinda-700 focus:ring-guinda-500" />
+                        <span>
+                            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Evento destacado</span>
+                            <span class="block text-[11px] text-gray-400 leading-relaxed">
+                                Aparece primero en la página pública de proveedores y se toma como el evento
+                                principal del sistema. Solo puede haber uno destacado: al marcar éste, se
+                                desmarcará el que lo estuviera.
+                            </span>
+                        </span>
+                    </label>
 
                     <div v-if="form.tipo_evento === 'bazar_exposicion'" class="mt-4">
                         <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Número máximo de espacios (N)</label>
@@ -482,6 +516,12 @@ const secuenciaValidaEditar = computed(() =>
                             <div class="flex items-center gap-2 mb-1">
                                 <span class="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
                                 <span class="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">En curso</span>
+                                <span v-if="eventoActivo.destacado"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+                                           bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400
+                                           border border-amber-200 dark:border-amber-800">
+                                    ★ Destacado
+                                </span>
                             </div>
                             <h3 class="text-xl font-black text-gray-900 dark:text-white">{{ eventoActivo.nombre }}</h3>
                             <p v-if="eventoActivo.sector_economico" class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Sector: {{ eventoActivo.sector_economico }}</p>
@@ -679,7 +719,7 @@ const secuenciaValidaEditar = computed(() =>
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                             </div>
                             <div class="sm:col-span-2">
-                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional — deja vacío para conservar la actual, recomendado 1200×675px)</span></label>
+                                <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Imagen del evento <span class="text-gray-400">(opcional, máx. 10MB — deja vacío para conservar la actual, recomendado 1200×675px)</span></label>
                                 <input type="file" accept="image/*" @change="onImagenEditar"
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
                                 <div v-if="previewEditar" class="mt-2">
@@ -696,7 +736,7 @@ const secuenciaValidaEditar = computed(() =>
                             </div>
                             <div class="sm:col-span-2">
                                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                                    Imagen para el carrusel <span class="text-gray-400">(opcional — deja vacío para conservar la actual, recomendado 1200×1500px)</span>
+                                    Imagen para el carrusel <span class="text-gray-400">(opcional, máx. 10MB — deja vacío para conservar la actual, recomendado 1200×1500px)</span>
                                 </label>
                                 <input type="file" accept="image/*" @change="onImagenCarruselEditar"
                                     class="w-full text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:border-guinda-500 transition-colors" />
@@ -815,6 +855,18 @@ const secuenciaValidaEditar = computed(() =>
                                     <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Sin citas</span>
                                 </button>
                             </div>
+                            <label class="mt-4 flex items-start gap-2.5 cursor-pointer">
+                                <input type="checkbox" v-model="formEditar.destacado"
+                                    class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-guinda-700 focus:ring-guinda-500" />
+                                <span>
+                                    <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Evento destacado</span>
+                                    <span class="block text-[11px] text-gray-400 leading-relaxed">
+                                        Aparece primero en la página pública de proveedores y se toma como el evento
+                                        principal del sistema. Solo puede haber uno destacado: al marcar éste, se
+                                        desmarcará el que lo estuviera.
+                                    </span>
+                                </span>
+                            </label>
 
                             <div v-if="formEditar.tipo_evento === 'bazar_exposicion'" class="mt-4">
                                 <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Número máximo de espacios (N)</label>

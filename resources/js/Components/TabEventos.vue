@@ -63,6 +63,7 @@ const eventoParaRegistro = ref(null);
 const tipoParaRegistro = ref(null);
 const heLeidoConvocatoria = ref(false);
 const errorModal = ref('');
+const avisoRegistro = ref('');
 const cargandoRegistro = ref(false);
 
 const abrirModalRegistro = (evento, tipo) => {
@@ -73,19 +74,47 @@ const abrirModalRegistro = (evento, tipo) => {
     modalConvocatoria.value = true;
 };
 
-// Abrir automáticamente el modal de registro al bazar cuando se llega desde
-// el botón "Regístrate" del sidebar (?tab=eventos&registrar=1)
+// Abrir automaticamente el modal de registro cuando se llega desde el boton
+// "Registrate" de la tira de eventos (?tab=eventos&registrar=1&evento_id=N).
+//
+// Antes solo contemplaba el bazar y usaba el primer evento activo. Con varios
+// encuentros simultaneos hay que respetar en cual hizo clic el usuario.
 onMounted(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('registrar') !== '1') return;
 
-    if (eventoActivo.value?.tipo_evento === 'bazar_exposicion' && !eventoActivo.value.mi_registro?.expositor) {
-        abrirModalRegistro(eventoActivo.value, 'expositor');
+    const limpiarUrl = () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('registrar');
+        url.searchParams.delete('evento_id');
+        window.history.replaceState({}, '', url);
+    };
+
+    const idPedido = parseInt(params.get('evento_id'), 10);
+    const evento = Number.isInteger(idPedido)
+        ? eventosActivos.value.find(e => e.id === idPedido)
+        : eventoActivo.value;
+
+    if (!evento) { limpiarUrl(); return; }
+
+    if (evento.tipo_evento === 'bazar_exposicion') {
+        if (!evento.mi_registro?.expositor) {
+            abrirModalRegistro(evento, 'expositor');
+        }
+    } else {
+        // Encuentro de negocios: el rol depende de que panel esta viendo el
+        // usuario. Si ya tiene inscripcion de ese tipo, no se reabre el modal.
+        const tipo = (authUser.value?.active_role === 'proveedor' && esProveedor.value)
+            || (esProveedor.value && !esComprador.value)
+            ? 'proveedor'
+            : 'comprador';
+
+        if (!evento.mi_registro?.[tipo]) {
+            abrirModalRegistro(evento, tipo);
+        }
     }
 
-    const url = new URL(window.location.href);
-    url.searchParams.delete('registrar');
-    window.history.replaceState({}, '', url);
+    limpiarUrl();
 });
 
 const confirmarRegistro = () => {
@@ -99,6 +128,13 @@ const confirmarRegistro = () => {
         preserveScroll: true,
         onSuccess: () => {
             modalConvocatoria.value = false;
+            // El mensaje lo manda el servidor: si ya existia una solicitud NO se
+            // vuelve a enviar correo, y anunciar "te avisaremos por correo" seria
+            // mentir. Solo se usa el texto fijo si no llego flash.
+            avisoRegistro.value = page.props.flash?.success
+                || 'Tu solicitud quedó registrada y está en revisión. '
+                 + 'Te avisaremos por correo cuando el equipo la apruebe.';
+            setTimeout(() => { avisoRegistro.value = ''; }, 10000);
         },
         onError: (errors) => {
             errorModal.value = errors.error || Object.values(errors)[0] || 'Ocurrió un error. Intenta de nuevo.';
@@ -115,7 +151,14 @@ const confirmarRegistroBazar = () => {
     errorModal.value = '';
     router.post(route('evento.registrar-bazar', eventoParaRegistro.value.id), {}, {
         preserveScroll: true,
-        onSuccess: () => { modalConvocatoria.value = false; },
+        onSuccess: () => {
+            modalConvocatoria.value = false;
+            // Igual que arriba: "ya tienes una solicitud registrada" no manda correo.
+            avisoRegistro.value = page.props.flash?.success
+                || 'Recibimos tu solicitud de participación. '
+                 + 'Está en revisión y te avisaremos del resultado por correo.';
+            setTimeout(() => { avisoRegistro.value = ''; }, 10000);
+        },
         onError: (errors) => {
             errorModal.value = errors.error || Object.values(errors)[0] || 'Ocurrió un error.';
         },
@@ -141,6 +184,19 @@ const csfVencida = computed(() => {
 const documentosCompletos = computed(() =>
     !!authUser.value?.ine_path && !!authUser.value?.csf_path && !csfVencida.value
 );
+
+// Por que no se puede confirmar todavia. Un boton deshabilitado sin
+// explicacion se percibe como "hago clic y no pasa nada".
+const motivoBloqueo = computed(() => {
+    if (cargandoRegistro.value) return '';
+    if (!heLeidoConvocatoria.value) {
+        return '\u261d Marca la casilla "He leído la convocatoria" para continuar.';
+    }
+    if (tipoParaRegistro.value === 'expositor' && !documentosCompletos.value) {
+        return 'Sube tu INE y tu CSF vigente para poder confirmar.';
+    }
+    return '';
+});
 
 const onIneChangeModal = (e) => { docsForm.ine = e.target.files[0] ?? null; };
 const onCsfChangeModal = (e) => { docsForm.csf = e.target.files[0] ?? null; };
@@ -178,6 +234,17 @@ const fases = [
 
 <template>
     <div class="space-y-6">
+
+        <!-- Confirmacion visible tras registrarse a un evento -->
+        <div v-if="avisoRegistro"
+            class="flex items-start gap-3 p-4 bg-emerald-50 dark:bg-emerald-950/20
+                   border border-emerald-200 dark:border-emerald-800 rounded-2xl">
+            <svg class="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div class="flex-1 text-sm text-emerald-800 dark:text-emerald-300">{{ avisoRegistro }}</div>
+            <button type="button" @click="avisoRegistro = ''" class="text-emerald-500 hover:text-emerald-700 text-lg leading-none">&times;</button>
+        </div>
 
         <!-- SECCIÓN A: Eventos Activos (pueden ser varios simultáneos) -->
         <div v-if="eventosActivos.length">
@@ -807,7 +874,9 @@ const fases = [
 
                     <button type="button" @click="guardarDocumentosModal" :disabled="docsForm.processing || (!docsForm.ine && !docsForm.csf)"
                         class="w-full px-3 py-2 text-xs font-semibold rounded-lg border border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-400 hover:bg-guinda-50 dark:hover:bg-guinda-950/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                        {{ docsForm.processing ? 'Guardando documentos...' : 'Guardar documentos' }}
+                        {{ docsForm.processing
+                            ? (docsForm.progress ? `Subiendo ${docsForm.progress.percentage}%` : 'Guardando documentos...')
+                            : 'Guardar documentos' }}
                     </button>
                     <p v-if="!documentosCompletos" class="text-[11px] text-amber-600 dark:text-amber-400">
                         Sube tu INE y tu CSF vigente (máx. 3 meses) para poder confirmar tu registro.
@@ -825,11 +894,17 @@ const fases = [
                     </button>
                     <button @click="tipoParaRegistro === 'expositor' ? confirmarRegistroBazar() : confirmarRegistro()"
                         :disabled="!heLeidoConvocatoria || cargandoRegistro || (tipoParaRegistro === 'expositor' && !documentosCompletos)"
-                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors">
-                        <span v-if="cargandoRegistro">Enviando...</span>
-                        <span v-else>Confirmar registro</span>
+                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-xl bg-guinda-800 hover:bg-guinda-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors inline-flex items-center justify-center gap-2">
+                        <svg v-if="cargandoRegistro" class="animate-spin h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.4 0 0 5.4 0 12h4z"/>
+                        </svg>
+                        <span>{{ cargandoRegistro ? 'Enviando...' : 'Confirmar registro' }}</span>
                     </button>
                 </div>
+                <p v-if="motivoBloqueo" class="mt-2.5 text-center text-xs text-amber-600 dark:text-amber-400">
+                    {{ motivoBloqueo }}
+                </p>
             </div>
         </div>
     </Teleport>
