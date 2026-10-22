@@ -4,9 +4,12 @@ namespace App\Services\Admin;
 
 use App\Exceptions\ReglaDeNegocioException;
 use App\Mail\PlantillaCorreoMail;
+use App\Models\Evento;
 use App\Models\PlantillaCorreo;
+use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 
@@ -20,13 +23,60 @@ class PlantillasCorreoService
 {
     public const TIPOS_DESTINATARIO = ['comprador', 'proveedor', 'ambos'];
 
-    public const PLACEHOLDERS_NUEVA = [
-        '{{nombre_usuario}}'   => 'Nombre del usuario destinatario',
-        '{{nombre_proveedor}}' => 'Nombre del proveedor / empresa',
-        '{{nombre_evento}}'    => 'Nombre del evento',
-        '{{fecha_cita}}'       => 'Fecha de la cita',
-        '{{hora_cita}}'        => 'Hora de la cita',
+    private const FORMATO_FECHA = 'd \\d\\e F \\d\\e Y';
+
+    /**
+     * Catalogo agrupado de variables para el editor. El agrupado es solo para
+     * la interfaz: al sustituir, todas se tratan igual.
+     *
+     * OJO: anadir una variable aqui NO basta. Tiene que existir tambien en
+     * variablesParaDestinatario() (envio manual) o la rellena el flujo que
+     * dispara ese correo. Si nadie la rellena, sale vacia.
+     */
+    public const GRUPOS_PLACEHOLDERS = [
+        'Usuario' => [
+            '{{nombre_usuario}}'    => 'Nombre de la persona que recibe el correo',
+            '{{email_usuario}}'     => 'Su correo electrónico',
+            '{{telefono_usuario}}'  => 'Su teléfono',
+            '{{empresa_usuario}}'   => 'Nombre de su empresa',
+            '{{municipio_usuario}}' => 'Su municipio',
+        ],
+        'Proveedor' => [
+            '{{nombre_proveedor}}' => 'Nombre comercial del proveedor',
+            '{{nombre_empresa}}'   => 'Razón social de la empresa',
+        ],
+        'Evento' => [
+            '{{nombre_evento}}'      => 'Nombre del evento activo',
+            '{{descripcion_evento}}' => 'Descripción breve del evento',
+            '{{fecha_evento}}'       => 'Fecha de inicio (ej. 18 de septiembre de 2026)',
+            '{{hora_evento}}'        => 'Hora de inicio (ej. 10:00)',
+            '{{fecha_fin_evento}}'   => 'Fecha de cierre del evento',
+            '{{convocatoria_url}}'   => 'Liga a la convocatoria del evento',
+        ],
+        'Cita' => [
+            '{{fecha_cita}}' => 'Fecha de la cita',
+            '{{hora_cita}}'  => 'Hora de la cita',
+            '{{mesa_cita}}'  => 'Número de mesa asignada',
+        ],
+        'Enlaces' => [
+            '{{url_sitio}}'       => 'Página principal de Impúlsate',
+            '{{url_mi_panel}}'    => 'Panel del participante',
+            '{{url_proveedores}}' => 'Directorio de proveedores',
+            '{{enlace_encuesta}}' => 'Liga a la encuesta (solo en correos de encuesta)',
+            '{{url_evaluacion}}'  => 'Liga a la evaluación del bazar (solo en bazar)',
+        ],
+        'Otros' => [
+            '{{motivo_rechazo}}' => 'Motivo escrito por el administrador',
+            '{{fecha_hoy}}'      => 'Fecha de hoy',
+            '{{anio_actual}}'    => 'Año actual',
+        ],
     ];
+
+    /** Lista plana del catalogo (la consume la API v1). */
+    public static function placeholdersPlanos(): array
+    {
+        return array_merge(...array_values(self::GRUPOS_PLACEHOLDERS));
+    }
 
     public const HTML_BASE = <<<HTML
 <div style="background:#f9fafb;padding:40px 20px;font-family:'Segoe UI',Arial,sans-serif;">
@@ -49,13 +99,23 @@ HTML;
 
     /** Valores de ejemplo para la vista previa (no se envian). */
     public const EJEMPLOS = [
-        'nombre_usuario'   => 'María Pérez',
-        'nombre_proveedor' => 'Salsas Doña Chela',
-        'nombre_empresa'   => 'Salsas Doña Chela S.A. de C.V.',
-        'nombre_evento'    => 'Encuentro de Negocios Impúlsate',
-        'fecha_cita'       => '15 de octubre de 2026',
-        'hora_cita'        => '10:30',
-        'motivo_rechazo'   => 'Motivo de ejemplo',
+        'nombre_usuario'     => 'María Pérez',
+        'email_usuario'      => 'maria.perez@ejemplo.com',
+        'telefono_usuario'   => '999 123 4567',
+        'empresa_usuario'    => 'Salsas Doña Chela',
+        'municipio_usuario'  => 'Mérida',
+        'nombre_proveedor'   => 'Salsas Doña Chela',
+        'nombre_empresa'     => 'Salsas Doña Chela S.A. de C.V.',
+        'nombre_evento'      => 'Encuentro de Negocios Impúlsate',
+        'descripcion_evento' => 'Conecta con proveedores de todo Yucatán',
+        'fecha_evento'       => '18 de septiembre de 2026',
+        'hora_evento'        => '10:00',
+        'fecha_fin_evento'   => '18 de septiembre de 2026',
+        'convocatoria_url'   => 'https://impulsate.iyemyucatan.com/convocatoria',
+        'fecha_cita'         => '15 de octubre de 2026',
+        'hora_cita'          => '10:30',
+        'mesa_cita'          => '12',
+        'motivo_rechazo'     => 'Motivo de ejemplo',
     ];
 
     public static function reglasCrear(): array
@@ -72,6 +132,12 @@ HTML;
     public const REGLAS_EDITAR = [
         'asunto'    => ['required', 'string', 'max:255'],
         'contenido' => ['required', 'string'],
+    ];
+
+    public const REGLAS_PRUEBA = [
+        'asunto'    => ['required', 'string', 'max:255'],
+        'contenido' => ['required', 'string'],
+        'email'     => ['required', 'email'],
     ];
 
     public const REGLAS_ENVIAR = [
@@ -116,16 +182,64 @@ HTML;
         Artisan::call('db:seed', ['--class' => 'PlantillasCorreoSeeder', '--force' => true]);
     }
 
-    /** Encola un correo por destinatario, sin variables. Devuelve cuantos. */
+    /**
+     * Encola un correo por destinatario, con las variables resueltas con los
+     * datos de cada uno. Antes iba con un array vacio y los {{marcadores}}
+     * llegaban literales. Devuelve cuantos.
+     */
     public function enviar(PlantillaCorreo $plantilla, array $destinatarios): int
     {
+        $evento = Evento::activo();
         $enviados = 0;
         foreach ($destinatarios as $email) {
-            Mail::to($email)->queue(new PlantillaCorreoMail($plantilla, []));
+            Mail::to($email)->queue(new PlantillaCorreoMail($plantilla, $this->variablesParaDestinatario($email, $evento)));
             $enviados++;
         }
 
         return $enviados;
+    }
+
+    /**
+     * Variables de un destinatario: sus datos si el correo es de un usuario
+     * registrado; si no, valores neutros ("Participante" o vacio).
+     */
+    public function variablesParaDestinatario(string $email, ?Evento $evento = null): array
+    {
+        $user = User::with('restaurantero')->where('email', $email)->first();
+
+        return [
+            'nombre_usuario'     => $user?->name ?? 'Participante',
+            'email_usuario'      => $email,
+            'telefono_usuario'   => $user?->telefono ?? '',
+            'empresa_usuario'    => $user?->nombre_empresa ?? '',
+            'municipio_usuario'  => $user?->municipio ?? '',
+            'nombre_proveedor'   => $user?->restaurantero?->nombre_restaurante ?? ($user?->name ?? ''),
+            'nombre_empresa'     => $user?->restaurantero?->razon_social ?? ($user?->nombre_empresa ?? ''),
+            'nombre_evento'      => $evento?->nombre ?? '',
+            'descripcion_evento' => $evento?->descripcion ?? '',
+            'fecha_evento'       => $evento?->fecha_hora_inicio?->translatedFormat(self::FORMATO_FECHA) ?? '',
+            'hora_evento'        => $evento?->fecha_hora_inicio?->format('H:i') ?? '',
+            'fecha_fin_evento'   => $evento?->fecha_hora_fin?->translatedFormat(self::FORMATO_FECHA) ?? '',
+            'convocatoria_url'   => $evento?->convocatoria_url ?? '',
+        ] + $this->variablesGenerales();
+    }
+
+    /**
+     * Envia un borrador (sin guardarlo) a un correo de prueba, con valores de
+     * ejemplo y el asunto marcado [PRUEBA]. Va con sendNow() y no en cola:
+     * PlantillaCorreoMail usa SerializesModels y un modelo sin id no se puede
+     * restaurar en el worker. Ademas asi un fallo SMTP se ve en pantalla.
+     */
+    public function enviarPrueba(string $asunto, string $contenido, string $email): void
+    {
+        $plantilla = new PlantillaCorreo(['asunto' => '[PRUEBA] ' . $asunto, 'contenido' => $contenido]);
+
+        try {
+            Mail::to($email)->sendNow(new PlantillaCorreoMail($plantilla, $this->variablesEjemplo()));
+        } catch (\Throwable $e) {
+            Log::error('Error correo de prueba de plantilla: ' . $e->getMessage());
+            throw new ReglaDeNegocioException('No se pudo enviar el correo de prueba: ' . $e->getMessage(), 'email');
+        }
     }
 
     public function eliminar(PlantillaCorreo $plantilla): void
@@ -182,16 +296,34 @@ HTML;
      */
     public function vistaPrevia(string $asunto, string $contenido, array $vars = []): array
     {
-        $vars = array_merge(self::EJEMPLOS, [
-            'enlace_encuesta' => url('/encuesta/EJEMPLO'),
-            'url_evaluacion'  => url('/evaluacion/EJEMPLO'),
-        ], array_filter($vars, fn ($v) => $v !== null));
+        $vars = array_merge($this->variablesEjemplo(), array_filter($vars, fn ($v) => $v !== null));
         $plantilla = new PlantillaCorreo(['asunto' => $asunto, 'contenido' => $contenido]);
         $mail = new PlantillaCorreoMail($plantilla, $vars);
 
         return [
             'asunto' => $mail->envelope()->subject,
             'html'   => $mail->render(),
+        ];
+    }
+
+    /** Valores de ejemplo + enlaces reales: vista previa y envio de prueba. */
+    private function variablesEjemplo(): array
+    {
+        return array_merge(self::EJEMPLOS, [
+            'enlace_encuesta' => url('/encuesta/EJEMPLO'),
+            'url_evaluacion'  => url('/evaluacion/EJEMPLO'),
+        ], $this->variablesGenerales());
+    }
+
+    /** Enlaces y fechas que no dependen del destinatario. */
+    private function variablesGenerales(): array
+    {
+        return [
+            'url_sitio'       => url('/'),
+            'url_mi_panel'    => url('/mi-panel'),
+            'url_proveedores' => url('/proveedores'),
+            'fecha_hoy'       => now()->translatedFormat(self::FORMATO_FECHA),
+            'anio_actual'     => now()->format('Y'),
         ];
     }
 }

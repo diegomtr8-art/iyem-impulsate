@@ -32,7 +32,7 @@ class PlantillasCorreoController extends Controller
     {
         return Inertia::render('Admin/SuperAdmin/Plantillas/Create', [
             'htmlBase'     => PlantillasCorreoService::HTML_BASE,
-            'placeholders' => PlantillasCorreoService::PLACEHOLDERS_NUEVA,
+            'grupos'       => PlantillasCorreoService::GRUPOS_PLACEHOLDERS,
         ]);
     }
 
@@ -46,7 +46,8 @@ class PlantillasCorreoController extends Controller
     public function edit(PlantillaCorreo $plantilla)
     {
         return Inertia::render('Admin/SuperAdmin/Plantillas/Edit', [
-            'plantilla' => $plantilla,
+            'plantilla'    => $plantilla,
+            'grupos'       => PlantillasCorreoService::GRUPOS_PLACEHOLDERS,
             'placeholders' => $this->plantillas->placeholdersParaClave($plantilla->clave),
         ]);
     }
@@ -78,6 +79,24 @@ class PlantillasCorreoController extends Controller
         $enviados = $this->plantillas->enviar($plantilla, $data['destinatarios']);
 
         return back()->with('success', "Correo enviado a {$enviados} destinatario(s). (Procesando en cola)");
+    }
+
+    /** Vista previa de un borrador (layout real + variables de ejemplo). No guarda nada. */
+    public function vistaPrevia(Request $request)
+    {
+        $d = $request->validate(PlantillasCorreoService::REGLAS_EDITAR);
+
+        return response()->json($this->plantillas->vistaPrevia($d['asunto'], $d['contenido']));
+    }
+
+    /** Envia el borrador a un correo de prueba, sin guardar la plantilla. */
+    public function enviarPrueba(Request $request)
+    {
+        $d = $request->validate(PlantillasCorreoService::REGLAS_PRUEBA);
+
+        $this->plantillas->enviarPrueba($d['asunto'], $d['contenido'], $d['email']);
+
+        return back()->with('success', "Correo de prueba enviado a {$d['email']}.");
     }
 
     public function destroy(PlantillaCorreo $plantilla)

@@ -35,7 +35,7 @@ class PlantillaCorreoController extends Controller
 
         return response()->json(['data' => [
             'html_base'    => PlantillasCorreoService::HTML_BASE,
-            'placeholders' => $this->placeholders(PlantillasCorreoService::PLACEHOLDERS_NUEVA),
+            'placeholders' => $this->placeholders(PlantillasCorreoService::placeholdersPlanos()),
         ]]);
     }
 

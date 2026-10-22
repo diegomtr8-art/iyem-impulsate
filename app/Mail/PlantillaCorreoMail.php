@@ -25,10 +25,7 @@ class PlantillaCorreoMail extends Mailable implements ShouldQueue
 
     public function envelope(): Envelope
     {
-        $asunto = $this->plantilla->asunto;
-        foreach ($this->vars as $key => $value) {
-            $asunto = str_replace('{{' . $key . '}}', (string)($value ?? ''), $asunto);
-        }
+        $asunto = PlantillaCorreo::sustituir($this->plantilla->asunto, $this->vars);
         return new Envelope(subject: $asunto ?: $this->plantilla->asunto);
     }
 

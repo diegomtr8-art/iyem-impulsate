@@ -39,10 +39,17 @@ class PlantillaCorreo extends Model
     // Reemplaza placeholders {{clave}} en el contenido con los valores dados.
     public function reemplazar(array $vars): string
     {
-        $contenido = $this->contenido;
+        return self::sustituir($this->contenido, $vars);
+    }
+
+    // Sustituye {{clave}} en un texto y borra los marcadores que nadie
+    // rellena: mejor un hueco que "{{nombre_usuario}}" en el correo.
+    public static function sustituir(?string $texto, array $vars): string
+    {
+        $texto = (string) $texto;
         foreach ($vars as $key => $value) {
-            $contenido = str_replace('{{' . $key . '}}', (string) ($value ?? ''), $contenido);
+            $texto = str_replace('{{' . $key . '}}', (string) ($value ?? ''), $texto);
         }
-        return $contenido;
+        return preg_replace('/\{\{\s*[a-z0-9_]+\s*\}\}/i', '', $texto);
     }
 }
