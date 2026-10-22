@@ -135,9 +135,16 @@ HTML;
     ];
 
     public const REGLAS_PRUEBA = [
-        'asunto'    => ['required', 'string', 'max:255'],
-        'contenido' => ['required', 'string'],
-        'email'     => ['required', 'email'],
+        'asunto'     => ['required', 'string', 'max:255'],
+        'contenido'  => ['required', 'string'],
+        'email'      => ['required', 'email'],
+        'usuario_id' => ['nullable', 'integer', 'exists:users,id'],
+    ];
+
+    public const REGLAS_VISTA_PREVIA = [
+        'asunto'     => ['required', 'string', 'max:255'],
+        'contenido'  => ['required', 'string'],
+        'usuario_id' => ['nullable', 'integer', 'exists:users,id'],
     ];
 
     public const REGLAS_ENVIAR = [
@@ -229,13 +236,14 @@ HTML;
      * ejemplo y el asunto marcado [PRUEBA]. Va con sendNow() y no en cola:
      * PlantillaCorreoMail usa SerializesModels y un modelo sin id no se puede
      * restaurar en el worker. Ademas asi un fallo SMTP se ve en pantalla.
+     * Con $usuarioId las variables salen con los datos de ese usuario.
      */
-    public function enviarPrueba(string $asunto, string $contenido, string $email): void
+    public function enviarPrueba(string $asunto, string $contenido, string $email, ?int $usuarioId = null): void
     {
         $plantilla = new PlantillaCorreo(['asunto' => '[PRUEBA] ' . $asunto, 'contenido' => $contenido]);
 
         try {
-            Mail::to($email)->sendNow(new PlantillaCorreoMail($plantilla, $this->variablesEjemplo()));
+            Mail::to($email)->sendNow(new PlantillaCorreoMail($plantilla, $this->variablesDePrueba($usuarioId)));
         } catch (\Throwable $e) {
             Log::error('Error correo de prueba de plantilla: ' . $e->getMessage());
             throw new ReglaDeNegocioException('No se pudo enviar el correo de prueba: ' . $e->getMessage(), 'email');
@@ -304,6 +312,36 @@ HTML;
             'asunto' => $mail->envelope()->subject,
             'html'   => $mail->render(),
         ];
+    }
+
+    /**
+     * Variables para probar un borrador. Sin usuario, todo de ejemplo. Con
+     * usuario, sus datos reales (aunque esten vacios, como en un envio de
+     * verdad) y de ejemplo solo las que rellena un flujo concreto (cita,
+     * encuesta, motivo de rechazo...), para que la prueba no salga en blanco.
+     */
+    public function variablesDePrueba(?int $usuarioId): array
+    {
+        $user = $usuarioId ? User::find($usuarioId) : null;
+        if (!$user) {
+            return $this->variablesEjemplo();
+        }
+
+        return array_merge($this->variablesEjemplo(), $this->variablesParaDestinatario($user->email, Evento::activo()));
+    }
+
+    /** Usuarios para el buscador de la prueba: por nombre, correo o empresa. */
+    public function buscarUsuarios(string $texto): Collection
+    {
+        $q = '%' . str_replace(['%', '_'], ['\%', '\_'], trim($texto)) . '%';
+
+        return User::query()
+            ->where(fn ($w) => $w->where('name', 'like', $q)
+                ->orWhere('email', 'like', $q)
+                ->orWhere('nombre_empresa', 'like', $q))
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'email', 'nombre_empresa', 'active_role']);
     }
 
     /** Valores de ejemplo + enlaces reales: vista previa y envio de prueba. */

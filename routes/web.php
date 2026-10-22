@@ -315,6 +315,7 @@ Route::middleware([
                 Route::get('/crear',                        [PlantillasCorreoController::class, 'create'])->name('create');
                 Route::post('/vista-previa',                [PlantillasCorreoController::class, 'vistaPrevia'])->name('vista-previa');
                 Route::post('/enviar-prueba',               [PlantillasCorreoController::class, 'enviarPrueba'])->name('enviar-prueba');
+                Route::get('/buscar-usuarios',              [PlantillasCorreoController::class, 'buscarUsuarios'])->name('buscar-usuarios');
                 Route::get('/{plantilla}/edit',             [PlantillasCorreoController::class, 'edit'])->name('edit');
                 Route::put('/{plantilla}',                  [PlantillasCorreoController::class, 'update'])->name('update');
                 Route::delete('/{plantilla}',               [PlantillasCorreoController::class, 'destroy'])->name('destroy');

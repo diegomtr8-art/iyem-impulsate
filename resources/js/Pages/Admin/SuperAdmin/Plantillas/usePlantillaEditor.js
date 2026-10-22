@@ -45,6 +45,10 @@ export function usePlantillaEditor(form, tab, conocidas) {
     // La arma el servidor: aplica el layout del correo y sustituye las
     // variables con valores de ejemplo. Antes se pintaba el HTML crudo y se
     // veia "{{nombre_usuario}}" en vez de "María Pérez".
+    // Usuario cuyos datos rellenan las variables en la vista previa y en la
+    // prueba; null = datos de ejemplo
+    const usuarioPrueba = ref(null);
+
     const previewHtml = ref('');
     const previewAsunto = ref('');
     const cargandoPreview = ref(false);
@@ -65,7 +69,7 @@ export function usePlantillaEditor(form, tab, conocidas) {
                     'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                     'Accept': 'application/json',
                 },
-                body: JSON.stringify({ asunto: form.asunto, contenido: form.contenido }),
+                body: JSON.stringify({ asunto: form.asunto, contenido: form.contenido, usuario_id: usuarioPrueba.value?.id ?? null }),
             });
             if (!res.ok) throw new Error('No se pudo generar la vista previa.');
             const data = await res.json();
@@ -83,6 +87,7 @@ export function usePlantillaEditor(form, tab, conocidas) {
 
     // Con la vista previa visible, se regenera sola al dejar de escribir
     let temporizador = null;
+    watch(usuarioPrueba, () => { if (tab.value !== 'editor') generarPreview(); });
     watch(() => [form.asunto, form.contenido], () => {
         if (tab.value === 'editor' || !form.asunto || !form.contenido) return;
         clearTimeout(temporizador);
@@ -109,13 +114,16 @@ export function usePlantillaEditor(form, tab, conocidas) {
             asunto: form.asunto,
             contenido: form.contenido,
             email,
+            usuario_id: usuarioPrueba.value?.id ?? null,
         }, {
             // Sin preserveState Inertia rehace la pagina y el borrador se pierde
             preserveScroll: true,
             preserveState: true,
             onSuccess: () => {
                 avisoPruebaOk.value = true;
-                avisoPrueba.value = `Enviado a ${email}. Revisa la bandeja (y spam).`;
+                avisoPrueba.value = usuarioPrueba.value
+                    ? `Enviado a ${email} con los datos de ${usuarioPrueba.value.name}.`
+                    : `Enviado a ${email}. Revisa la bandeja (y spam).`;
             },
             onError: (e) => {
                 avisoPruebaOk.value = false;
@@ -183,7 +191,7 @@ export function usePlantillaEditor(form, tab, conocidas) {
 
     return {
         previewHtml, previewAsunto, cargandoPreview, errorPreview, generarPreview,
-        emailPrueba, enviandoPrueba, avisoPrueba, avisoPruebaOk, enviarPrueba,
+        emailPrueba, enviandoPrueba, avisoPrueba, avisoPruebaOk, enviarPrueba, usuarioPrueba,
         textareaContenido, inputAsunto, campoActivo, insertarPlaceholder, insertarBloque,
         variablesDesconocidas,
     };

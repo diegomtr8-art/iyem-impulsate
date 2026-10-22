@@ -81,12 +81,22 @@ class PlantillasCorreoController extends Controller
         return back()->with('success', "Correo enviado a {$enviados} destinatario(s). (Procesando en cola)");
     }
 
-    /** Vista previa de un borrador (layout real + variables de ejemplo). No guarda nada. */
+    /** Vista previa de un borrador (layout real + variables de ejemplo o de un usuario). No guarda nada. */
     public function vistaPrevia(Request $request)
     {
-        $d = $request->validate(PlantillasCorreoService::REGLAS_EDITAR);
+        $d = $request->validate(PlantillasCorreoService::REGLAS_VISTA_PREVIA);
 
-        return response()->json($this->plantillas->vistaPrevia($d['asunto'], $d['contenido']));
+        return response()->json($this->plantillas->vistaPrevia(
+            $d['asunto'], $d['contenido'], $this->plantillas->variablesDePrueba($d['usuario_id'] ?? null)
+        ));
+    }
+
+    /** Buscador de usuarios para el envio de prueba (JSON). */
+    public function buscarUsuarios(Request $request)
+    {
+        $q = (string) $request->query('q', '');
+
+        return response()->json(mb_strlen(trim($q)) < 2 ? [] : $this->plantillas->buscarUsuarios($q));
     }
 
     /** Envia el borrador a un correo de prueba, sin guardar la plantilla. */
@@ -94,7 +104,7 @@ class PlantillasCorreoController extends Controller
     {
         $d = $request->validate(PlantillasCorreoService::REGLAS_PRUEBA);
 
-        $this->plantillas->enviarPrueba($d['asunto'], $d['contenido'], $d['email']);
+        $this->plantillas->enviarPrueba($d['asunto'], $d['contenido'], $d['email'], $d['usuario_id'] ?? null);
 
         return back()->with('success', "Correo de prueba enviado a {$d['email']}.");
     }

@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import { usePlantillaEditor, VISTAS, BLOQUES, filtrarGrupos } from './usePlantillaEditor';
+import TarjetaPrueba from './TarjetaPrueba.vue';
 
 const props = defineProps({
     htmlBase: String,
@@ -31,7 +32,7 @@ const tab = ref('editor');
 
 const {
     previewHtml, previewAsunto, cargandoPreview, errorPreview, generarPreview,
-    emailPrueba, enviandoPrueba, avisoPrueba, avisoPruebaOk, enviarPrueba,
+    emailPrueba, enviandoPrueba, avisoPrueba, avisoPruebaOk, enviarPrueba, usuarioPrueba,
     textareaContenido, inputAsunto, campoActivo, insertarPlaceholder, insertarBloque,
     variablesDesconocidas,
 } = usePlantillaEditor(form, tab, () => Object.values(props.grupos || {}).flatMap((g) => Object.keys(g)));
@@ -249,7 +250,7 @@ const lineas = computed(() => (form.contenido || '').split('\n').length);
                                 <div class="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800">
                                     <div class="px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 space-y-0.5">
                                         <p class="text-sm font-semibold text-gray-900 dark:text-white truncate">{{ previewAsunto || form.asunto || '(sin asunto)' }}</p>
-                                        <p class="text-[11px] text-gray-400 truncate">De: Impúlsate · Para: maria.perez@ejemplo.com</p>
+                                        <p class="text-[11px] text-gray-400 truncate">De: Impúlsate · Para: {{ usuarioPrueba ? usuarioPrueba.email : 'maria.perez@ejemplo.com' }}</p>
                                     </div>
                                     <div class="flex justify-center p-3">
                                         <iframe :srcdoc="previewHtml" sandbox=""
@@ -258,7 +259,7 @@ const lineas = computed(() => (form.contenido || '').split('\n').length);
                                     </div>
                                 </div>
                                 <p class="text-[11px] text-gray-400">
-                                    Variables con datos de ejemplo; al enviarse se usan los de cada destinatario.
+                                    {{ usuarioPrueba ? `Variables con los datos de ${usuarioPrueba.name}.` : 'Variables con datos de ejemplo; al enviarse se usan los de cada destinatario.' }}
                                 </p>
                             </div>
                         </div>
@@ -307,22 +308,13 @@ const lineas = computed(() => (form.contenido || '').split('\n').length);
                         </div>
                     </div>
 
-                    <div class="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-5">
-                        <div class="flex items-center gap-2 mb-1">
-                            <svg class="w-4 h-4 text-guinda-700 dark:text-guinda-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">Probar antes de crear</h3>
-                        </div>
-                        <p class="text-xs text-gray-400 mb-3">Envía el borrador a tu correo. No guarda la plantilla.</p>
-                        <input v-model="emailPrueba" type="email" placeholder="tucorreo@ejemplo.com" @keydown.enter.prevent="enviarPrueba"
-                            class="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-guinda-400 mb-2" />
-                        <button type="button" @click="enviarPrueba" :disabled="enviandoPrueba || !emailPrueba"
-                            class="w-full px-3 py-2 text-sm font-semibold rounded-xl border border-guinda-300 dark:border-guinda-700 text-guinda-700 dark:text-guinda-400 hover:bg-guinda-50 dark:hover:bg-guinda-950/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                            {{ enviandoPrueba ? 'Enviando...' : 'Enviar prueba' }}
-                        </button>
-                        <p v-if="avisoPrueba" class="mt-2 text-xs" :class="avisoPruebaOk ? 'text-emerald-600' : 'text-red-600'">
-                            {{ avisoPrueba }}
-                        </p>
-                    </div>
+                    <TarjetaPrueba titulo="Probar antes de crear" texto="Envía el borrador. No guarda la plantilla."
+
+                        v-model:email="emailPrueba" v-model:usuario="usuarioPrueba"
+
+                        :enviando="enviandoPrueba" :aviso="avisoPrueba" :aviso-ok="avisoPruebaOk"
+
+                        @enviar="enviarPrueba" />
 
                     <p class="text-[11px] text-gray-400 px-1">
                         Las plantillas personalizadas se pueden eliminar; las del sistema no.
