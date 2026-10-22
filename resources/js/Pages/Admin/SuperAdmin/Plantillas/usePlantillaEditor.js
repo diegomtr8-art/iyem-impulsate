@@ -7,7 +7,7 @@ import { router } from '@inertiajs/vue3';
  * aviso de variables que no existen en el catalogo.
  *
  * @param form   useForm con asunto y contenido
- * @param tab    ref con la pestana activa ('editor' | 'preview')
+ * @param tab    ref con la vista activa ('editor' | 'dividido' | 'preview')
  * @param conocidas  () => lista de placeholders validos ('{{x}}')
  */
 export function usePlantillaEditor(form, tab, conocidas) {
@@ -48,7 +48,16 @@ export function usePlantillaEditor(form, tab, conocidas) {
         }
     };
 
-    watch(tab, (t) => { if (t === 'preview') generarPreview(); });
+    // Cualquier vista que no sea solo el editor muestra la vista previa
+    watch(tab, (t) => { if (t !== 'editor') generarPreview(); });
+
+    // Con la vista previa visible, se regenera sola al dejar de escribir
+    let temporizador = null;
+    watch(() => [form.asunto, form.contenido], () => {
+        if (tab.value === 'editor' || !form.asunto || !form.contenido) return;
+        clearTimeout(temporizador);
+        temporizador = setTimeout(generarPreview, 800);
+    });
 
     // ── Envio de prueba del borrador (no guarda) ─────────────
     const emailPrueba = ref('');
@@ -89,21 +98,46 @@ export function usePlantillaEditor(form, tab, conocidas) {
     // ── Insertar variable donde esta el cursor ───────────────
     // Antes hacia `form.contenido += ph`, que la pegaba despues del </div>
     // final, fuera del cuerpo del correo.
+    // Las variables van al ultimo campo que tuvo el foco (asunto o contenido);
+    // los bloques HTML siempre al contenido.
     const textareaContenido = ref(null);
+    const inputAsunto = ref(null);
+    const campoActivo = ref('contenido');
 
-    const insertarPlaceholder = (ph) => {
-        const el = textareaContenido.value;
-        if (!el) { form.contenido += ph; return; }
+    // Hasta que el editor recibe el foco su cursor no significa nada (el
+    // navegador lo deja al final del texto, fuera del cuerpo del correo).
+    const editorTocado = ref(false);
+    const MARCADOR = '<!-- ESCRIBE TU CONTENIDO AQUÍ -->';
+    watch(textareaContenido, (el) => {
+        el?.addEventListener('focus', () => { editorTocado.value = true; }, { once: true });
+    });
 
-        const inicio = el.selectionStart ?? form.contenido.length;
-        const fin = el.selectionEnd ?? inicio;
-        form.contenido = form.contenido.slice(0, inicio) + ph + form.contenido.slice(fin);
+    const insertarEn = (campo, texto) => {
+        const el = campo === 'asunto' ? inputAsunto.value : textareaContenido.value;
+        const actual = form[campo] || '';
+        if (!el) { form[campo] = actual + texto; return; }
+
+        let inicio = el.selectionStart ?? actual.length;
+        let fin = el.selectionEnd ?? inicio;
+
+        // Si nunca se ha hecho clic en el editor el cursor esta en 0, antes del
+        // encabezado: se usa el marcador de la base o, si no esta, el final.
+        if (campo === 'contenido' && !editorTocado.value) {
+            const i = actual.indexOf(MARCADOR);
+            inicio = fin = i >= 0 ? i + MARCADOR.length : actual.length;
+        }
+        form[campo] = actual.slice(0, inicio) + texto + actual.slice(fin);
+
+        if (campo === 'contenido') editorTocado.value = true;
 
         nextTick(() => {
             el.focus();
-            el.setSelectionRange(inicio + ph.length, inicio + ph.length);
+            el.setSelectionRange(inicio + texto.length, inicio + texto.length);
         });
     };
+
+    const insertarPlaceholder = (ph) => insertarEn(inputAsunto.value ? campoActivo.value : 'contenido', ph);
+    const insertarBloque = (html) => insertarEn('contenido', `\n${html}\n`);
 
     // ── Variables mal escritas (aviso, no bloquea) ───────────
     // Algunos flujos inyectan variables propias (lista_citas en la propuesta
@@ -120,7 +154,7 @@ export function usePlantillaEditor(form, tab, conocidas) {
     return {
         previewHtml, previewAsunto, cargandoPreview, errorPreview, generarPreview,
         emailPrueba, enviandoPrueba, avisoPrueba, avisoPruebaOk, enviarPrueba,
-        textareaContenido, insertarPlaceholder,
+        textareaContenido, inputAsunto, campoActivo, insertarPlaceholder, insertarBloque,
         variablesDesconocidas,
     };
 }
