@@ -1,6 +1,36 @@
 import { ref, computed, watch, nextTick } from 'vue';
 import { router } from '@inertiajs/vue3';
 
+export const VISTAS = [
+    { valor: 'editor',   etiqueta: 'Editor' },
+    { valor: 'dividido', etiqueta: 'Dividido' },
+    { valor: 'preview',  etiqueta: 'Vista previa' },
+];
+
+// Bloques HTML listos para el correo (estilos en linea, paleta guinda)
+export const BLOQUES = [
+    { nombre: 'Título', html: '<h2 style="margin:0 0 12px;font-size:20px;font-weight:800;color:#111827;">Título de la sección</h2>' },
+    { nombre: 'Párrafo', html: '<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">Escribe aquí el texto del párrafo.</p>' },
+    { nombre: 'Botón', html: '<p style="margin:24px 0;text-align:center;"><a href="{{url_mi_panel}}" style="display:inline-block;background:#8b1028;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;font-size:15px;">Ir a mi panel</a></p>' },
+    { nombre: 'Recuadro destacado', html: '<div style="margin:16px 0;padding:16px 20px;background:#fdf2f4;border-left:4px solid #8b1028;border-radius:8px;"><p style="margin:0;font-size:14px;line-height:1.5;color:#45060f;"><strong>Importante:</strong> texto que quieres resaltar.</p></div>' },
+    { nombre: 'Datos del evento', html: '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;background:#f9fafb;border-radius:12px;"><tr><td style="padding:16px 20px;font-size:14px;color:#374151;line-height:1.8;"><strong style="color:#8b1028;">{{nombre_evento}}</strong><br>Fecha: {{fecha_evento}}<br>Hora: {{hora_evento}}</td></tr></table>' },
+    { nombre: 'Lista', html: '<ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#374151;">\n  <li>Primer punto</li>\n  <li>Segundo punto</li>\n</ul>' },
+    { nombre: 'Separador', html: '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">' },
+];
+
+/** Filtra un catalogo { grupo: { '{{ph}}': desc } } por texto en placeholder o descripcion. */
+export function filtrarGrupos(grupos, texto) {
+    const q = texto.trim().toLowerCase();
+    if (!q) return grupos || {};
+    return Object.fromEntries(
+        Object.entries(grupos || {})
+            .map(([g, vars]) => [g, Object.fromEntries(
+                Object.entries(vars).filter(([ph, desc]) => ph.toLowerCase().includes(q) || desc.toLowerCase().includes(q))
+            )])
+            .filter(([, vars]) => Object.keys(vars).length)
+    );
+}
+
 /**
  * Logica compartida por Create.vue y Edit.vue: vista previa generada por el
  * servidor, envio de prueba del borrador, insertar variables en el cursor y

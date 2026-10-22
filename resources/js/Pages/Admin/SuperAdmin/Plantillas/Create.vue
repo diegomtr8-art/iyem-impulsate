@@ -2,7 +2,7 @@
 import { ref, computed, watch } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
-import { usePlantillaEditor } from './usePlantillaEditor';
+import { usePlantillaEditor, VISTAS, BLOQUES, filtrarGrupos } from './usePlantillaEditor';
 
 const props = defineProps({
     htmlBase: String,
@@ -36,11 +36,7 @@ const {
     variablesDesconocidas,
 } = usePlantillaEditor(form, tab, () => Object.values(props.grupos || {}).flatMap((g) => Object.keys(g)));
 
-const vistas = [
-    { valor: 'editor',   etiqueta: 'Editor' },
-    { valor: 'dividido', etiqueta: 'Dividido' },
-    { valor: 'preview',  etiqueta: 'Vista previa' },
-];
+const vistas = VISTAS;
 
 const destinatarios = [
     { valor: 'ambos',     titulo: 'Todos',       texto: 'Proveedores y compradores',
@@ -51,16 +47,7 @@ const destinatarios = [
       icono: 'M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z' },
 ];
 
-// Bloques HTML listos para el correo (estilos en linea, paleta guinda)
-const bloques = [
-    { nombre: 'Título', html: '<h2 style="margin:0 0 12px;font-size:20px;font-weight:800;color:#111827;">Título de la sección</h2>' },
-    { nombre: 'Párrafo', html: '<p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#374151;">Escribe aquí el texto del párrafo.</p>' },
-    { nombre: 'Botón', html: '<p style="margin:24px 0;text-align:center;"><a href="{{url_mi_panel}}" style="display:inline-block;background:#8b1028;color:#ffffff;text-decoration:none;padding:12px 28px;border-radius:10px;font-weight:700;font-size:15px;">Ir a mi panel</a></p>' },
-    { nombre: 'Recuadro destacado', html: '<div style="margin:16px 0;padding:16px 20px;background:#fdf2f4;border-left:4px solid #8b1028;border-radius:8px;"><p style="margin:0;font-size:14px;line-height:1.5;color:#45060f;"><strong>Importante:</strong> texto que quieres resaltar.</p></div>' },
-    { nombre: 'Datos del evento', html: '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:16px 0;background:#f9fafb;border-radius:12px;"><tr><td style="padding:16px 20px;font-size:14px;color:#374151;line-height:1.8;"><strong style="color:#8b1028;">{{nombre_evento}}</strong><br>Fecha: {{fecha_evento}}<br>Hora: {{hora_evento}}</td></tr></table>' },
-    { nombre: 'Lista', html: '<ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:1.7;color:#374151;">\n  <li>Primer punto</li>\n  <li>Segundo punto</li>\n</ul>' },
-    { nombre: 'Separador', html: '<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;">' },
-];
+const bloques = BLOQUES;
 const menuBloques = ref(false);
 const elegirBloque = (b) => { insertarBloque(b.html); menuBloques.value = false; };
 
@@ -69,17 +56,7 @@ const dispositivo = ref('escritorio');
 
 // Buscador del catalogo de variables
 const busqueda = ref('');
-const gruposFiltrados = computed(() => {
-    const q = busqueda.value.trim().toLowerCase();
-    if (!q) return props.grupos || {};
-    return Object.fromEntries(
-        Object.entries(props.grupos || {})
-            .map(([g, vars]) => [g, Object.fromEntries(
-                Object.entries(vars).filter(([ph, desc]) => ph.toLowerCase().includes(q) || desc.toLowerCase().includes(q))
-            )])
-            .filter(([, vars]) => Object.keys(vars).length)
-    );
-});
+const gruposFiltrados = computed(() => filtrarGrupos(props.grupos, busqueda.value));
 
 const lineas = computed(() => (form.contenido || '').split('\n').length);
 </script>
